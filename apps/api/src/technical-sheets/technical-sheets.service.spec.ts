@@ -1069,6 +1069,9 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
             isArchived: true,
           }),
       },
+      technicalSheetCategory: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'category-desserts', isArchived: false }),
+      },
       $transaction: jest.fn(async (callback: any) => callback(tx)),
     };
     const restoringService = new TechnicalSheetsService(prisma as any, {} as any);
@@ -1086,6 +1089,7 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
 
     const result = await restoringService.createRecipe('org-1', { id: 'user-1', role: 'ADMIN' }, {
       name: ' Croissant ',
+      categoryId: 'category-desserts',
       mode: 'PRODUCTION',
       status: 'DRAFT',
       referencePortions: 28,
@@ -1138,6 +1142,9 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
           .fn()
           .mockResolvedValue({ id: 'sheet-croissant', name: 'Croissant', isArchived: false }),
       },
+      technicalSheetCategory: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'category-desserts', isArchived: false }),
+      },
       $transaction: jest.fn(),
     };
     const duplicateService = new TechnicalSheetsService(prisma as any, {} as any);
@@ -1145,11 +1152,37 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     await expect(
       duplicateService.createRecipe('org-1', { id: 'user-1', role: 'ADMIN' }, {
         name: 'croissant',
+        categoryId: 'category-desserts',
         mode: 'PRODUCTION',
         status: 'DRAFT',
         referencePortions: 28,
       } as any),
     ).rejects.toThrow('Une fiche technique nommée « Croissant » existe déjà.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('requires a category before creating a technical sheet', async () => {
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      technicalSheet: { findFirst: jest.fn() },
+      $transaction: jest.fn(),
+    };
+    const categoryRequiredService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await expect(
+      categoryRequiredService.createRecipe('org-1', { id: 'user-1', role: 'ADMIN' }, {
+        name: 'Croissant',
+        mode: 'PRODUCTION',
+        status: 'DRAFT',
+        referencePortions: 28,
+      } as any),
+    ).rejects.toThrow('Veuillez créer une catégorie avant de créer une fiche technique.');
+    expect(prisma.technicalSheet.findFirst).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

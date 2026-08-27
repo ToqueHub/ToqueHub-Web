@@ -16514,6 +16514,14 @@ input:checked + .slider-round:before {
   gap: 0.35rem;
 }
 
+.card-modern.planning-calendar-card > .planning-legend > span:nth-child(3) {
+  display: none;
+}
+
+#root > div > main > div > div > div > div:nth-child(5) > div:nth-child(3) > label {
+  display: none;
+}
+
 .planning-legend i {
   width: 0.7rem;
   height: 0.7rem;

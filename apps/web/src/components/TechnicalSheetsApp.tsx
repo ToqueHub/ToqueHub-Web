@@ -68,6 +68,9 @@ const statuses = [
 
 const MAX_RECIPE_IMPORT_FILES = 10;
 const TECHNICAL_SHEETS_PENDING_RECIPE_ACTION_KEY = 'toquehub.technicalSheets.pendingRecipeAction';
+const TECHNICAL_SHEETS_CATEGORY_TOUR_TARGET = 'technical-sheets-add-category';
+const TECHNICAL_SHEETS_CATEGORY_REQUIRED_MESSAGE =
+  'Veuillez créer une catégorie avant de créer une fiche technique.';
 
 const emptyRecipe: TechnicalSheetRecipePayload = {
   name: '',
@@ -851,6 +854,7 @@ export function TechnicalSheetsApp({
   const [form, setForm] = useState<TechnicalSheetRecipePayload>(emptyRecipe);
   const [categoryName, setCategoryName] = useState('');
   const [categoryDescription, setCategoryDescription] = useState('');
+  const [categoryCreationTourOpen, setCategoryCreationTourOpen] = useState(false);
   const [categoryReassignmentOpen, setCategoryReassignmentOpen] = useState(false);
   const [categoryReassignmentTotal, setCategoryReassignmentTotal] = useState(0);
   const [duplicateOpen, setDuplicateOpen] = useState<TechnicalSheetRecipe | null>(null);
@@ -974,7 +978,25 @@ export function TechnicalSheetsApp({
       )
       .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
   }, [activeCategories, recipes]);
+
+  useEffect(() => {
+    if (activeCategories.length) setCategoryCreationTourOpen(false);
+  }, [activeCategories.length]);
+
+  function requireActiveCategory() {
+    if (activeCategories.length) return true;
+    setSuccess(undefined);
+    setError(TECHNICAL_SHEETS_CATEGORY_REQUIRED_MESSAGE);
+    setRecipeDialog(false);
+    setImportOpen(false);
+    setKokkiOpen(false);
+    setCategoryCreationTourOpen(true);
+    onNavigate('categories');
+    return false;
+  }
+
   function openRecipe(recipe?: TechnicalSheetRecipe) {
+    if (!recipe && !requireActiveCategory()) return;
     setReviewingImportDocumentId(null);
     setReviewingKokkiDraftId(null);
     setReviewingKokkiPricing(null);
@@ -1191,13 +1213,20 @@ export function TechnicalSheetsApp({
 
   async function createCategory() {
     if (!categoryName.trim()) return;
-    await api.createTechnicalSheetCategory(token, {
-      name: categoryName.trim(),
-      description: categoryDescription.trim() || undefined,
-    });
-    setCategoryName('');
-    setCategoryDescription('');
-    await load();
+    setError(undefined);
+    try {
+      await api.createTechnicalSheetCategory(token, {
+        name: categoryName.trim(),
+        description: categoryDescription.trim() || undefined,
+      });
+      setCategoryName('');
+      setCategoryDescription('');
+      setCategoryCreationTourOpen(false);
+      setSuccess('Catégorie créée. Vous pouvez maintenant créer une fiche technique.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Création de la catégorie impossible.');
+    }
   }
 
   function openCategoryReassignment() {
@@ -1371,6 +1400,7 @@ export function TechnicalSheetsApp({
   function showImportedRecipe(status: TechnicalSheetRecipeImportStatus, announce = true) {
     const result = status.result;
     if (!result) return;
+    if (!requireActiveCategory()) return;
     setEditingRecipe(null);
     setReviewingImportDocumentId(status.document.id);
     setReviewingKokkiDraftId(null);
@@ -1409,6 +1439,7 @@ export function TechnicalSheetsApp({
     const target = draft.targetTechnicalSheetId
       ? (recipes.find((recipe) => recipe.id === draft.targetTechnicalSheetId) ?? null)
       : null;
+    if (!target && !requireActiveCategory()) return;
     setReviewingImportDocumentId(null);
     setReviewingKokkiDraftId(draft.id);
     setReviewingKokkiPricing({
@@ -1556,6 +1587,7 @@ export function TechnicalSheetsApp({
               onDelete={deleteRecipe}
               onExport={exportRecipePdf}
               onDuplicate={(recipe) => {
+                if (!requireActiveCategory()) return;
                 setDuplicateOpen(recipe);
                 setDuplicateName(`${recipe.name} – variante`);
               }}
@@ -1595,6 +1627,12 @@ export function TechnicalSheetsApp({
           onImport={() => startFirstRecipe('ocr')}
           onManual={() => startFirstRecipe('manual')}
           onClose={closeOnboarding}
+        />
+      ) : null}
+
+      {categoryCreationTourOpen ? (
+        <TechnicalSheetCategoryCreationTour
+          onClose={() => setCategoryCreationTourOpen(false)}
         />
       ) : null}
 
@@ -3771,6 +3809,133 @@ function RecipesTab(props: {
   );
 }
 
+function TechnicalSheetCategoryCreationTour({ onClose }: { onClose: () => void }) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  const refreshRect = () => {
+    if (window.innerWidth < 760) {
+      setRect(null);
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(
+      `[data-tour="${TECHNICAL_SHEETS_CATEGORY_TOUR_TARGET}"]`,
+    );
+    if (!target) {
+      setRect(null);
+      return;
+    }
+    const next = target.getBoundingClientRect();
+    setRect(next.width && next.height ? next : null);
+  };
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-tour="${TECHNICAL_SHEETS_CATEGORY_TOUR_TARGET}"]`,
+      );
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      window.requestAnimationFrame(refreshRect);
+    });
+    const target = document.querySelector<HTMLElement>(
+      `[data-tour="${TECHNICAL_SHEETS_CATEGORY_TOUR_TARGET}"]`,
+    );
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshRect) : null;
+    if (target) observer?.observe(target);
+    const mutationObserver =
+      typeof MutationObserver !== 'undefined' ? new MutationObserver(refreshRect) : null;
+    if (document.body) mutationObserver?.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', refreshRect);
+    window.addEventListener('scroll', refreshRect, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener('resize', refreshRect);
+      window.removeEventListener('scroll', refreshRect, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    cardRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const cardStyle = useMemo(() => {
+    if (!rect) return undefined;
+    const width = Math.min(450, window.innerWidth - 32);
+    const estimatedHeight = 270;
+    const gap = 18;
+    const left = Math.min(
+      window.innerWidth - width - 16,
+      Math.max(16, rect.left + rect.width / 2 - width / 2),
+    );
+    const below = rect.bottom + estimatedHeight + gap < window.innerHeight;
+    return {
+      left,
+      top: below ? rect.bottom + gap : Math.max(16, rect.top - estimatedHeight - gap),
+      transform: 'none',
+    };
+  }, [rect]);
+
+  return (
+    <div className="workspace-mini-tour" aria-live="assertive">
+      {rect ? (
+        <div
+          className="workspace-mini-tour-highlight"
+          style={{
+            left: rect.left - 6,
+            top: rect.top - 6,
+            width: rect.width + 12,
+            height: rect.height + 12,
+          }}
+        />
+      ) : (
+        <div className="workspace-mini-tour-backdrop" />
+      )}
+      <div
+        className={`workspace-mini-tour-card ${rect ? '' : 'centered'}`}
+        style={cardStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="technical-sheet-category-tour-title"
+        tabIndex={-1}
+        ref={cardRef}
+      >
+        <button
+          className="workspace-mini-tour-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Fermer"
+        >
+          <X size={18} />
+        </button>
+        <span className="workspace-onboarding-kicker">
+          <AlertCircle size={14} /> Catégorie requise
+        </span>
+        <h2 id="technical-sheet-category-tour-title">Créez d’abord une catégorie</h2>
+        <p>
+          Veuillez créer une catégorie avant de créer une fiche technique. Saisissez son nom, puis
+          cliquez sur le bouton mis en évidence.
+        </p>
+        <div className="workspace-mini-tour-dots" aria-hidden="true">
+          <i className="active" />
+        </div>
+        <footer>
+          <span />
+          <button className="btn btn-primary" type="button" onClick={onClose}>
+            J’ai compris
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function ReferencesTab({
   title,
   icon,
@@ -3839,7 +4004,12 @@ function ReferencesTab({
               placeholder="Description optionnelle de la catégorie..."
             />
           </label>
-          <button className="btn btn-primary" onClick={onCreate} disabled={!name.trim()}>
+          <button
+            className="btn btn-primary"
+            onClick={onCreate}
+            disabled={!name.trim()}
+            data-tour={TECHNICAL_SHEETS_CATEGORY_TOUR_TARGET}
+          >
             Ajouter la catégorie
           </button>
         </div>
