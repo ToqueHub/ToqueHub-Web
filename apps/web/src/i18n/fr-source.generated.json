@@ -27885,6 +27885,15 @@
     ]
   },
   {
+    "text": "Cacao",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Cached",
     "files": [
       "apps/api/src/haccp/iot/zigbee2mqtt.provider.ts"
@@ -29445,6 +29454,15 @@
       "apps/api/src/architecture/architecture.service.ts",
       "apps/api/src/finance/finance-analytics.service.ts",
       "apps/api/src/finance/finance.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Casher",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -48372,6 +48390,15 @@
     ]
   },
   {
+    "text": "Diététique",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "diets",
     "files": [
       "apps/api/src/menus/menus.controller.ts",
@@ -57902,6 +57929,15 @@
     ]
   },
   {
+    "text": "Faible en FODMAP",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "failed",
     "files": [
       "apps/api/src/documents/documents.service.ts",
@@ -64410,6 +64446,15 @@
     "text": "Haché",
     "files": [
       "apps/api/src/menus/menus.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Halal",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -74042,6 +74087,15 @@
     "text": "Labels and allergens checked",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Lactose",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -91641,6 +91695,15 @@
     ]
   },
   {
+    "text": "Ouvrir la fiche produit",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ouvrir la preuve photo",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -92933,6 +92996,15 @@
     "files": [
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Pauvre en glucides",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -112403,6 +112475,15 @@
     ]
   },
   {
+    "text": "Sans bœuf",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sans categorie",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -112619,7 +112700,8 @@
   {
     "text": "Sans porc",
     "files": [
-      "apps/api/src/menus/menus.service.ts"
+      "apps/api/src/menus/menus.service.ts",
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -130140,6 +130222,7 @@
     "text": "url",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts",
+      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/stocks/EquipmentPage.tsx"
     ],
@@ -130174,6 +130257,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "URL du produit fournisseur",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
