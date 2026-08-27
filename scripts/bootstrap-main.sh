@@ -93,6 +93,7 @@ fi
 
 set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
 set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder FINANCE_SECRETS_ENCRYPTION_KEY "$(secret)"
 
 log "Installing npm dependencies"
 npm install

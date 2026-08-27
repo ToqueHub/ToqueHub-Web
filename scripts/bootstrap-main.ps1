@@ -348,6 +348,7 @@ Convert-EnvToUtf8NoBom
 
 Set-EnvIfPlaceholder 'PURCHASING_RESEND_ENCRYPTION_KEY' (New-RandomSecret)
 Set-EnvIfPlaceholder 'PURCHASING_EMAIL_ENCRYPTION_KEY' (New-RandomSecret)
+Set-EnvIfPlaceholder 'FINANCE_SECRETS_ENCRYPTION_KEY' (New-RandomSecret)
 
 Write-Step 'Installing npm dependencies'
 Invoke-Checked 'npm' @('install')
