@@ -2819,6 +2819,11 @@ export class TechnicalSheetsService {
         content: JSON.stringify({ filename, ocrMarkdown: markdown.slice(0, 45_000) }),
       },
     ] as Array<{ role: 'system' | 'user'; content: string }>;
+    const configuredTimeoutMs = Number(process.env.RECIPE_IMPORT_MISTRAL_TIMEOUT_MS ?? 180_000);
+    const timeoutMs =
+      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+        ? configuredTimeoutMs
+        : 180_000;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         return await this.mistralClient.chatJson<any>(
@@ -2826,11 +2831,15 @@ export class TechnicalSheetsService {
           messages,
           'toquehub_recipe_pdf_import',
           this.recipeImportSchema(),
+          { timeoutMs },
         );
       } catch (error) {
-        const rateLimited =
-          error instanceof Error && /\b429\b|rate.?limit|trop de requ/i.test(error.message);
-        if (!rateLimited || attempt === 2) throw error;
+        const transientFailure =
+          error instanceof Error &&
+          /\b429\b|rate.?limit|trop de requ|d[ée]lai mistral d[ée]pass[ée]|operation was aborted|\babort(?:ed)?\b/i.test(
+            error.message,
+          );
+        if (!transientFailure || attempt === 2) throw error;
         await this.waitRecipeImportRetry(
           Number(process.env.RECIPE_IMPORT_RETRY_DELAY_MS ?? 12_000) * (attempt + 1),
         );

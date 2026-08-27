@@ -706,6 +706,31 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(mistral.chatJson).toHaveBeenCalledTimes(2);
   });
 
+  it('gives recipe extraction more time and retries a transient Mistral timeout', async () => {
+    const mistral = {
+      chatJson: jest
+        .fn()
+        .mockRejectedValueOnce(
+          new Error('Mistral indisponible: Délai Mistral dépassé après 180000 ms'),
+        )
+        .mockResolvedValue(baseImport),
+    };
+    const retryingService = new TechnicalSheetsService({} as any, mistral as any);
+    jest.spyOn(retryingService as any, 'waitRecipeImportRetry').mockResolvedValue(undefined);
+
+    await expect(
+      (retryingService as any).extractRecipeFromOcr('org-1', '# Recette', 'macaron.pdf'),
+    ).resolves.toEqual(baseImport);
+    expect(mistral.chatJson).toHaveBeenCalledTimes(2);
+    expect(mistral.chatJson).toHaveBeenCalledWith(
+      'org-1',
+      expect.any(Array),
+      'toquehub_recipe_pdf_import',
+      expect.any(Object),
+      expect.objectContaining({ timeoutMs: 180_000 }),
+    );
+  });
+
   it('marks the exact import as reviewed inside the recipe creation transaction', async () => {
     const tx = {
       document: {

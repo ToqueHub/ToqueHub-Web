@@ -93,11 +93,18 @@ export class MistralClientService {
         requestMessages: typeof messages,
         responseFormat: Record<string, unknown>,
       ) => {
+        const configuredTimeoutMs =
+          options.timeoutMs ?? Number(process.env.MISTRAL_CHAT_TIMEOUT_MS ?? 60_000);
+        const timeoutMs =
+          Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+            ? configuredTimeoutMs
+            : 60_000;
         const controller = new AbortController();
-        const timeout = setTimeout(
-          () => controller.abort(),
-          options.timeoutMs ?? Number(process.env.MISTRAL_CHAT_TIMEOUT_MS ?? 60_000),
-        );
+        let timedOut = false;
+        const timeout = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
         try {
           return await fetch('https://api.mistral.ai/v1/chat/completions', {
             method: 'POST',
@@ -113,6 +120,9 @@ export class MistralClientService {
               response_format: responseFormat,
             }),
           });
+        } catch (error) {
+          if (timedOut) throw new Error(`Délai Mistral dépassé après ${timeoutMs} ms`);
+          throw error;
         } finally {
           clearTimeout(timeout);
         }
