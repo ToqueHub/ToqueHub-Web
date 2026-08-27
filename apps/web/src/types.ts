@@ -3479,6 +3479,8 @@ export interface CatererClient {
   id: string;
   name: string;
   name2?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -3529,6 +3531,7 @@ export interface CatererClient {
   fennoaModifiedAt?: string | null;
   fennoaSyncedAt?: string | null;
   source?: 'MANUAL' | 'FENNOA' | 'MANUAL_AND_FENNOA' | string;
+  allergies?: string | null;
   notes?: string | null;
   isArchived?: boolean;
   archivedAt?: string | null;
@@ -3568,6 +3571,8 @@ export type CatererClientInput = Pick<
   CatererClient,
   | 'name'
   | 'name2'
+  | 'firstName'
+  | 'lastName'
   | 'contactName'
   | 'email'
   | 'phone'
@@ -3605,9 +3610,58 @@ export type CatererClientInput = Pick<
   | 'autoReminderInterval'
   | 'autoReminderLastStep'
   | 'salesIsRefused'
+  | 'allergies'
   | 'notes'
   | 'isArchived'
 >;
+
+export type CatererClientImportStatus = 'ready' | 'needs_review' | 'duplicate' | 'error';
+
+export interface CatererClientImportRow {
+  id: string;
+  rowNumber: number;
+  source: Record<string, string>;
+  fields: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    allergies: string;
+  };
+  name: string;
+  status: CatererClientImportStatus;
+  selected: boolean;
+  warnings: string[];
+  errors: string[];
+  duplicateOf?:
+    | { type: 'existing'; id: string; name: string }
+    | { type: 'file'; rowNumber: number; name: string }
+    | null;
+}
+
+export interface CatererClientImportPreview {
+  filename: string;
+  sourceKind: 'xlsx' | 'csv' | 'pdf' | 'image';
+  sourceLanguage: 'fr' | 'en' | 'fi' | 'other';
+  sheetName?: string;
+  headers: string[];
+  rows: CatererClientImportRow[];
+  summary: {
+    total: number;
+    ready: number;
+    needsReview: number;
+    duplicates: number;
+    errors: number;
+  };
+  privacy: string;
+}
+
+export interface CatererClientImportCommitResult {
+  created: number;
+  skipped: number;
+  clients: Array<{ id: string; name: string }>;
+  skippedRows: Array<{ rowNumber: number; name: string; reason: string }>;
+}
 
 export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';

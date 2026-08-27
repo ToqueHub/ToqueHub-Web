@@ -21,6 +21,7 @@ import {
   Download,
   Eye,
   FileCheck,
+  FileUp,
   FileText,
   Filter,
   History,
@@ -28,6 +29,7 @@ import {
   Layers,
   LayoutGrid,
   List,
+  LoaderCircle,
   Mail,
   MapPin,
   MapPinned,
@@ -37,6 +39,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShieldCheck,
   ShoppingBag,
   Sparkles,
   Table,
@@ -53,6 +56,8 @@ import {
 } from './TechnicalSheetPickerModal';
 import type {
   CatererClient,
+  CatererClientImportPreview,
+  CatererClientImportRow,
   CatererClientInput,
   CatererEvent,
   CatererEventPayload,
@@ -120,6 +125,8 @@ const emptyEvent = (siteId = ''): CatererEventPayload => {
 const emptyClient = (): CatererClientInput => ({
   name: '',
   name2: '',
+  firstName: '',
+  lastName: '',
   contactName: '',
   email: '',
   phone: '',
@@ -157,6 +164,7 @@ const emptyClient = (): CatererClientInput => ({
   autoReminderInterval: undefined,
   autoReminderLastStep: undefined,
   salesIsRefused: false,
+  allergies: '',
   notes: '',
   isArchived: false,
 });
@@ -738,6 +746,11 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
   const [clientForm, setClientForm] = useState<CatererClientInput>(() => emptyClient());
   const [clientModalOpen, setClientModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<CatererClient | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importAnalyzing, setImportAnalyzing] = useState(false);
+  const [importSaving, setImportSaving] = useState(false);
+  const [importError, setImportError] = useState<string>();
+  const [importPreview, setImportPreview] = useState<CatererClientImportPreview | null>(null);
 
   const refreshClients = async () => {
     setLoading(true);
@@ -792,6 +805,96 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
     }
   };
 
+  const openClientImport = () => {
+    setImportError(undefined);
+    setImportPreview(null);
+    setImportOpen(true);
+  };
+
+  const analyzeClientImport = async (file: File) => {
+    setImportAnalyzing(true);
+    setImportError(undefined);
+    setImportPreview(null);
+    try {
+      setImportPreview(await api.analyzeCatererClientImport(token, file));
+    } catch (nextError) {
+      setImportError(
+        nextError instanceof Error ? nextError.message : 'Analyse du document client impossible.',
+      );
+    } finally {
+      setImportAnalyzing(false);
+    }
+  };
+
+  const updateClientImportRow = (
+    id: string,
+    field: keyof CatererClientImportRow['fields'],
+    value: string,
+  ) => {
+    setImportPreview((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        rows: current.rows.map((row) => {
+          if (row.id !== id) return row;
+          const fields = { ...row.fields, [field]: value };
+          const name = [fields.firstName, fields.lastName].filter(Boolean).join(' ').trim();
+          const errors = [
+            ...(!name ? ['Prénom ou nom obligatoire.'] : []),
+            ...(fields.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)
+              ? ['Adresse e-mail invalide.']
+              : []),
+          ];
+          return {
+            ...row,
+            fields,
+            name,
+            duplicateOf: null,
+            errors,
+            warnings:
+              !fields.email && !fields.phone
+                ? ['Ajoutez un e-mail ou un téléphone pour pouvoir contacter ce client.']
+                : [],
+            status: errors.length ? 'error' : 'needs_review',
+            selected: errors.length === 0,
+          };
+        }),
+      };
+    });
+  };
+
+  const toggleClientImportRow = (id: string, selected: boolean) => {
+    setImportPreview((current) =>
+      current
+        ? {
+            ...current,
+            rows: current.rows.map((row) => (row.id === id ? { ...row, selected } : row)),
+          }
+        : current,
+    );
+  };
+
+  const commitClientImport = async () => {
+    if (!importPreview) return;
+    setImportSaving(true);
+    setImportError(undefined);
+    try {
+      const result = await api.commitCatererClientImport(token, importPreview.rows);
+      setImportOpen(false);
+      setImportPreview(null);
+      setSuccess(
+        `${result.created} client${result.created > 1 ? 's' : ''} importé${result.created > 1 ? 's' : ''}${
+          result.skipped ? ` · ${result.skipped} ignoré${result.skipped > 1 ? 's' : ''}` : ''
+        }.`,
+      );
+      await refreshClients();
+    } catch (nextError) {
+      setImportError(nextError instanceof Error ? nextError.message : 'Import des clients impossible.');
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   return (
     <div className="caterer-app clients-module-app">
       <motion.section
@@ -811,6 +914,14 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
           </p>
         </div>
         <div className="hr-hero-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!canManage || loading}
+            onClick={openClientImport}
+          >
+            <FileUp size={16} /> Importer des clients
+          </button>
           <button
             type="button"
             className="btn btn-primary"
@@ -866,6 +977,8 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
                     <strong>{client.name}</strong>
                     {client.source?.includes('FENNOA') ? (
                       <span className="caterer-client-source">Synchronisé</span>
+                    ) : client.source === 'CLIENT_IMPORT' ? (
+                      <span className="caterer-client-source imported">Importé</span>
                     ) : (
                       <span className="caterer-client-source manual">Manuel</span>
                     )}
@@ -931,6 +1044,24 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
       </div>
 
       <AnimatePresence>
+        {importOpen ? (
+          <CatererClientImportModal
+            preview={importPreview}
+            analyzing={importAnalyzing}
+            saving={importSaving}
+            error={importError}
+            onFile={analyzeClientImport}
+            onUpdateRow={updateClientImportRow}
+            onToggleRow={toggleClientImportRow}
+            onCommit={commitClientImport}
+            onClose={() => {
+              if (importAnalyzing || importSaving) return;
+              setImportOpen(false);
+              setImportPreview(null);
+              setImportError(undefined);
+            }}
+          />
+        ) : null}
         {clientModalOpen ? (
           <CatererClientModal
             client={editingClient}
@@ -947,6 +1078,212 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+function CatererClientImportModal({
+  preview,
+  analyzing,
+  saving,
+  error,
+  onFile,
+  onUpdateRow,
+  onToggleRow,
+  onCommit,
+  onClose,
+}: {
+  preview: CatererClientImportPreview | null;
+  analyzing: boolean;
+  saving: boolean;
+  error?: string;
+  onFile: (file: File) => void | Promise<void>;
+  onUpdateRow: (
+    id: string,
+    field: keyof CatererClientImportRow['fields'],
+    value: string,
+  ) => void;
+  onToggleRow: (id: string, selected: boolean) => void;
+  onCommit: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const selected = preview?.rows.filter((row) => row.selected && row.status !== 'error').length ?? 0;
+  const summary = preview
+    ? {
+        ready: preview.rows.filter((row) => row.status === 'ready').length,
+        review: preview.rows.filter((row) => row.status === 'needs_review').length,
+        duplicates: preview.rows.filter((row) => row.status === 'duplicate').length,
+        errors: preview.rows.filter((row) => row.status === 'error').length,
+      }
+    : null;
+  const languageLabel =
+    preview?.sourceLanguage === 'fr'
+      ? 'Français'
+      : preview?.sourceLanguage === 'en'
+        ? 'Anglais'
+        : preview?.sourceLanguage === 'fi'
+          ? 'Finnois'
+          : 'Multilingue';
+
+  return (
+    <motion.div
+      className="modal-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <motion.div
+        className="modal-card caterer-client-import-modal"
+        initial={{ opacity: 0, scale: 0.98, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: 16 }}
+      >
+        <div className="modal-header">
+          <div>
+            <h2>Importer une base clients</h2>
+            <p className="muted">
+              Prénom, nom, téléphone, e-mail et informations d’allergies.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close-btn"
+            onClick={onClose}
+            disabled={analyzing || saving}
+            aria-label="Fermer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-body caterer-client-import-body">
+          <label
+            className={`caterer-client-import-dropzone${analyzing ? ' busy' : ''}`}
+            aria-busy={analyzing}
+          >
+            {analyzing ? <LoaderCircle className="spin" size={30} /> : <FileUp size={30} />}
+            <strong>{analyzing ? 'Analyse en cours…' : 'Choisir un document client'}</strong>
+            <span>CSV, XLSX, PDF ou image · français, anglais ou finnois · 20 Mo maximum</span>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/*"
+              disabled={analyzing || saving}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onFile(file);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+
+          {error ? (
+            <div className="menus-alert critical caterer-client-import-error">
+              <AlertCircle size={18} /> {error}
+            </div>
+          ) : null}
+
+          {preview && summary ? (
+            <>
+              <div className="caterer-client-import-meta">
+                <div>
+                  <FileCheck size={18} />
+                  <span>
+                    <strong>{preview.filename}</strong>
+                    <small>
+                      {languageLabel}
+                      {preview.sheetName ? ` · feuille ${preview.sheetName}` : ''}
+                    </small>
+                  </span>
+                </div>
+                <div className="caterer-client-import-summary">
+                  <span className="ready">{summary.ready} prêts</span>
+                  <span className="review">{summary.review} à vérifier</span>
+                  <span>{summary.duplicates} doublons</span>
+                  <span className={summary.errors ? 'error' : ''}>{summary.errors} erreurs</span>
+                </div>
+              </div>
+
+              <div className="caterer-client-import-table-wrap">
+                <table className="caterer-client-import-table">
+                  <thead>
+                    <tr>
+                      <th aria-label="Sélection" />
+                      <th>Prénom</th>
+                      <th>Nom</th>
+                      <th>E-mail</th>
+                      <th>Téléphone</th>
+                      <th>Info / allergies</th>
+                      <th>Contrôle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((row) => (
+                      <tr key={row.id} className={`status-${row.status}`}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={row.selected}
+                            disabled={row.status === 'error' || row.status === 'duplicate'}
+                            onChange={(event) => onToggleRow(row.id, event.target.checked)}
+                            aria-label={`Importer la ligne ${row.rowNumber}`}
+                          />
+                        </td>
+                        {(['firstName', 'lastName', 'email', 'phone', 'allergies'] as const).map(
+                          (field) => (
+                            <td key={field}>
+                              <input
+                                type={field === 'email' ? 'email' : 'text'}
+                                value={row.fields[field]}
+                                onChange={(event) => onUpdateRow(row.id, field, event.target.value)}
+                                aria-label={`${field} ligne ${row.rowNumber}`}
+                              />
+                            </td>
+                          ),
+                        )}
+                        <td>
+                          <span className={`caterer-client-import-status ${row.status}`}>
+                            {row.status === 'ready'
+                              ? 'Prêt'
+                              : row.status === 'needs_review'
+                                ? 'À vérifier'
+                                : row.status === 'duplicate'
+                                  ? 'Doublon'
+                                  : 'Erreur'}
+                          </span>
+                          {[...row.errors, ...row.warnings].map((message) => (
+                            <small key={message}>{message}</small>
+                          ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="caterer-client-import-privacy">
+                <ShieldCheck size={17} />
+                <span>{preview.privacy}</span>
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <div className="modal-footer caterer-client-import-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
+            Annuler
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void onCommit()}
+            disabled={!preview || !selected || analyzing || saving}
+          >
+            {saving ? <LoaderCircle className="spin" size={16} /> : <CheckIcon size={16} />}
+            {saving ? 'Import en cours…' : `Importer ${selected} client${selected > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -1051,6 +1388,18 @@ function CatererClientModal({
                     onChange={(event) => set('name2', event.target.value)}
                   />
                 </ClientField>
+                <ClientField label="Prénom">
+                  <input
+                    value={form.firstName ?? ''}
+                    onChange={(event) => set('firstName', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Nom de famille">
+                  <input
+                    value={form.lastName ?? ''}
+                    onChange={(event) => set('lastName', event.target.value)}
+                  />
+                </ClientField>
                 <ClientField label="Contact principal">
                   <input
                     value={form.contactName ?? ''}
@@ -1130,6 +1479,13 @@ function CatererClientModal({
                     <option value={1}>Entreprise</option>
                     <option value={2}>Particulier</option>
                   </select>
+                </ClientField>
+                <ClientField label="Informations / allergies" className="span-2">
+                  <textarea
+                    rows={2}
+                    value={form.allergies ?? ''}
+                    onChange={(event) => set('allergies', event.target.value)}
+                  />
                 </ClientField>
                 <ClientField label="Notes internes" className="span-2">
                   <textarea

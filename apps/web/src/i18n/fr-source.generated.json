@@ -2204,6 +2204,7 @@
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/finance/finance.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
@@ -2212,6 +2213,15 @@
     "kinds": [
       "literal",
       "template"
+    ]
+  },
+  {
+    "text": ".csv,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/*",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -2392,6 +2402,7 @@
       "apps/api/src/hr/hr-contract-ocr.service.ts",
       "apps/api/src/hr/hr.service.ts",
       "apps/api/src/human-support/human-support.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -2546,6 +2557,7 @@
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/finance/finance.service.ts",
       "apps/api/src/human-support/human-support.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
@@ -2833,6 +2845,15 @@
     "text": "· Fennoa",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "· feuille",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "template"
@@ -3783,6 +3804,7 @@
   {
     "text": "[data-tour=\"",
     "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -12064,6 +12086,7 @@
   {
     "text": "à vérifier",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
@@ -12078,6 +12101,7 @@
     "text": "À vérifier",
     "files": [
       "apps/api/src/planning/planning-day-status.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/StockAssistantPanel.tsx",
@@ -13183,6 +13207,7 @@
       "apps/web/src/components/stocks/EquipmentPage.tsx"
     ],
     "kinds": [
+      "attribute",
       "jsx",
       "literal",
       "template"
@@ -13583,6 +13608,15 @@
     ]
   },
   {
+    "text": "Actualiser les analyses en erreur (",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "actualisés,",
     "files": [
       "apps/api/src/menus/menus.service.ts"
@@ -13776,6 +13810,7 @@
       "apps/api/src/finance/finance.policy.ts",
       "apps/api/src/hr/hr.service.ts",
       "apps/api/src/hr/time-accounts/hr-time-account.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -13999,6 +14034,16 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Adresse e-mail invalide.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -15669,9 +15714,28 @@
     ]
   },
   {
+    "text": "Ajoutez un document client.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Ajoutez un e-mail Achats ou un e-mail de contact au fournisseur avant l’envoi.",
     "files": [
       "apps/web/src/components/purchasing/pages/PurchaseOrders.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Ajoutez un e-mail ou un téléphone pour pouvoir contacter ce client.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -16715,9 +16779,37 @@
     ]
   },
   {
+    "text": "allergeenit",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "allergen",
     "files": [
-      "apps/api/src/architecture/architecture.service.ts"
+      "apps/api/src/architecture/architecture.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergene",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergène",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -16735,6 +16827,7 @@
   {
     "text": "allergenes",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts"
     ],
     "kinds": [
@@ -16744,6 +16837,7 @@
   {
     "text": "allergènes",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts"
     ],
     "kinds": [
@@ -16840,6 +16934,7 @@
   {
     "text": "allergens",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/technical-sheets/technical-sheets.controller.ts",
       "apps/web/src/components/Dashboard.tsx"
@@ -16889,6 +16984,52 @@
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergia",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergiat",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergie",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergies",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "allergy",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -17067,7 +17208,8 @@
       "apps/web/src/components/ui/DocumentOcrAnalysisPanel.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -17227,6 +17369,15 @@
     ]
   },
   {
+    "text": "Analyse du document client impossible.",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Analyse du document impossible.",
     "files": [
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
@@ -17265,6 +17416,7 @@
   {
     "text": "Analyse en cours…",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/stocks/InventoryImportWizard.tsx",
       "apps/web/src/components/ui/DocumentOcrUpload.tsx"
@@ -17515,6 +17667,15 @@
     "text": "Analyse OCR produit introuvable.",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Analyse OCR retirée du suivi.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -17845,7 +18006,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -19397,6 +19559,7 @@
       "apps/api/src/finance/finance-ai.service.ts",
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stock-assistant/stock-agent-harness.service.ts",
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
@@ -19697,6 +19860,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "assertive",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -20598,6 +20770,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Aucun client exploitable trouvé.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -22304,6 +22485,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Aucune analyse OCR en erreur à relancer.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -27394,6 +27584,15 @@
     ]
   },
   {
+    "text": "busy",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "button",
     "files": [
       "apps/web/src/App.tsx",
@@ -29503,6 +29702,15 @@
     ]
   },
   {
+    "text": "Catégorie créée. Vous pouvez maintenant créer une fiche technique.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Catégorie de matériel créée avec succès.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -29599,6 +29807,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Catégorie requise",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -29907,6 +30124,15 @@
     ]
   },
   {
+    "text": "caterer-client-source imported",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "caterer-client-source manual",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
@@ -29938,6 +30164,24 @@
   },
   {
     "text": "caterer/clients/:id",
+    "files": [
+      "apps/api/src/menus/menus.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "caterer/clients/import/analyze",
+    "files": [
+      "apps/api/src/menus/menus.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "caterer/clients/import/commit",
     "files": [
       "apps/api/src/menus/menus.controller.ts"
     ],
@@ -30444,6 +30688,7 @@
   {
     "text": "centered",
     "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -32012,6 +32257,7 @@
     "files": [
       "apps/api/src/hr/hr.service.ts",
       "apps/api/src/hr/time-accounts/hr-time-account.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -32501,6 +32747,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Choisir un document client",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -33461,6 +33716,15 @@
     ]
   },
   {
+    "text": "Classeur Excel illisible.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Classeur vide.",
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts"
@@ -33888,10 +34152,12 @@
     "text": "client",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -33938,6 +34204,24 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Client déjà présent",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Client déjà présent :",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -34045,6 +34329,7 @@
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
       "apps/api/src/auth/auth.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/menus.service.ts",
       "apps/api/src/users/users.service.ts",
       "apps/web/src/components/Dashboard.tsx"
@@ -34082,6 +34367,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "clients.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -35178,6 +35472,7 @@
   {
     "text": "Colonne",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-spreadsheet.ts"
     ],
     "kinds": [
@@ -35192,6 +35487,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Colonnes prénom/nom introuvables. Utilisez des en-têtes français, anglais ou finnois.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -39790,6 +40094,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -41168,6 +41473,15 @@
     ]
   },
   {
+    "text": "courriel",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "cours",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -41931,6 +42245,15 @@
     "text": "Création de la carte",
     "files": [
       "apps/api/src/menus/menus.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Création de la catégorie impossible.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -42978,6 +43301,15 @@
     ]
   },
   {
+    "text": "Créez d’abord une catégorie",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Créez d’abord une catégorie afin de pouvoir réaffecter les fiches techniques.",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -43453,6 +43785,7 @@
   {
     "text": "csv",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/technical-sheets/technical-sheets.service.ts"
@@ -43492,6 +43825,15 @@
     "text": "CSV, Excel ou historique fournisseur : l’assistant consolide le catalogue puis revient ici.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "CSV, XLSX, PDF ou image · français, anglais ou finnois · 20 Mo maximum",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -45953,6 +46295,15 @@
     ]
   },
   {
+    "text": "Délai Mistral dépassé après",
+    "files": [
+      "apps/api/src/mistral/mistral-client.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Délai OCR Mistral dépassé après",
     "files": [
       "apps/api/src/mistral/mistral-ocr-transport.ts"
@@ -47947,6 +48298,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
@@ -47960,6 +48312,24 @@
     "text": "diet",
     "files": [
       "apps/api/src/architecture/architecture.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "dietary info",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "dietary information",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -49802,10 +50172,20 @@
   {
     "text": "Doublon",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Doublon de la ligne",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -49847,9 +50227,11 @@
   {
     "text": "doublons",
     "files": [
-      "apps/api/src/architecture/architecture.service.ts"
+      "apps/api/src/architecture/architecture.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -50000,6 +50382,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Droits Clients insuffisants.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -50197,6 +50588,15 @@
     ]
   },
   {
+    "text": "du suivi",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "dueDate",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts"
@@ -50217,7 +50617,9 @@
   {
     "text": "duplicate",
     "files": [
-      "apps/api/src/stocks/stocks-product-import.service.ts"
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/api/src/stocks/stocks-product-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -50540,6 +50942,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "E-mail invalide",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -51229,6 +51640,7 @@
       "apps/api/src/backups/cloud/google-drive-backup.provider.ts",
       "apps/api/src/finance/fennoa-sync.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/api/client.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
@@ -51337,6 +51749,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "email:",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -51833,6 +52254,7 @@
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/finance/finance-export.service.ts",
       "apps/api/src/finance/finance-import-parser.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/dto/menus.dto.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/planning/dto/planning.dto.ts",
@@ -51843,6 +52265,7 @@
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/stocks/stocks.controller.ts",
       "apps/web/src/api/client.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
@@ -54191,6 +54614,15 @@
     ]
   },
   {
+    "text": "erityisruokavalio",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "ERP cuisine open source",
     "files": [
       "apps/web/src/components/LoginPage.tsx"
@@ -54225,6 +54657,7 @@
   {
     "text": "Erreur",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
@@ -54380,6 +54813,15 @@
     ]
   },
   {
+    "text": "erreurs",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Erreurs",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -54400,6 +54842,7 @@
       "apps/api/src/finance/flatpay-automation.service.ts",
       "apps/api/src/haccp/haccp.service.ts",
       "apps/api/src/haccp/iot/mqtt.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -54412,6 +54855,7 @@
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/technical-sheets/technical-sheets.service.ts",
       "apps/web/src/components/ArchitectureCenter.tsx",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx",
@@ -54437,6 +54881,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
@@ -55220,6 +55665,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "etunimi",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -56500,6 +56954,7 @@
   {
     "text": "existing",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
@@ -57049,6 +57504,15 @@
     ]
   },
   {
+    "text": "Extrait une base clients rédigée en français, anglais ou finnois. N’invente aucune valeur absente. Conserve les téléphones tels qu’ils sont écrits et place toute information d’allergie ou de régime dans allergies.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "eyebrow",
     "files": [
       "apps/web/src/App.tsx",
@@ -57557,6 +58021,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "family name",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -58229,7 +58702,9 @@
     "text": "fi",
     "files": [
       "apps/api/src/finance/finance-document-ocr.service.ts",
-      "apps/api/src/finance/finance-import-parser.service.ts"
+      "apps/api/src/finance/finance-import-parser.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -59148,6 +59623,7 @@
       "apps/api/src/finance/finance.controller.ts",
       "apps/api/src/hr/hr.controller.ts",
       "apps/api/src/human-support/human-support.controller.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/menus.controller.ts",
       "apps/api/src/stock-assistant/stock-assistant.controller.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
@@ -59155,6 +59631,7 @@
       "apps/api/src/technical-sheet-assistant/technical-sheet-assistant.controller.ts",
       "apps/api/src/technical-sheets/technical-sheets.controller.ts",
       "apps/web/src/api/client.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx",
@@ -59999,7 +60476,8 @@
       "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -60021,9 +60499,19 @@
     ]
   },
   {
+    "text": "first name",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "firstname",
     "files": [
-      "apps/api/src/architecture/architecture.service.ts"
+      "apps/api/src/architecture/architecture.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -60033,6 +60521,8 @@
     "text": "firstName",
     "files": [
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
@@ -60350,6 +60840,15 @@
     ]
   },
   {
+    "text": "forename",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "form",
     "files": [
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
@@ -60464,6 +60963,15 @@
     "files": [
       "apps/api/src/stocks/stocks-inventory-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Format non supporté. Utilisez CSV, XLSX, PDF, PNG, JPG ou WEBP.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -60909,6 +61417,7 @@
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/finance/finance-export.service.ts",
       "apps/api/src/finance/finance-import-parser.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/dto/menus.dto.ts",
       "apps/api/src/menus/menu-exports.service.ts",
@@ -61023,7 +61532,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -61687,6 +62197,15 @@
     ]
   },
   {
+    "text": "generating",
+    "files": [
+      "apps/api/src/haccp/haccp.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Génération & Contrôle",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -61771,6 +62290,15 @@
     "text": "Génération lancée",
     "files": [
       "apps/api/src/planning/planning.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Génération PDF impossible",
+    "files": [
+      "apps/api/src/haccp/haccp.service.ts"
     ],
     "kinds": [
       "literal"
@@ -62336,6 +62864,15 @@
     "text": "GitHub token used to read private repository releases for updates and changelog.",
     "files": [
       "apps/api/src/auth/dto/api-keys.dto.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "given name",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -63744,15 +64281,6 @@
   },
   {
     "text": "haccpCleaningSession",
-    "files": [
-      "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "haccpCleaningSurface",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
     ],
@@ -66125,6 +66653,15 @@
     ]
   },
   {
+    "text": "ignoré",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Ignoré",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -66239,6 +66776,7 @@
     "text": "image",
     "files": [
       "apps/api/src/backups/backups.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
     "kinds": [
@@ -66294,6 +66832,7 @@
   {
     "text": "image/",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
@@ -66460,6 +66999,15 @@
     ]
   },
   {
+    "text": "Import des clients impossible.",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Import des fiches techniques impossible.",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -66489,6 +67037,7 @@
   {
     "text": "Import en cours…",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
@@ -66624,8 +67173,27 @@
     ]
   },
   {
+    "text": "importé",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Importé",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Importer",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
@@ -66664,6 +67232,15 @@
     ]
   },
   {
+    "text": "Importer des clients",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Importer des documents",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -66689,6 +67266,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Importer la ligne",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -66760,6 +67346,15 @@
     "text": "Importer une archive",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Importer une base clients",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -67492,6 +68087,15 @@
     ]
   },
   {
+    "text": "Impossible de retirer une analyse OCR en cours.",
+    "files": [
+      "apps/api/src/technical-sheets/technical-sheets.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Impossible de sélectionner ce budget.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -68014,6 +68618,7 @@
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts",
       "apps/api/src/finance/finance-export.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/ArchitectureCenter.tsx",
       "apps/web/src/components/Dashboard.tsx"
@@ -68031,6 +68636,15 @@
     "kinds": [
       "jsx",
       "literal"
+    ]
+  },
+  {
+    "text": "Info / allergies",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -68074,12 +68688,30 @@
     ]
   },
   {
+    "text": "informations",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Informations",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Informations / allergies",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -69958,6 +70590,15 @@
     ]
   },
   {
+    "text": "J’ai compris",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "J'ai mon domaine & clé API",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
@@ -71149,6 +71790,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
@@ -71523,6 +72165,15 @@
     "text": "L’adresse e-mail du contact d’urgence n’est pas valide.",
     "files": [
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "L’analyse en cours ne peut pas être retirée.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -73183,6 +73834,15 @@
     ]
   },
   {
+    "text": "La surface ne correspond pas à la zone indiquée",
+    "files": [
+      "apps/api/src/haccp/haccp.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "La synchronisation est paginée et rejoue deux jours pour récupérer les corrections tardives sans créer de doublons.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -73715,6 +74375,15 @@
     ]
   },
   {
+    "text": "last name",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "last synchronisation",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -73744,7 +74413,8 @@
   {
     "text": "lastname",
     "files": [
-      "apps/api/src/architecture/architecture.service.ts"
+      "apps/api/src/architecture/architecture.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -73754,6 +74424,8 @@
     "text": "lastName",
     "files": [
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
@@ -74270,12 +74942,30 @@
     ]
   },
   {
+    "text": "Le document client dépasse 20 Mo.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Le document comptable ne contient aucun texte exploitable.",
     "files": [
       "apps/api/src/finance/finance-document-ocr.service.ts"
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Le document dépasse",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -74411,6 +75101,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Le fichier CSV ne contient aucune donnée.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -74671,6 +75370,7 @@
   {
     "text": "Le module Clients n’est pas installé.",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts"
     ],
     "kinds": [
@@ -75032,6 +75732,15 @@
     "text": "Le PDF du modèle ne peut pas être ouvert. Réimportez un document non protégé.",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Le PDF ou l’image a été transmis à Mistral pour lecture OCR. Vérifiez les champs avant import.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -75716,6 +76425,15 @@
     ]
   },
   {
+    "text": "Le tableur a été lu localement par ToqueHub et n’a pas été transmis à Mistral.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Le taux de TVA",
     "files": [
       "apps/api/src/stocks/stocks.service.ts"
@@ -75919,6 +76637,15 @@
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "legacy",
+    "files": [
+      "apps/api/src/haccp/haccp.service.ts"
     ],
     "kinds": [
       "literal"
@@ -77488,6 +78215,7 @@
     "text": "ligne",
     "files": [
       "apps/api/src/stocks/stocks-product-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/purchasing/pages/PurchaseOrders.tsx"
@@ -77943,6 +78671,24 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "lisatiedot",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "lisätiedot",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -79216,6 +79962,15 @@
     ]
   },
   {
+    "text": "mail",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Mail automatique",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
@@ -79384,6 +80139,7 @@
       "apps/api/src/finance/finance-installation.service.ts",
       "apps/api/src/hr/hr.service.ts",
       "apps/api/src/hr/time-accounts/hr-time-account.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -80273,6 +81029,15 @@
     ]
   },
   {
+    "text": "matkapuhelin",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Matricule :",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -81016,6 +81781,15 @@
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
       "apps/web/src/components/MenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "menus-alert critical caterer-client-import-error",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -82614,6 +83388,7 @@
   {
     "text": "mobile",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/mobile/mobile.controller.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -82654,6 +83429,24 @@
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "modal-body caterer-client-import-body",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "modal-card caterer-client-import-modal",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -82768,6 +83561,15 @@
     ]
   },
   {
+    "text": "modal-close-btn ocr-status-card-remove",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "modal-content-wrapper modal-",
     "files": [
       "apps/web/src/components/ui/Modal.tsx"
@@ -82781,6 +83583,15 @@
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "modal-footer caterer-client-import-footer",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -84976,6 +85787,7 @@
   {
     "text": "ms",
     "files": [
+      "apps/api/src/mistral/mistral-client.service.ts",
       "apps/api/src/mistral/mistral-ocr-transport.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts"
     ],
@@ -84999,6 +85811,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Multilingue",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -85304,6 +86125,7 @@
   {
     "text": "name:",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/Dashboard.tsx"
     ],
@@ -86129,6 +86951,7 @@
   {
     "text": "nom",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/Dashboard.tsx"
     ],
@@ -86139,6 +86962,7 @@
   {
     "text": "Nom",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
@@ -86218,6 +87042,24 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "nom de famille",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Nom de famille",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -86561,6 +87403,15 @@
     "text": "Nom fournisseur OCR manquant.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Nom manquant",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -87432,6 +88283,7 @@
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
       "apps/api/src/hr/hr.controller.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/api/client.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -88296,6 +89148,7 @@
       "apps/api/src/haccp/iot/zigbee2mqtt.provider.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
       "apps/api/src/hr/time-accounts/hr-time-account.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -88543,6 +89396,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "OCR relancée",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -90429,6 +91291,7 @@
       "apps/api/src/finance/finance-analytics.service.ts",
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/finance/finance-import-parser.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/planning/planning-day-status.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/PlanningApp.tsx"
@@ -92450,6 +93313,7 @@
   {
     "text": "pdf",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/menus.service.ts",
       "apps/api/src/production/production.service.ts",
       "apps/api/src/technical-sheets/technical-sheets.service.ts",
@@ -93457,6 +94321,7 @@
       "apps/api/src/architecture/architecture.service.ts",
       "apps/api/src/finance/fennoa-sync.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/web/src/api/client.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -93464,6 +94329,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "phone number",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "phone:",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -96743,13 +97626,33 @@
     ]
   },
   {
+    "text": "prenom",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "prénom",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Prénom",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/UsersPage.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "jsx"
     ]
   },
   {
@@ -96779,6 +97682,25 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Prénom ou nom obligatoire.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Prénom, nom, téléphone, e-mail et informations d’allergies.",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -97772,6 +98694,7 @@
   {
     "text": "Prêt",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx",
@@ -97896,6 +98819,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "prêts",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -101505,6 +102437,24 @@
     ]
   },
   {
+    "text": "puhelin",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "puhelinnumero",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "pull api web",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -103368,8 +104318,10 @@
       "apps/api/src/finance/finance-analytics.service.ts",
       "apps/api/src/finance/finance.service.ts",
       "apps/api/src/haccp/iot/haccp-sensors.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
@@ -105093,7 +106045,25 @@
     ]
   },
   {
+    "text": "recipes/imports/:documentId",
+    "files": [
+      "apps/api/src/technical-sheets/technical-sheets.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "recipes/imports/:documentId/reviewed",
+    "files": [
+      "apps/api/src/technical-sheets/technical-sheets.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "recipes/imports/retry-failed",
     "files": [
       "apps/api/src/technical-sheets/technical-sheets.controller.ts"
     ],
@@ -106277,6 +107247,24 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Relance des analyses OCR impossible.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Relance en cours…",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -108086,6 +109074,7 @@
   {
     "text": "resize",
     "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -109106,6 +110095,7 @@
     "text": "Retirer",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx",
       "apps/web/src/components/stocks/EquipmentPage.tsx",
@@ -109123,6 +110113,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Retirer cette analyse du suivi",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -109706,11 +110705,13 @@
   {
     "text": "review",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
+      "attribute",
       "literal"
     ]
   },
@@ -110689,6 +111690,24 @@
     ]
   },
   {
+    "text": "sahkoposti",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "sähköposti",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sailytys",
     "files": [
       "apps/api/src/stocks/stocks-product-import.service.ts"
@@ -111563,6 +112582,7 @@
   {
     "text": "Sans nom",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -112257,6 +113277,7 @@
   {
     "text": "scroll",
     "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -112409,6 +113430,7 @@
     "text": "Second",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/caterer-menus.service.ts",
       "apps/api/src/menus/menus.service.ts",
       "apps/api/src/production/production-day-closure.service.ts",
@@ -112809,6 +113831,7 @@
     "text": "Sélection",
     "files": [
       "apps/api/src/menus/caterer-menus.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
     ],
     "kinds": [
@@ -113004,6 +114027,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Sélectionnez au moins un client.",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -114943,6 +115975,15 @@
     ]
   },
   {
+    "text": "sheetName",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sheets",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -116137,7 +117178,8 @@
   {
     "text": "smooth",
     "files": [
-      "apps/web/src/components/HrApp.tsx"
+      "apps/web/src/components/HrApp.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -116577,6 +117619,15 @@
     ]
   },
   {
+    "text": "sourceLanguage",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sources",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -116924,6 +117975,7 @@
   {
     "text": "spin",
     "files": [
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
@@ -116969,6 +118021,7 @@
   {
     "text": "spreadsheetml",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts"
     ],
     "kinds": [
@@ -117622,6 +118675,7 @@
     "text": "stock",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
+      "apps/api/src/haccp/haccp.service.ts",
       "apps/api/src/hr/hr-task-presets.ts",
       "apps/api/src/hr/hr.catalog.ts",
       "apps/api/src/production/production.controller.ts",
@@ -118493,6 +119547,7 @@
       "apps/api/src/haccp/iot/haccp-sensors.service.ts",
       "apps/api/src/haccp/iot/mqtt.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/mistral/mistral-client.service.ts",
       "apps/api/src/planning/planning-time.ts",
@@ -119225,6 +120280,15 @@
     ]
   },
   {
+    "text": "sukunimi",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Sulfites",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts",
@@ -119601,6 +120665,15 @@
     "text": "Suppression du prix de vente visé",
     "files": [
       "apps/api/src/technical-sheets/technical-sheets.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Suppression du suivi OCR impossible.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -120268,6 +121341,15 @@
     ]
   },
   {
+    "text": "surname",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Surveillance temps réel des frigos, congélateurs et enceintes connectées.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -120665,6 +121747,7 @@
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/haccp-assistant/haccp-agent-harness.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/mistral/mistral-client.service.ts",
       "apps/api/src/stock-assistant/stock-agent-harness.service.ts",
       "apps/api/src/stock-assistant/stock-agent.service.ts",
@@ -121923,10 +123006,21 @@
   {
     "text": "tel",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "literal"
+    ]
+  },
+  {
+    "text": "tél",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -122060,7 +123154,17 @@
   {
     "text": "telephone",
     "files": [
-      "apps/api/src/finance/fennoa-sync.service.ts"
+      "apps/api/src/finance/fennoa-sync.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "téléphone",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
     ],
     "kinds": [
       "literal"
@@ -122952,6 +124056,7 @@
     "text": "text",
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/FirstStartLanding.tsx",
@@ -127204,6 +128309,15 @@
     ]
   },
   {
+    "text": "Un import est limité à",
+    "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Un lot clôturé ne peut pas être recommencé.",
     "files": [
       "apps/api/src/production/production-execution.service.ts"
@@ -127520,6 +128634,7 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/ui/Modal.tsx"
     ],
@@ -129125,6 +130240,7 @@
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/haccp-assistant/haccp-agent-harness.service.ts",
       "apps/api/src/hr/hr-contract-ocr.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/stock-assistant/stock-agent-harness.service.ts",
       "apps/api/src/stock-assistant/stock-agent.service.ts",
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
@@ -129284,6 +130400,7 @@
       "apps/api/src/haccp/haccp.service.ts",
       "apps/api/src/haccp/iot/mqtt.service.ts",
       "apps/api/src/hr/hr-sensitive-data-crypto.service.ts",
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/mistral/mistral-ocr-transport.ts",
       "apps/api/src/purchasing/purchasing-mail-crypto.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",
@@ -131186,6 +132303,25 @@
     "text": "Veuillez ajouter une clé API Mistral pour activer l'extraction de factures.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Veuillez créer une catégorie avant de créer une fiche technique.",
+    "files": [
+      "apps/api/src/technical-sheets/technical-sheets.service.ts",
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Veuillez créer une catégorie avant de créer une fiche technique. Saisissez son nom, puis cliquez sur le bouton mis en évidence.",
+    "files": [
+      "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -133340,6 +134476,7 @@
   {
     "text": "xlsx",
     "files": [
+      "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/api/src/menus/menus.service.ts",
       "apps/api/src/production/production.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",

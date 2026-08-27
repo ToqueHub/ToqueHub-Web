@@ -5,7 +5,8 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CatererClientQueryDto, CatererEventQueryDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanCatalogProductionDayDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, SaveCatererProductionPlanDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { CatererClientQueryDto, CatererEventQueryDto, CommitCatererClientImportDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanCatalogProductionDayDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, SaveCatererProductionPlanDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { CatererClientImportService } from './caterer-client-import.service';
 import { CatererMenusService } from './caterer-menus.service';
 import { MenuExportsService } from './menu-exports.service';
 import { MenusService } from './menus.service';
@@ -15,7 +16,7 @@ import { MenusService } from './menus.service';
 @UseGuards(JwtAuthGuard)
 @Controller('menus')
 export class MenusController {
-  constructor(private readonly service: MenusService, private readonly exportService: MenuExportsService, private readonly caterer: CatererMenusService) {}
+  constructor(private readonly service: MenusService, private readonly exportService: MenuExportsService, private readonly caterer: CatererMenusService, private readonly clientImport: CatererClientImportService) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required'); return user.organizationId; }
   private actor(user: AuthenticatedUser) {
     return { id: user.id, role: user.role, permissions: user.permissions };
@@ -62,6 +63,11 @@ export class MenusController {
 
   @Get('caterer/dashboard') catererDashboard(@CurrentUser() user: AuthenticatedUser) { return this.caterer.dashboard(this.org(user)); }
   @Get('caterer/clients') catererClients(@CurrentUser() user: AuthenticatedUser, @Query() q: CatererClientQueryDto) { return this.caterer.clients(this.org(user), q); }
+  @Post('caterer/clients/import/analyze')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
+  analyzeCatererClientImport(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any) { return this.clientImport.analyze(this.org(user), this.actor(user), file); }
+  @Post('caterer/clients/import/commit')
+  commitCatererClientImport(@CurrentUser() user: AuthenticatedUser, @Body() dto: CommitCatererClientImportDto) { return this.clientImport.commit(this.org(user), this.actor(user), dto); }
   @Post('caterer/clients') createCatererClient(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertCatererClientDto) { return this.caterer.upsertClient(this.org(user), this.actor(user), dto); }
   @Patch('caterer/clients/:id') updateCatererClient(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertCatererClientDto) { return this.caterer.upsertClient(this.org(user), this.actor(user), dto, id); }
   @Get('caterer/events') catererEvents(@CurrentUser() user: AuthenticatedUser, @Query() q: CatererEventQueryDto) { return this.caterer.events(this.org(user), q); }
