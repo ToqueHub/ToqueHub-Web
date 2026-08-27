@@ -2723,6 +2723,20 @@ export const api = {
       token,
     );
   },
+  retryFailedTechnicalSheetRecipeImports(token: string) {
+    return request<{ retried: number; statuses: TechnicalSheetRecipeImportStatus[] }>(
+      '/technical-sheets/recipes/imports/retry-failed',
+      { method: 'POST' },
+      token,
+    );
+  },
+  dismissTechnicalSheetRecipeImport(token: string, documentId: string) {
+    return request<{ removed: boolean }>(
+      `/technical-sheets/recipes/imports/${documentId}`,
+      { method: 'DELETE' },
+      token,
+    );
+  },
   reviewTechnicalSheetRecipeImport(token: string, documentId: string) {
     return request<{ reviewed: boolean }>(
       `/technical-sheets/recipes/imports/${documentId}/reviewed`,
