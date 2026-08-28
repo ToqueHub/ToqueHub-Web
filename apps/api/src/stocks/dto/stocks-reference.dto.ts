@@ -456,6 +456,11 @@ export class UpsertProductDto {
   equipment?: UpsertEquipmentProfileDto | null;
 }
 
+export class UpdateProductFavoriteDto {
+  @IsBoolean()
+  isFavorite!: boolean;
+}
+
 export class UpsertSiteDto {
   @IsString()
   @MaxLength(180)

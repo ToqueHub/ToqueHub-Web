@@ -7,11 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import {
-  readStoredLanguage,
-  setActiveLanguage,
-  type AppLanguage,
-} from './runtime';
+import { readStoredLanguage, setActiveLanguage, type AppLanguage } from './runtime';
 import { translateText } from './translate';
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'aria-description', 'alt'];
 const IGNORED_TAGS = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE']);
@@ -19,7 +15,7 @@ const IGNORED_TEXT_TAGS = new Set([...IGNORED_TAGS, 'TEXTAREA']);
 
 type LanguageContextValue = {
   language: AppLanguage;
-  locale: 'fr-FR' | 'en-GB';
+  locale: 'fr-FR' | 'en-GB' | 'fi-FI';
   setLanguage: (language: AppLanguage) => void;
   toggleLanguage: () => void;
   t: (value: string) => string;
@@ -35,7 +31,9 @@ const attributeRecords = new WeakMap<Element, Map<string, AttributeRecord>>();
 function shouldIgnore(node: Node, textContent = false): boolean {
   const parent = node instanceof Element ? node : node.parentElement;
   const ignoredTags = textContent ? IGNORED_TEXT_TAGS : IGNORED_TAGS;
-  return Boolean(parent && (ignoredTags.has(parent.tagName) || parent.closest('[data-i18n-ignore]')));
+  return Boolean(
+    parent && (ignoredTags.has(parent.tagName) || parent.closest('[data-i18n-ignore]')),
+  );
 }
 
 function translateTextNode(node: Text, language: AppLanguage) {
@@ -86,8 +84,10 @@ function installDialogTranslations(language: AppLanguage) {
   const originalAlert = window.alert;
   const originalConfirm = window.confirm;
   const originalPrompt = window.prompt;
-  window.alert = (message) => originalAlert.call(window, translateText(String(message ?? ''), language));
-  window.confirm = (message) => originalConfirm.call(window, translateText(String(message ?? ''), language));
+  window.alert = (message) =>
+    originalAlert.call(window, translateText(String(message ?? ''), language));
+  window.confirm = (message) =>
+    originalConfirm.call(window, translateText(String(message ?? ''), language));
   window.prompt = (message, defaultValue) =>
     originalPrompt.call(window, translateText(String(message ?? ''), language), defaultValue);
   return () => {
@@ -106,7 +106,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLanguage = useCallback(() => {
-    setLanguage(language === 'fr' ? 'en' : 'fr');
+    setLanguage(language === 'fr' ? 'en' : language === 'en' ? 'fi' : 'fr');
   }, [language, setLanguage]);
 
   useLayoutEffect(() => {
@@ -149,7 +149,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LanguageContextValue>(
     () => ({
       language,
-      locale: language === 'en' ? 'en-GB' : 'fr-FR',
+      locale: language === 'en' ? 'en-GB' : language === 'fi' ? 'fi-FI' : 'fr-FR',
       setLanguage,
       toggleLanguage,
       t: (source) => translateText(source, language),

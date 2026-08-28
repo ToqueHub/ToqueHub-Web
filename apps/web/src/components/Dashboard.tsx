@@ -105,6 +105,7 @@ import {
   Activity,
   Landmark,
   Target,
+  Star,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -134,9 +135,7 @@ const FinanceApp = lazy(() =>
   import('./FinanceApp').then((module) => ({ default: module.FinanceApp })),
 );
 const loadHaccpApp = () => import('./HaccpApp');
-const HaccpApp = lazy(() =>
-  loadHaccpApp().then((module) => ({ default: module.HaccpApp })),
-);
+const HaccpApp = lazy(() => loadHaccpApp().then((module) => ({ default: module.HaccpApp })));
 
 import { ApiError, api } from '../api/client';
 import { formatVatRate, stockCategoryVatPolicy } from '../stock-category-vat-policy';
@@ -625,6 +624,8 @@ type StocksReadiness = {
   nextStep: StocksOnboardingStep;
 };
 
+const FAVORITES_FILTER_ID = '__favorites__';
+
 interface DashboardProps {
   session: UserSession;
   onLogout: () => void;
@@ -711,6 +712,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATEUR'].includes(
     session.user.role?.toUpperCase(),
   );
+  const canManageProductFavorites =
+    ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second', 'Magasinier'].includes(
+      session.user.role,
+    ) ||
+    Boolean(session.user.permissions?.includes('stocks.write')) ||
+    Boolean(session.user.permissions?.includes('catalog.write'));
 
   // Modal Visibility State
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -821,6 +828,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('');
   const [productSupplierFilter, setProductSupplierFilter] = useState('');
+  const [favoritePendingIds, setFavoritePendingIds] = useState<Set<string>>(() => new Set());
   const [supplierSearch, setSupplierSearch] = useState('');
   const [unitSearch, setUnitSearch] = useState('');
   const [locationSearch, setLocationSearch] = useState('');
@@ -1476,12 +1484,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     [activeTab],
   );
   const isPurchasingTab = useMemo(
-    () =>
-      [
-        'purchasing-dashboard',
-        'purchasing-orders',
-        'purchasing-receipts',
-      ].includes(activeTab),
+    () => ['purchasing-dashboard', 'purchasing-orders', 'purchasing-receipts'].includes(activeTab),
     [activeTab],
   );
   const isFinanceTab = useMemo(
@@ -1825,12 +1828,27 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             label: 'Tableau de bord',
             icon: LayoutDashboard,
           },
-          { tab: 'haccp-temperatures', label: 'Contrôles', icon: ShieldCheck, matches: ['haccp-cleaning'] },
+          {
+            tab: 'haccp-temperatures',
+            label: 'Contrôles',
+            icon: ShieldCheck,
+            matches: ['haccp-cleaning'],
+          },
           { tab: 'haccp-process', label: 'Process', icon: Snowflake },
           { tab: 'haccp-production', label: 'Production', icon: Factory },
-          { tab: 'haccp-traceability', label: 'Registres', icon: Archive, matches: ['haccp-receptions', 'haccp-oil', 'haccp-products', 'haccp-labels'] },
+          {
+            tab: 'haccp-traceability',
+            label: 'Registres',
+            icon: Archive,
+            matches: ['haccp-receptions', 'haccp-oil', 'haccp-products', 'haccp-labels'],
+          },
           { tab: 'haccp-reports', label: 'Rapports', icon: FileText },
-          { tab: 'haccp-setup', label: 'Réglages', icon: Settings, matches: ['haccp-sensors', 'haccp-alerts'] },
+          {
+            tab: 'haccp-setup',
+            label: 'Réglages',
+            icon: Settings,
+            matches: ['haccp-sensors', 'haccp-alerts'],
+          },
         ],
       },
       {
@@ -2675,7 +2693,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
   }
 
-  async function handleCreateHrCollaborator(payload: HrCollaboratorPayload, toqueHubAccount?: ToqueHubAccountCreationPayload) {
+  async function handleCreateHrCollaborator(
+    payload: HrCollaboratorPayload,
+    toqueHubAccount?: ToqueHubAccountCreationPayload,
+  ) {
     const collaborator = (await submit(
       () => api.createHrCollaborator(token, payload, toqueHubAccount),
       toqueHubAccount ? 'Collaborateur et compte ToqueHub créés.' : 'Collaborateur RH créé.',
@@ -2871,6 +2892,53 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleUpdateProduct(productId: string, payload: ProductFormPayload) {
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
+  }
+
+  function updateProductFavoriteInState(productId: string, isFavorite: boolean) {
+    const updateProduct = (product: Product) =>
+      product.id === productId ? { ...product, isFavorite } : product;
+
+    setProducts((current) => current.map(updateProduct));
+    setStocks((current) =>
+      current.map((stock) => ({ ...stock, product: updateProduct(stock.product) })),
+    );
+    setArticles((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((article) => ({
+              ...article,
+              product: updateProduct(article.product),
+            })),
+          }
+        : current,
+    );
+  }
+
+  async function handleToggleProductFavorite(product: Product) {
+    if (!canManageProductFavorites || favoritePendingIds.has(product.id)) return;
+
+    const previousValue = Boolean(product.isFavorite);
+    const nextValue = !previousValue;
+    setError(undefined);
+    setSuccess(undefined);
+    setFavoritePendingIds((current) => new Set(current).add(product.id));
+    updateProductFavoriteInState(product.id, nextValue);
+
+    try {
+      const updated = await api.updateProductFavorite(token, product.id, nextValue);
+      updateProductFavoriteInState(product.id, Boolean(updated.isFavorite));
+      setSuccess(nextValue ? 'Produit ajouté aux favoris.' : 'Produit retiré des favoris.');
+    } catch (err) {
+      updateProductFavoriteInState(product.id, previousValue);
+      setError(err instanceof Error ? err.message : 'Impossible de modifier ce favori.');
+    } finally {
+      setFavoritePendingIds((current) => {
+        const next = new Set(current);
+        next.delete(product.id);
+        return next;
+      });
+    }
   }
 
   async function handleSaveEquipment(payload: EquipmentFormPayload) {
@@ -3583,7 +3651,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         (stock.location?.name &&
           stock.location.name.toLowerCase().includes(inventorySearch.toLowerCase()));
       const matchesCategory =
-        !inventoryCategoryFilter || stock.product.categoryId === inventoryCategoryFilter;
+        inventoryCategoryFilter === FAVORITES_FILTER_ID
+          ? Boolean(stock.product.isFavorite)
+          : !inventoryCategoryFilter || stock.product.categoryId === inventoryCategoryFilter;
       return matchesSearch && matchesCategory;
     });
   }, [stocks, inventorySearch, inventoryCategoryFilter]);
@@ -3667,7 +3737,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         (p.primarySupplier?.name && p.primarySupplier.name.toLowerCase().includes(search)) ||
         (p.supplier?.name && p.supplier.name.toLowerCase().includes(search));
       const matchesCategory =
-        !productCategoryFilter || (p.categoryId ?? p.category?.id) === productCategoryFilter;
+        productCategoryFilter === FAVORITES_FILTER_ID
+          ? Boolean(p.isFavorite)
+          : !productCategoryFilter || (p.categoryId ?? p.category?.id) === productCategoryFilter;
       const matchesSupplier =
         !productSupplierFilter || productSupplierId(p) === productSupplierFilter;
       return matchesSearch && matchesCategory && matchesSupplier;
@@ -3694,6 +3766,39 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       );
     });
   }, [activeSuppliers, supplierSearch]);
+
+  function renderProductFavorite(product: Product): ReactNode {
+    if (!canManageProductFavorites) {
+      return product.isFavorite ? (
+        <span
+          className="product-favorite-indicator active"
+          title="Produit favori"
+          aria-label="Produit favori"
+        >
+          <Star size={17} fill="currentColor" />
+        </span>
+      ) : null;
+    }
+
+    const pending = favoritePendingIds.has(product.id);
+    const label = product.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris';
+    return (
+      <button
+        type="button"
+        className={`product-favorite-toggle${product.isFavorite ? ' active' : ''}`}
+        title={label}
+        aria-label={label}
+        aria-pressed={Boolean(product.isFavorite)}
+        disabled={pending}
+        onClick={(event) => {
+          event.stopPropagation();
+          void handleToggleProductFavorite(product);
+        }}
+      >
+        <Star size={17} fill={product.isFavorite ? 'currentColor' : 'none'} />
+      </button>
+    );
+  }
 
   const activeTabTitle = {
     overview: 'Dashboard',
@@ -4166,10 +4271,38 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <span className="sidebar-language-flag" aria-hidden="true">
                   <svg viewBox="0 0 24 16" focusable="false">
                     <rect width="24" height="16" fill="#012169" />
-                    <rect x="-4" y="5.5" width="32" height="5" fill="#ffffff" transform="rotate(33 12 8)" />
-                    <rect x="-4" y="5.5" width="32" height="5" fill="#ffffff" transform="rotate(-33 12 8)" />
-                    <rect x="-4" y="6.5" width="32" height="3" fill="#c8102e" transform="rotate(33 12 8)" />
-                    <rect x="-4" y="6.5" width="32" height="3" fill="#c8102e" transform="rotate(-33 12 8)" />
+                    <rect
+                      x="-4"
+                      y="5.5"
+                      width="32"
+                      height="5"
+                      fill="#ffffff"
+                      transform="rotate(33 12 8)"
+                    />
+                    <rect
+                      x="-4"
+                      y="5.5"
+                      width="32"
+                      height="5"
+                      fill="#ffffff"
+                      transform="rotate(-33 12 8)"
+                    />
+                    <rect
+                      x="-4"
+                      y="6.5"
+                      width="32"
+                      height="3"
+                      fill="#c8102e"
+                      transform="rotate(33 12 8)"
+                    />
+                    <rect
+                      x="-4"
+                      y="6.5"
+                      width="32"
+                      height="3"
+                      fill="#c8102e"
+                      transform="rotate(-33 12 8)"
+                    />
                     <rect x="9" width="6" height="16" fill="#ffffff" />
                     <rect y="5" width="24" height="6" fill="#ffffff" />
                     <rect x="10.5" width="3" height="16" fill="#c8102e" />
@@ -4177,6 +4310,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   </svg>
                 </span>
                 <span>EN</span>
+              </button>
+              <button
+                type="button"
+                className={language === 'fi' ? 'active' : ''}
+                onClick={() => setLanguage('fi')}
+                aria-pressed={language === 'fi'}
+                title="Passer en finnois"
+              >
+                <span className="sidebar-language-flag" aria-hidden="true">
+                  <svg viewBox="0 0 24 16" focusable="false">
+                    <rect width="24" height="16" fill="#ffffff" />
+                    <rect x="0" y="6" width="24" height="4" fill="#003580" />
+                    <rect x="7" width="4" height="16" fill="#003580" />
+                  </svg>
+                </span>
+                <span>FI</span>
               </button>
             </div>
           </div>
@@ -5105,7 +5254,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               )}
 
               {isHaccpTab && haccpInstalled && (
-                <Suspense fallback={<div className="dashboard-loading">Chargement du module HACCP…</div>}>
+                <Suspense
+                  fallback={<div className="dashboard-loading">Chargement du module HACCP…</div>}
+                >
                   <HaccpApp
                     token={token}
                     tab={
@@ -5500,6 +5651,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         style={{ maxWidth: '200px' }}
                       >
                         <option value="">Toutes les catégories</option>
+                        <option value={FAVORITES_FILTER_ID}>⭐ Favoris</option>
                         {categoriesWithUncategorizedLast.map((cat) => (
                           <option key={cat.id} value={cat.id}>
                             {cat.name}
@@ -5546,7 +5698,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           ) : (
                             filteredStocks.map((stock) => (
                               <tr key={stock.id}>
-                                <td style={{ fontWeight: 600 }}>{stock.product.name}</td>
+                                <td style={{ fontWeight: 600 }}>
+                                  <div className="product-favorite-cell">
+                                    {renderProductFavorite(stock.product)}
+                                    <span>{stock.product.name}</span>
+                                  </div>
+                                </td>
                                 <td>
                                   {stock.product.category?.name ? (
                                     <span
@@ -5808,6 +5965,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         style={{ maxWidth: 240 }}
                       >
                         <option value="">Toutes catégories</option>
+                        <option value={FAVORITES_FILTER_ID}>⭐ Favoris</option>
                         {activeCategories.map((category) => (
                           <option key={category.id} value={category.id}>
                             {category.name}
@@ -5868,7 +6026,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 className="clickable-row"
                                 onClick={() => setSelectedProductId(p.id)}
                               >
-                                <td style={{ fontWeight: 600 }}>{p.name}</td>
+                                <td style={{ fontWeight: 600 }}>
+                                  <div className="product-favorite-cell">
+                                    {renderProductFavorite(p)}
+                                    <span>{p.name}</span>
+                                  </div>
+                                </td>
                                 <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                                   {p.sku || '—'}
                                 </td>
@@ -5924,11 +6087,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <>
                   {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
-                  <UnitsPage
-                    units={filteredUnits}
-                    search={unitSearch}
-                    setSearch={setUnitSearch}
-                  />
+                  <UnitsPage units={filteredUnits} search={unitSearch} setSearch={setUnitSearch} />
                 </>
               )}
 
@@ -6620,11 +6779,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       ) : null}
 
-      <Modal
-        isOpen={showUserModal}
-        onClose={closeUserCreation}
-        title="Créer un utilisateur"
-      >
+      <Modal isOpen={showUserModal} onClose={closeUserCreation} title="Créer un utilisateur">
         <UserForm
           key="blank-user"
           roles={roles}
@@ -6845,7 +7000,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 </div>
                 <div>
                   <span>Démarrée</span>
-                  <strong>{new Date(autoUpdateOperation.startedAt).toLocaleString(activeLocale())}</strong>
+                  <strong>
+                    {new Date(autoUpdateOperation.startedAt).toLocaleString(activeLocale())}
+                  </strong>
                 </div>
                 <div>
                   <span>Terminée</span>
@@ -7351,7 +7508,11 @@ function formatChangelogDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString(activeLocale(), {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function ChangelogPanel({
@@ -8473,9 +8634,7 @@ function DashboardCockpitOverview({
                     <MapPin size={24} />
                   </div>
                   <div className="cockpit-weather-info">
-                    <strong>
-                      {translateText(cockpit.weather.label ?? 'Météo à configurer')}
-                    </strong>
+                    <strong>{translateText(cockpit.weather.label ?? 'Météo à configurer')}</strong>
                     <span>
                       {translateText(
                         cockpit.primarySite
@@ -8778,7 +8937,8 @@ function CockpitCard({
     const title = card.title.toLowerCase();
     if (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires')) return 'blue';
     if (title.includes('haccp') || title.includes('conform')) return 'emerald';
-    if (title.includes('prochain événement') || title.includes('prochain evenement')) return 'violet';
+    if (title.includes('prochain événement') || title.includes('prochain evenement'))
+      return 'violet';
     if (title.includes('effectif') || title.includes('collaborat')) return 'teal';
     if (title.includes('stock') || title.includes('mouvement')) return 'emerald';
     if (title.includes('fiche') || title.includes('recette') || title.includes('technique'))
@@ -9357,7 +9517,6 @@ function MyDocumentsPage({
             />
           </div>
         </div>
-
       </div>
 
       <div className="documents-layout">
@@ -12644,11 +12803,7 @@ function StocksModuleHero({
         </p>
       </div>
       <div className="stocks-dashboard-hero-actions">
-        <button
-          type="button"
-          className="btn btn-secondary btn-outline"
-          onClick={onStartOnboarding}
-        >
+        <button type="button" className="btn btn-secondary btn-outline" onClick={onStartOnboarding}>
           <Sparkles size={16} /> Guide de configuration
         </button>
         <button type="button" className="btn btn-primary" onClick={onImportOcr}>
@@ -13522,10 +13677,7 @@ function StocksDashboardPage({
     .slice(0, 5);
   return (
     <div className="stocks-dashboard-grid">
-      <StocksModuleHero
-        onStartOnboarding={onStartOnboarding}
-        onImportOcr={onImportOcr}
-      />
+      <StocksModuleHero onStartOnboarding={onStartOnboarding} onImportOcr={onImportOcr} />
 
       <StocksModuleTabs activeTab={activeTab} onNavigate={onNavigate} />
 
@@ -15886,9 +16038,7 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   const english = activeLanguage() === 'en';
   const exportText = (french: string, englishValue: string) => (english ? englishValue : french);
   const inventoryDate = inventory.inventoryDate ?? inventory.date;
-  const dateLabel = inventoryDate
-    ? new Date(inventoryDate).toLocaleDateString(activeLocale())
-    : '';
+  const dateLabel = inventoryDate ? new Date(inventoryDate).toLocaleDateString(activeLocale()) : '';
   const detailHeaders = english
     ? [
         'Reference',
@@ -15923,15 +16073,16 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     const theoretical = numeric(line.theoreticalQuantity);
     const counted = inventoryOptionalNumber(line.countedQuantity) ?? 0;
     const variance = line.varianceQuantity ?? line.variance;
-    const unitPrice = inventoryOptionalNumber(
-      line.financialSource?.unitPriceExcludingTax,
-      line.product?.weightedAveragePrice,
-      line.product?.averagePurchasePrice,
-      line.product?.averagePrice,
-    ) ?? 0;
+    const unitPrice =
+      inventoryOptionalNumber(
+        line.financialSource?.unitPriceExcludingTax,
+        line.product?.weightedAveragePrice,
+        line.product?.averagePurchasePrice,
+        line.product?.averagePrice,
+      ) ?? 0;
     const vatRate = inventoryOptionalNumber(line.financialSource?.vatRate);
     const excludingTax = counted * unitPrice;
-    const tax = vatRate === null ? null : excludingTax * vatRate / 100;
+    const tax = vatRate === null ? null : (excludingTax * vatRate) / 100;
     const includingTax = tax === null ? null : excludingTax + tax;
     const documentLabel =
       line.financialSource?.documentLabel ??
@@ -15941,8 +16092,9 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
       : '';
 
     return {
-      documentKey: line.financialSource?.documentId
-        ?? `${documentLabel}|${line.financialSource?.supplierName ?? ''}|${documentDate}`,
+      documentKey:
+        line.financialSource?.documentId ??
+        `${documentLabel}|${line.financialSource?.supplierName ?? ''}|${documentDate}`,
       documentLabel,
       documentDate,
       supplierName: line.financialSource?.supplierName ?? '',
@@ -15960,7 +16112,9 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
         inventoryCsvNumber(counted),
         inventoryCsvNumber(variance ?? counted - theoretical),
         inventoryCsvMoney(unitPrice),
-        vatRate === null ? exportText('Non renseignée', 'Not provided') : inventoryCsvNumber(vatRate),
+        vatRate === null
+          ? exportText('Non renseignée', 'Not provided')
+          : inventoryCsvNumber(vatRate),
         inventoryCsvMoney(excludingTax),
         tax === null ? '' : inventoryCsvMoney(tax),
         includingTax === null ? '' : inventoryCsvMoney(includingTax),
@@ -15968,9 +16122,10 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     };
   });
 
-  valuationLines.sort((left, right) =>
-    left.documentLabel.localeCompare(right.documentLabel, activeLocale()) ||
-    left.productName.localeCompare(right.productName, activeLocale()),
+  valuationLines.sort(
+    (left, right) =>
+      left.documentLabel.localeCompare(right.documentLabel, activeLocale()) ||
+      left.productName.localeCompare(right.productName, activeLocale()),
   );
 
   const documentGroups = new Map<string, typeof valuationLines>();
@@ -15983,7 +16138,10 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   const rows: unknown[][] = [
     [exportText('INVENTAIRE', 'INVENTORY'), inventory.name],
     [exportText('Date de validation', 'Validation date'), dateLabel],
-    [exportText('Site', 'Location'), inventory.site?.name ?? exportText('Tous sites', 'All locations')],
+    [
+      exportText('Site', 'Location'),
+      inventory.site?.name ?? exportText('Tous sites', 'All locations'),
+    ],
     [exportText('Emplacement', 'Storage location'), inventory.location?.name ?? ''],
     [],
   ];
@@ -16018,18 +16176,8 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
 
     for (const line of group) {
       rows.push(line.cells);
-      addInventoryValuationTotal(
-        documentTotals,
-        line.excludingTax,
-        line.tax,
-        line.includingTax,
-      );
-      addInventoryValuationTotal(
-        globalTotals,
-        line.excludingTax,
-        line.tax,
-        line.includingTax,
-      );
+      addInventoryValuationTotal(documentTotals, line.excludingTax, line.tax, line.includingTax);
+      addInventoryValuationTotal(globalTotals, line.excludingTax, line.tax, line.includingTax);
       const vatKey =
         line.vatRate === null
           ? exportText('TVA non renseignée', 'VAT not provided')
@@ -16086,9 +16234,10 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   for (const [vatLabel, total] of globalVatTotals) {
     rows.push([vatLabel, ...inventoryValuationTotalRow(total)]);
   }
-  rows.push(
-    [exportText('TOTAL INVENTAIRE', 'INVENTORY TOTAL'), ...inventoryValuationTotalRow(globalTotals)],
-  );
+  rows.push([
+    exportText('TOTAL INVENTAIRE', 'INVENTORY TOTAL'),
+    ...inventoryValuationTotalRow(globalTotals),
+  ]);
   if (globalTotals.missingVat) {
     rows.push([
       exportText('Attention', 'Warning'),
@@ -16099,18 +16248,17 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     ]);
   }
 
-  const csv = `\uFEFF${rows
-    .map((row) => row.map(inventoryCsvCell).join(';'))
-    .join('\r\n')}\r\n`;
+  const csv = `\uFEFF${rows.map((row) => row.map(inventoryCsvCell).join(';')).join('\r\n')}\r\n`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  const safeName = inventory.name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase() || exportText('inventaire', 'inventory');
+  const safeName =
+    inventory.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase() || exportText('inventaire', 'inventory');
   link.href = url;
   link.download = `${exportText('inventaire', 'inventory')}-${safeName}-${(inventoryDate ?? new Date().toISOString()).slice(0, 10)}.csv`;
   document.body.appendChild(link);
@@ -16952,7 +17100,10 @@ function statusLabel(status?: string) {
 
 function formatLastLogin(value?: string | null) {
   if (!value) return 'Jamais connecté';
-  return new Date(value).toLocaleString(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(value).toLocaleString(activeLocale(), {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 function normalizePermission(permission: CorePermission | string): CorePermission {
@@ -17163,7 +17314,9 @@ function BackupRestorePage({
     setCreateModalOpen(false);
     await run(
       () => api.createBackup(token, nameToSend || undefined),
-      nameToSend ? `Sauvegarde "${nameToSend}" créée avec succès.` : 'Sauvegarde créée avec succès.',
+      nameToSend
+        ? `Sauvegarde "${nameToSend}" créée avec succès.`
+        : 'Sauvegarde créée avec succès.',
     );
     setCustomBackupName('');
   }
@@ -17275,7 +17428,8 @@ function BackupRestorePage({
         <div className="settings-hero-grid">
           <div className="settings-hero-left">
             <span className="sovereign-badge-glow">
-              <span className="status-indicator-dot green"></span> Continuité d’activité & Résilience
+              <span className="status-indicator-dot green"></span> Continuité d’activité &
+              Résilience
             </span>
             <h1
               style={{
@@ -17344,7 +17498,10 @@ function BackupRestorePage({
       <div className="card-modern" style={{ padding: '1.5rem', borderRadius: '18px' }}>
         <div className="section-header-modern" style={{ marginBottom: '1.25rem' }}>
           <div className="section-info">
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.15rem' }}>
+            <span
+              className="card-title"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.15rem' }}
+            >
               <Archive size={20} style={{ color: '#8b5cf6' }} /> Sauvegardes locales
             </span>
             <span className="section-tagline">
@@ -17416,7 +17573,9 @@ function BackupRestorePage({
                         {backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}
                       </span>
                       <small style={{ color: '#64748b' }}>
-                        {backup.createdAt ? new Date(backup.createdAt).toLocaleString(activeLocale()) : '—'}
+                        {backup.createdAt
+                          ? new Date(backup.createdAt).toLocaleString(activeLocale())
+                          : '—'}
                       </small>
                     </div>
                   </td>
@@ -17442,7 +17601,14 @@ function BackupRestorePage({
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: '0.45rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '0.45rem',
+                        justifyContent: 'flex-end',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       <button
                         className="btn btn-secondary btn-sm"
                         disabled={busy}
@@ -17538,9 +17704,7 @@ function BackupRestorePage({
                   ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'
                   : 'rgba(100, 116, 139, 0.1)',
                 color: schedule?.enabled ? 'white' : '#64748b',
-                boxShadow: schedule?.enabled
-                  ? '0 6px 16px rgba(139, 92, 246, 0.3)'
-                  : 'none',
+                boxShadow: schedule?.enabled ? '0 6px 16px rgba(139, 92, 246, 0.3)' : 'none',
               }}
             >
               <Clock size={22} />
@@ -17567,9 +17731,7 @@ function BackupRestorePage({
           {schedule ? (
             <button
               type="button"
-              onClick={() =>
-                setSchedule((cur) => (cur ? { ...cur, enabled: !cur.enabled } : cur))
-              }
+              onClick={() => setSchedule((cur) => (cur ? { ...cur, enabled: !cur.enabled } : cur))}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -17646,7 +17808,8 @@ function BackupRestorePage({
                         schedule.frequency === 'daily'
                           ? '2px solid #8b5cf6'
                           : '1px solid rgba(203, 213, 225, 0.7)',
-                      background: schedule.frequency === 'daily' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
+                      background:
+                        schedule.frequency === 'daily' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
                       color: schedule.frequency === 'daily' ? '#6d28d9' : '#334155',
                       fontWeight: 700,
                       fontSize: '0.88rem',
@@ -17676,7 +17839,8 @@ function BackupRestorePage({
                         schedule.frequency === 'weekly'
                           ? '2px solid #8b5cf6'
                           : '1px solid rgba(203, 213, 225, 0.7)',
-                      background: schedule.frequency === 'weekly' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
+                      background:
+                        schedule.frequency === 'weekly' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
                       color: schedule.frequency === 'weekly' ? '#6d28d9' : '#334155',
                       fontWeight: 700,
                       fontSize: '0.88rem',
@@ -17775,7 +17939,10 @@ function BackupRestorePage({
                     onChange={(event) =>
                       setSchedule((current) =>
                         current
-                          ? { ...current, retentionDays: Math.max(1, Number(event.target.value) || 1) }
+                          ? {
+                              ...current,
+                              retentionDays: Math.max(1, Number(event.target.value) || 1),
+                            }
                           : current,
                       )
                     }
@@ -17794,7 +17961,9 @@ function BackupRestorePage({
                     jours
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                <div
+                  style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem', flexWrap: 'wrap' }}
+                >
                   {[7, 14, 30, 60, 90].map((days) => (
                     <button
                       key={days}
@@ -17809,9 +17978,7 @@ function BackupRestorePage({
                         fontWeight: 650,
                         border: '1px solid rgba(203, 213, 225, 0.8)',
                         background:
-                          schedule.retentionDays === days
-                            ? 'rgba(139, 92, 246, 0.15)'
-                            : '#ffffff',
+                          schedule.retentionDays === days ? 'rgba(139, 92, 246, 0.15)' : '#ffffff',
                         color: schedule.retentionDays === days ? '#6d28d9' : '#64748b',
                         cursor: 'pointer',
                       }}
@@ -17897,7 +18064,9 @@ function BackupRestorePage({
               <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
                 Dernière exécution automatique :{' '}
                 <strong>
-                  {schedule.lastRunAt ? new Date(schedule.lastRunAt).toLocaleString(activeLocale()) : 'Aucune'}
+                  {schedule.lastRunAt
+                    ? new Date(schedule.lastRunAt).toLocaleString(activeLocale())
+                    : 'Aucune'}
                 </strong>
               </div>
               <button
@@ -18013,13 +18182,19 @@ function BackupRestorePage({
         </div>
 
         {!cloudStatus?.encryptionConfigured ? (
-          <div className="alert-modern error" style={{ marginBottom: '1rem', borderRadius: '12px' }}>
-            <AlertCircle size={16} /> La variable serveur <code>BACKUP_CLOUD_ENCRYPTION_KEY</code> doit
-            être configurée pour chiffrer et synchroniser les archives vers Google Drive.
+          <div
+            className="alert-modern error"
+            style={{ marginBottom: '1rem', borderRadius: '12px' }}
+          >
+            <AlertCircle size={16} /> La variable serveur <code>BACKUP_CLOUD_ENCRYPTION_KEY</code>{' '}
+            doit être configurée pour chiffrer et synchroniser les archives vers Google Drive.
           </div>
         ) : null}
         {googleDrive?.lastError ? (
-          <div className="alert-modern error" style={{ marginBottom: '1rem', borderRadius: '12px' }}>
+          <div
+            className="alert-modern error"
+            style={{ marginBottom: '1rem', borderRadius: '12px' }}
+          >
             <AlertCircle size={16} /> Erreur Drive : {googleDrive.lastError}
           </div>
         ) : null}
@@ -18027,7 +18202,10 @@ function BackupRestorePage({
         {/* Info stats cards */}
         <div
           className="settings-grid-premium"
-          style={{ marginBottom: '1.25rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}
+          style={{
+            marginBottom: '1.25rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}
         >
           <div className="info-card-premium" style={{ borderRadius: '14px' }}>
             <div className="info-card-premium-header">
@@ -18172,7 +18350,11 @@ function BackupRestorePage({
                   onChange={(event) =>
                     setCloudForm((current) => ({ ...current, clientSecret: event.target.value }))
                   }
-                  placeholder={googleDriveConfigured ? '•••••••••••••••• (Laisser vide pour conserver)' : 'GOCSPX-...'}
+                  placeholder={
+                    googleDriveConfigured
+                      ? '•••••••••••••••• (Laisser vide pour conserver)'
+                      : 'GOCSPX-...'
+                  }
                   disabled={busy || (googleDriveConnected && !showCloudConfigForm)}
                   style={{ borderRadius: '10px' }}
                 />
@@ -18212,12 +18394,14 @@ function BackupRestorePage({
             >
               <Info size={16} />
               <span>
-                À renseigner dans la Google Cloud Console (Identifiants &gt; URIs de redirection autorisés) :{' '}
-                <code style={{ userSelect: 'all' }}>{cloudForm.redirectUri}</code>
+                À renseigner dans la Google Cloud Console (Identifiants &gt; URIs de redirection
+                autorisés) : <code style={{ userSelect: 'all' }}>{cloudForm.redirectUri}</code>
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+            <div
+              style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}
+            >
               <button
                 className="btn btn-secondary"
                 disabled={
@@ -18281,9 +18465,12 @@ function BackupRestorePage({
         }}
       >
         <div className="card-modern" style={{ padding: '1.5rem', borderRadius: '18px' }}>
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Download size={18} style={{ transform: 'rotate(180deg)', color: '#0ea5e9' }} /> Importer
-            une archive
+          <span
+            className="card-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Download size={18} style={{ transform: 'rotate(180deg)', color: '#0ea5e9' }} />{' '}
+            Importer une archive
           </span>
           <p className="muted" style={{ fontSize: '0.86rem', marginTop: '0.35rem' }}>
             Chargez un fichier <code>.tar.gz</code> issu d'une instance ToqueHub pour inspecter son
@@ -18310,13 +18497,27 @@ function BackupRestorePage({
               <div>
                 <strong>{inspection.manifest.name || inspection.filename}</strong>
                 {inspection.manifest.name ? (
-                  <span style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748b' }}>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                      color: '#64748b',
+                    }}
+                  >
                     {inspection.filename}
                   </span>
                 ) : null}
-                <span style={{ fontSize: '0.82rem', color: '#475569', display: 'block', marginTop: '0.2rem' }}>
-                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString(activeLocale())} ·{' '}
-                  {inspection.manifest.files.totalFileCount} fichier(s) ·{' '}
+                <span
+                  style={{
+                    fontSize: '0.82rem',
+                    color: '#475569',
+                    display: 'block',
+                    marginTop: '0.2rem',
+                  }}
+                >
+                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString(activeLocale())}{' '}
+                  · {inspection.manifest.files.totalFileCount} fichier(s) ·{' '}
                   {formatBytes(inspection.sizeBytes)}
                 </span>
               </div>
@@ -18333,7 +18534,10 @@ function BackupRestorePage({
             background: selectedBackup || inspection ? 'rgba(254, 242, 242, 0.4)' : undefined,
           }}
         >
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}>
+          <span
+            className="card-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}
+          >
             <ShieldCheck size={18} /> Restauration destructive
           </span>
           <p className="muted" style={{ fontSize: '0.86rem', marginTop: '0.35rem' }}>
@@ -18350,7 +18554,9 @@ function BackupRestorePage({
               marginTop: '0.5rem',
               borderRadius: '10px',
               borderColor:
-                normalizedConfirmationPhrase === RESTORE_CONFIRMATION_PHRASE ? '#10b981' : undefined,
+                normalizedConfirmationPhrase === RESTORE_CONFIRMATION_PHRASE
+                  ? '#10b981'
+                  : undefined,
             }}
           />
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
@@ -18405,12 +18611,16 @@ function BackupRestorePage({
         title="Créer une nouvelle sauvegarde"
         size="md"
       >
-        <form onSubmit={handleCreateBackupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form
+          onSubmit={handleCreateBackupSubmit}
+          style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+        >
           <div
             style={{
               padding: '1rem',
               borderRadius: '14px',
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.04) 100%)',
+              background:
+                'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.04) 100%)',
               border: '1px solid rgba(139, 92, 246, 0.18)',
               display: 'flex',
               alignItems: 'center',
@@ -18442,7 +18652,14 @@ function BackupRestorePage({
           </div>
 
           <div>
-            <label style={{ display: 'block', fontWeight: 650, fontSize: '0.88rem', marginBottom: '0.4rem' }}>
+            <label
+              style={{
+                display: 'block',
+                fontWeight: 650,
+                fontSize: '0.88rem',
+                marginBottom: '0.4rem',
+              }}
+            >
               Nom / Libellé de la sauvegarde (optionnel)
             </label>
             <input
@@ -18459,7 +18676,14 @@ function BackupRestorePage({
                 fontSize: '0.95rem',
               }}
             />
-            <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
+            <span
+              style={{
+                display: 'block',
+                marginTop: '0.35rem',
+                fontSize: '0.78rem',
+                color: '#64748b',
+              }}
+            >
               Si laissé vide, la date et l’heure actuelles serviront d’identifiant.
             </span>
           </div>
@@ -20561,8 +20785,8 @@ function SettingsPage({
                       .
                     </li>
                     <li>
-                      Installez Tailscale sur le téléphone, la tablette ou l’ordinateur utilisé
-                      pour accéder à ToqueHub à distance.
+                      Installez Tailscale sur le téléphone, la tablette ou l’ordinateur utilisé pour
+                      accéder à ToqueHub à distance.
                     </li>
                     <li>
                       Connectez cet appareil au même compte ou réseau Tailscale que votre instance
@@ -20575,8 +20799,8 @@ function SettingsPage({
                     </li>
                     <li>
                       Lorsque le statut devient <strong>Actif</strong>, utilisez{' '}
-                      <strong>Ouvrir ToqueHub</strong> depuis chaque appareil connecté à votre réseau
-                      privé.
+                      <strong>Ouvrir ToqueHub</strong> depuis chaque appareil connecté à votre
+                      réseau privé.
                     </li>
                   </ol>
                   <span>
@@ -22182,11 +22406,7 @@ function CategoryForm({
         />
       </label>
       {collectVatRate ? (
-        <CategoryVatField
-          policy={vatPolicy}
-          value={vatRate}
-          onChange={setVatRate}
-        />
+        <CategoryVatField policy={vatPolicy} value={vatRate} onChange={setVatRate} />
       ) : null}
       <div
         className="modal-footer"
@@ -22267,7 +22487,8 @@ function CategoryVatField({
           </div>
           {selected ? (
             <p className="category-vat-selected-help">
-              <Info size={15} /> Les produits de cette catégorie utiliseront {formatVatRate(selected.rate)} % dans la valorisation de l’inventaire.
+              <Info size={15} /> Les produits de cette catégorie utiliseront{' '}
+              {formatVatRate(selected.rate)} % dans la valorisation de l’inventaire.
             </p>
           ) : null}
         </>
@@ -22326,7 +22547,7 @@ function CategoryDetailModal({
   const [name, setName] = useState(category?.name ?? '');
   const [description, setDescription] = useState(category?.description ?? '');
   const [vatRate, setVatRate] = useState<number | ''>(() =>
-    category?.vatRate == null ? vatPolicy.defaultRate ?? '' : Number(category.vatRate),
+    category?.vatRate == null ? (vatPolicy.defaultRate ?? '') : Number(category.vatRate),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
@@ -22344,10 +22565,16 @@ function CategoryDetailModal({
     setVatRate(
       storedRate != null && vatPolicy.options.some((option) => option.rate === storedRate)
         ? storedRate
-        : vatPolicy.defaultRate ?? '',
+        : (vatPolicy.defaultRate ?? ''),
     );
     setError(undefined);
-  }, [category?.id, category?.name, category?.description, category?.vatRate, vatPolicy.countryCode]);
+  }, [
+    category?.id,
+    category?.name,
+    category?.description,
+    category?.vatRate,
+    vatPolicy.countryCode,
+  ]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -23550,7 +23777,9 @@ function productNumberDisplay(
   if (value === null || value === undefined || value === '') return '—';
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return '—';
-  const formatted = parsed.toLocaleString(activeLocale(), { maximumFractionDigits: maxFractionDigits });
+  const formatted = parsed.toLocaleString(activeLocale(), {
+    maximumFractionDigits: maxFractionDigits,
+  });
   return unit ? `${formatted} ${unit}` : formatted;
 }
 

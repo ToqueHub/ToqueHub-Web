@@ -1060,6 +1060,7 @@ export const api = {
       supplierId: string;
       siteId?: string;
       categoryId?: string;
+      favoriteOnly?: boolean;
       search?: string;
       page?: number;
       pageSize?: number;
@@ -3690,6 +3691,13 @@ export const api = {
           primarySupplierId: uuidOrNullOrUndefined(primarySupplierId),
         }),
       },
+      token,
+    );
+  },
+  updateProductFavorite(token: string, id: string, isFavorite: boolean) {
+    return request<Product>(
+      `/products/${id}/favorite`,
+      { method: 'PATCH', body: JSON.stringify({ isFavorite }) },
       token,
     );
   },

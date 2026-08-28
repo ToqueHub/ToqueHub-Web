@@ -39,6 +39,10 @@ export class PurchasingReferenceQueryDto {
   @IsOptional() @IsUUID() supplierId?: string;
   @IsOptional() @IsUUID() categoryId?: string;
   @IsOptional() @IsUUID() siteId?: string;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  favoriteOnly?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
 }

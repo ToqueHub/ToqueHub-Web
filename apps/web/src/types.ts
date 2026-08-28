@@ -1799,6 +1799,7 @@ export interface Product {
   gtin?: string | null;
   productUrl?: string | null;
   imageUrl?: string | null;
+  isFavorite?: boolean;
   originCountry?: string | null;
   packageLabel?: string | null;
   unitsPerPackage?: string | number | null;
@@ -2480,6 +2481,7 @@ export interface PurchasingBootstrap {
   sites: Site[];
   locations: Location[];
   permissions: string[];
+  canManageProductFavorites: boolean;
 }
 
 export type FinanceProvider = 'FENNOA' | 'FLATPAY' | 'PAYPAL_POS' | 'LOYVERSE' | 'GENERIC';

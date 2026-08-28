@@ -127,7 +127,11 @@ describe('StocksService inventory valuation sources', () => {
                 product: {
                   id: 'product-1',
                   name: 'Farine',
-                  category: { id: 'category-1', name: 'Épicerie', vatRate: new Prisma.Decimal('13.5') },
+                  category: {
+                    id: 'category-1',
+                    name: 'Épicerie',
+                    vatRate: new Prisma.Decimal('13.5'),
+                  },
                   stockReceptionLines: [
                     {
                       unitPrice: new Prisma.Decimal('2.35'),
@@ -264,10 +268,12 @@ describe('StocksService native stock units', () => {
   it('returns only the six native units in their fixed order', async () => {
     const prisma = {
       unit: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'ml', name: 'Millilitre', symbol: 'mL', type: 'VOLUME', isArchived: false },
-          ...nativeUnits.slice().reverse(),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'ml', name: 'Millilitre', symbol: 'mL', type: 'VOLUME', isArchived: false },
+            ...nativeUnits.slice().reverse(),
+          ]),
         createMany: jest.fn(),
         update: jest.fn(),
       },
@@ -517,6 +523,109 @@ describe('StocksService manual product stock adjustment', () => {
         quantity: 200000,
       }),
     ).rejects.toThrow('La quantité saisie est identique au stock actuel');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('StocksService product favorites', () => {
+  const organizationId = '11111111-1111-4111-8111-111111111111';
+  const productId = '22222222-2222-4222-8222-222222222222';
+  const actor = {
+    id: '33333333-3333-4333-8333-333333333333',
+    role: 'Utilisateur',
+    permissions: ['stocks.write'],
+  };
+
+  function setup(previousIsFavorite = false) {
+    const product = {
+      id: productId,
+      name: 'Huile d’olive',
+      organizationId,
+      categoryId: 'category-1',
+      isFavorite: previousIsFavorite,
+      isArchived: true,
+      kind: ProductKind.RAW_MATERIAL,
+      unit: { id: 'unit-1', symbol: 'L' },
+    };
+    const tx = {
+      product: {
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ ...product, ...data })),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      product: { findFirst: jest.fn().mockResolvedValue(product) },
+      $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
+    };
+    return { service: new StocksService(prisma as any), prisma, tx, product };
+  }
+
+  it.each([true, false])(
+    'persists isFavorite=%s without changing the business category',
+    async (isFavorite) => {
+      const { service, prisma, tx } = setup(!isFavorite);
+
+      const result = await service.updateProductFavorite(
+        organizationId,
+        actor,
+        productId,
+        isFavorite,
+      );
+
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: productId, organizationId }),
+        }),
+      );
+      expect(prisma.product.findFirst.mock.calls[0][0].where).not.toHaveProperty('isArchived');
+      expect(tx.product.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: productId, organizationId },
+          data: { isFavorite },
+        }),
+      );
+      expect(result).toEqual(expect.objectContaining({ categoryId: 'category-1', isFavorite }));
+      expect(tx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId,
+            userId: actor.id,
+            entityId: productId,
+            details: { isFavorite, previousIsFavorite: !isFavorite },
+          }),
+        }),
+      );
+    },
+  );
+
+  it('rejects a user without Stocks or catalogue write permission before reading the product', async () => {
+    const { service, prisma } = setup();
+
+    await expect(
+      service.updateProductFavorite(
+        organizationId,
+        { id: actor.id, role: 'Utilisateur', permissions: ['stocks.read'] },
+        productId,
+        true,
+      ),
+    ).rejects.toThrow('Insufficient permissions to manage product favorites');
+    expect(prisma.product.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('does not expose or update a product owned by another organization', async () => {
+    const { service, prisma } = setup();
+    prisma.product.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.updateProductFavorite(organizationId, actor, productId, true),
+    ).rejects.toThrow('Produit Stocks introuvable');
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: productId, organizationId }),
+      }),
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -1722,6 +1722,7 @@ model Product {
   gtin                    String?
   productUrl              String?
   imageUrl                String?
+  isFavorite              Boolean     @default(false)
   originCountry           String?
   packageLabel            String?
   unitsPerPackage         Decimal?    @db.Decimal(12, 3)
@@ -1792,6 +1793,7 @@ model Product {
   @@index([categoryId])
   @@index([unitId])
   @@index([primarySupplierId])
+  @@index([organizationId, isFavorite])
   @@index([isArchived])
   @@map("products")
 }

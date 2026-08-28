@@ -4956,6 +4956,15 @@
     ]
   },
   {
+    "text": "⭐ Favoris",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "🍽️ Service à :",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
@@ -5621,7 +5630,8 @@
     "text": "0 20px 30px rgba(9, 13, 22, 0.06)",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HrApp.tsx"
+      "apps/web/src/components/HrApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -12335,6 +12345,15 @@
     ]
   },
   {
+    "text": "Accédez aux clés API",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Accédez directement au contrôle qui demande une intervention.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -14937,6 +14956,16 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Ajouter aux favoris",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -18098,7 +18127,17 @@
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
+      "attribute",
       "literal"
+    ]
+  },
+  {
+    "text": "Année précédente",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -18108,6 +18147,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Année suivante",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -19630,9 +19678,11 @@
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/stocks/stocks-inventory-spreadsheet.ts",
-      "apps/api/src/stocks/stocks-product-import.service.ts"
+      "apps/api/src/stocks/stocks-product-import.service.ts",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -20719,6 +20769,15 @@
     ]
   },
   {
+    "text": "Aucun brouillon en cours.",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Aucun budget affecté à cet établissement n’est inclus.",
     "files": [
       "apps/api/src/finance/finance.service.ts"
@@ -20779,6 +20838,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Aucun client trouvé",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -24210,6 +24278,15 @@
     ]
   },
   {
+    "text": "avec le compte marchand à connecter à ToqueHub.",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "avec responsable ·",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -25746,6 +25823,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
     ],
     "kinds": [
@@ -26646,7 +26724,8 @@
   {
     "text": "Brouillons",
     "files": [
-      "apps/web/src/components/CatererMenusApp.tsx"
+      "apps/web/src/components/CatererMenusApp.tsx",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
       "jsx"
@@ -27615,8 +27694,10 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx",
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx",
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx",
@@ -30142,24 +30223,6 @@
     ]
   },
   {
-    "text": "caterer-client-source imported",
-    "files": [
-      "apps/web/src/components/CatererMenusApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
-    "text": "caterer-client-source manual",
-    "files": [
-      "apps/web/src/components/CatererMenusApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "CATERER:",
     "files": [
       "apps/api/src/menus/caterer-menus.service.ts",
@@ -31812,6 +31875,15 @@
     ]
   },
   {
+    "text": "Chargement des brouillons…",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Chargement des campagnes de fabrication…",
     "files": [
       "apps/web/src/components/ProductionApp.tsx"
@@ -32223,7 +32295,6 @@
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
-      "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
@@ -32288,7 +32359,8 @@
       "apps/api/src/stocks/stocks-inventory-import.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
-      "apps/api/src/stocks/stocks.service.ts"
+      "apps/api/src/stocks/stocks.service.ts",
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -32738,6 +32810,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Choisir le mois et l’année",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -35901,6 +35982,15 @@
     ]
   },
   {
+    "text": "Comment obtenir une clé API Zettle ?",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Comment préférez-vous commencer ?",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -37374,6 +37464,15 @@
     ]
   },
   {
+    "text": "Configuration Loyverse conservée.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Configuration Mail",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
@@ -37395,6 +37494,15 @@
     "text": "Configuration OCR absente",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Configuration PayPal / Zettle conservée.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -38618,6 +38726,15 @@
     "text": "Connectez votre propre serveur SMTP professionnel pour envoyer vos e-mails de commande.",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Connectez-vous à MyZettle",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
     ],
     "kinds": [
       "jsx"
@@ -43355,6 +43472,15 @@
     ]
   },
   {
+    "text": "Créez et copiez la clé",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Créez le premier collaborateur pour finaliser la base RH initiale.",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -43466,6 +43592,15 @@
     "text": "Créez un utilisateur API",
     "files": [
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Créez une clé dédiée à ToqueHub, puis copiez le Client ID et la clé API dans les champs ci-dessous. Conservez la clé en lieu sûr.",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
     ],
     "kinds": [
       "jsx"
@@ -44074,8 +44209,10 @@
     "text": "currentColor",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
+      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
-      "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+      "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
       "attribute",
@@ -44694,6 +44831,15 @@
     ]
   },
   {
+    "text": "Dans « Outils d’intégration », ouvrez « Clés API » — « API-avaimet » en finnois.",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Dans Audience, publiez l’application en production. En mode test, Google peut refuser la connexion ou limiter les comptes.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -44755,6 +44901,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Dans le menu principal, choisissez « Intégrations » — « Integraatiot » si votre interface est en finnois.",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -47533,6 +47688,7 @@
       "apps/api/src/production/production.service.ts",
       "apps/api/src/purchasing/purchase-dispatch.service.ts",
       "apps/api/src/purchasing/purchase-history.service.ts",
+      "apps/api/src/purchasing/purchase-order-command.service.ts",
       "apps/api/src/purchasing/purchase-order-query.service.ts",
       "apps/api/src/purchasing/purchase-receipt.service.ts",
       "apps/api/src/purchasing/purchasing-dashboard.service.ts",
@@ -48314,6 +48470,7 @@
     "text": "dialog",
     "files": [
       "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
@@ -51060,6 +51217,7 @@
     "files": [
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HrApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/ui/Modal.tsx"
@@ -51890,6 +52048,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
@@ -54906,6 +55065,7 @@
     "files": [
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
@@ -54943,6 +55103,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Essayez un autre nom, numéro de téléphone ou adresse e-mail.",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -55190,6 +55359,7 @@
     "text": "Établissement",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
@@ -58157,7 +58327,8 @@
     "text": "Favoris",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
       "jsx",
@@ -58740,7 +58911,8 @@
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/menus/caterer-client-import.service.ts",
-      "apps/web/src/components/CatererMenusApp.tsx"
+      "apps/web/src/components/CatererMenusApp.tsx",
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -59288,15 +59460,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Fiche terminée et active",
-    "files": [
-      "apps/web/src/components/TechnicalSheetsApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -60148,6 +60311,15 @@
     "text": "finance-money-axis-chart finance-comparison-axis-chart",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "finance-onboarding-api-guide zettle",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
     ],
     "kinds": [
       "attribute"
@@ -61506,7 +61678,8 @@
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
       "apps/api/src/stocks/stocks-margins.service.ts",
       "apps/api/src/stocks/stocks.service.ts",
-      "apps/api/src/technical-sheets/technical-sheets.service.ts"
+      "apps/api/src/technical-sheets/technical-sheets.service.ts",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
       "literal"
@@ -67227,15 +67400,6 @@
     ]
   },
   {
-    "text": "Importé",
-    "files": [
-      "apps/web/src/components/CatererMenusApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Importer",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -67770,6 +67934,15 @@
     ]
   },
   {
+    "text": "Impossible d’ouvrir ce brouillon.",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Impossible d’ouvrir la reconnexion FlatPay :",
     "files": [
       "apps/api/src/finance/flatpay-automation.service.ts"
@@ -67941,6 +68114,15 @@
     ]
   },
   {
+    "text": "Impossible de créer ou reprendre ce brouillon.",
+    "files": [
+      "apps/web/src/components/purchasing/orders/OrderComposer.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Impossible de créer ou retrouver la catégorie \"",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -67971,15 +68153,6 @@
     "text": "Impossible de déchiffrer la clé Resend avec la clé serveur configurée.",
     "files": [
       "apps/api/src/common/secrets/organization-api-key-secret.service.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Impossible de déchiffrer le secret Finance avec la clé serveur configurée.",
-    "files": [
-      "apps/api/src/finance/fennoa-secret.service.ts"
     ],
     "kinds": [
       "literal"
@@ -68070,6 +68243,16 @@
     "text": "Impossible de masquer ce contrôle huile.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Impossible de modifier ce favori.",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/orders/OrderComposer.tsx"
     ],
     "kinds": [
       "literal"
@@ -69858,6 +70041,15 @@
     "text": "Insufficient data",
     "files": [
       "apps/api/src/finance/finance-export.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Insufficient permissions to manage product favorites",
+    "files": [
+      "apps/api/src/stocks/stocks.service.ts"
     ],
     "kinds": [
       "literal"
@@ -74617,6 +74809,15 @@
     ]
   },
   {
+    "text": "Le brouillon n’a pas pu être enregistré.",
+    "files": [
+      "apps/web/src/components/purchasing/orders/OrderComposer.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Le budget affecté à",
     "files": [
       "apps/api/src/finance/finance.service.ts"
@@ -76232,6 +76433,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Le secret Finance enregistré ne peut plus être déchiffré. Saisissez de nouveau le jeton ou la clé API pour rétablir cette connexion.",
+    "files": [
+      "apps/api/src/finance/fennoa-secret.service.ts"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -80008,6 +80218,7 @@
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/stocks/stocks.service.ts",
+      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/hr-catalog.ts"
     ],
     "kinds": [
@@ -82324,6 +82535,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
@@ -82401,6 +82613,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
@@ -82429,6 +82642,15 @@
     "text": "metrics-grid hr-metrics-grid",
     "files": [
       "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "metrics-grid planning-kpi-grid",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -84075,15 +84297,6 @@
     ]
   },
   {
-    "text": "Modèle saisonnier",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "modele-import-produits.csv",
     "files": [
       "apps/web/src/api/client.ts"
@@ -84234,6 +84447,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "modifié",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -87554,15 +87776,6 @@
     ]
   },
   {
-    "text": "Nom, poste, commentaire...",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Nombre attendu",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
@@ -88152,6 +88365,7 @@
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx",
       "apps/web/src/components/purchasing/orders/OrderComposer.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
     ],
@@ -88196,6 +88410,7 @@
     "files": [
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
       "apps/web/src/components/stocks/EquipmentPage.tsx"
     ],
@@ -89029,6 +89244,7 @@
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
+      "attribute",
       "literal"
     ]
   },
@@ -89996,6 +90212,7 @@
     "text": "open",
     "files": [
       "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx",
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
@@ -90350,6 +90567,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
     ],
     "kinds": [
@@ -90611,6 +90829,24 @@
   },
   {
     "text": "orders/:orderId/receipts/from-extraction",
+    "files": [
+      "apps/api/src/purchasing/purchasing.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "orders/drafts/mine",
+    "files": [
+      "apps/api/src/purchasing/purchasing.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "orders/drafts/resume",
     "files": [
       "apps/api/src/purchasing/purchasing.controller.ts"
     ],
@@ -91610,9 +91846,27 @@
     ]
   },
   {
+    "text": "Ouvrez",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ouvrez Fennoa",
     "files": [
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Ouvrez Intégrations",
+    "files": [
+      "apps/web/src/components/finance/ZettleApiKeyGuide.tsx"
     ],
     "kinds": [
       "jsx"
@@ -92791,6 +93045,15 @@
     ]
   },
   {
+    "text": "Passer en finnois",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Passer en français",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -93736,6 +93999,7 @@
     "text": "Période",
     "files": [
       "apps/api/src/finance/finance-export.service.ts",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
@@ -95705,6 +95969,24 @@
   },
   {
     "text": "planning-field planning-dashboard-site-field",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "planning-filter-field planning-period-field",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "planning-filter-field planning-search-field",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
     ],
@@ -99941,6 +100223,15 @@
     ]
   },
   {
+    "text": "product-favorite-indicator active",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "product-import-close welcome",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -100073,7 +100364,6 @@
       "apps/api/src/auth/auth.service.ts",
       "apps/api/src/dashboard/dashboard.service.ts",
       "apps/api/src/finance/fennoa-client.service.ts",
-      "apps/api/src/finance/fennoa-secret.service.ts",
       "apps/api/src/haccp/haccp.service.ts",
       "apps/api/src/hr/hr-sensitive-data-crypto.service.ts",
       "apps/api/src/menus/menus.service.ts",
@@ -100750,6 +101040,15 @@
     ]
   },
   {
+    "text": "products/:id/favorite",
+    "files": [
+      "apps/api/src/stocks/stocks.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "products/:id/history",
     "files": [
       "apps/api/src/rnm-prices/rnm-prices.controller.ts"
@@ -100945,6 +101244,15 @@
     ]
   },
   {
+    "text": "Produit ajouté aux favoris.",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Produit archivé",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts",
@@ -101051,6 +101359,16 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Produit favori",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -101193,6 +101511,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Produit retiré des favoris.",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -104805,6 +105132,15 @@
     ]
   },
   {
+    "text": "récemment",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "reception",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -105412,9 +105748,11 @@
   {
     "text": "Recherche",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
+      "jsx",
       "template"
     ]
   },
@@ -105596,6 +105934,24 @@
     ]
   },
   {
+    "text": "Rechercher un client par nom, téléphone ou adresse e-mail",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Rechercher un client, téléphone ou adresse e-mail…",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Rechercher un équipement…",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -105662,6 +106018,15 @@
     "text": "Rechercher un module (ex: Stocks, HACCP, Recettes)...",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Rechercher un nom, un poste ou un commentaire…",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -110225,6 +110590,16 @@
     ]
   },
   {
+    "text": "Retirer des favoris",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Retirer du CA",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -110696,6 +111071,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Revenir à aujourd’hui",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -112138,6 +112522,15 @@
     ]
   },
   {
+    "text": "Salarié",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "sale",
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts"
@@ -113418,6 +113811,7 @@
     "text": "search",
     "files": [
       "apps/web/src/api/client.ts",
+      "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/ProductPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
@@ -113543,6 +113937,7 @@
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/stocks/stocks.service.ts",
+      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/hr-catalog.ts"
     ],
     "kinds": [
@@ -115719,6 +116114,15 @@
     ]
   },
   {
+    "text": "setup-actions planning-month-actions",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "setup-actions planning-replace-actions",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -116239,10 +116643,12 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
       "apps/web/src/components/ProductionFabricationCalendar.tsx",
       "apps/web/src/components/UsersPage.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx",
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
     ],
     "kinds": [
@@ -116959,7 +117365,8 @@
     "text": "Site non renseigné",
     "files": [
       "apps/web/src/components/HaccpApp.tsx",
-      "apps/web/src/components/ProductionApp.tsx"
+      "apps/web/src/components/ProductionApp.tsx",
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
       "literal"
@@ -118438,15 +118845,6 @@
     ]
   },
   {
-    "text": "stats-grid planning-kpi-grid",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "status",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -119161,6 +119559,15 @@
     "text": "stocks-dashboard-grid margins-dashboard",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "stocks-filter-bar caterer-client-search-bar",
+    "files": [
+      "apps/web/src/components/CatererMenusApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -121737,15 +122144,6 @@
     "text": "Synthese attendu / realise",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Synthèse charge, absences et zones à vérifier.",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -125991,6 +126389,7 @@
   {
     "text": "Tous les établissements",
     "files": [
+      "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
@@ -126119,6 +126518,24 @@
     ]
   },
   {
+    "text": "Tous les salariés",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Tous les services",
+    "files": [
+      "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Tous les services sont couverts",
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts"
@@ -126205,8 +126622,7 @@
   {
     "text": "Tous services",
     "files": [
-      "apps/web/src/components/HrApp.tsx",
-      "apps/web/src/components/PlanningApp.tsx"
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -126439,15 +126855,6 @@
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "Toutes les personnes prévues sur la journée.",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -128789,6 +129196,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Une commande en cours est conservée automatiquement pour chaque fournisseur.",
+    "files": [
+      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -132979,15 +133395,6 @@
     ]
   },
   {
-    "text": "Voir salarié",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Voir stocks",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -133679,15 +134086,6 @@
     ]
   },
   {
-    "text": "Vue calendrier avec détail complet par jour.",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Vue consolidée du jour",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -133785,15 +134183,6 @@
     ],
     "kinds": [
       "jsx"
-    ]
-  },
-  {
-    "text": "Vue semaine par jour, avec les affectations en pastilles.",
-    "files": [
-      "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {

@@ -2,10 +2,8 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PurchasingDeliveryMode } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  UpdatePurchasingOnboardingDto,
-  UpdatePurchasingSettingsDto,
-} from './dto/purchasing.dto';
+import { StocksService } from '../stocks/stocks.service';
+import { UpdatePurchasingOnboardingDto, UpdatePurchasingSettingsDto } from './dto/purchasing.dto';
 import { PurchaseOrderPolicy } from './purchase-order.policy';
 import { PurchasingContextService } from './purchasing-context.service';
 import { PurchasingDeliveryService } from './purchasing-delivery.service';
@@ -21,6 +19,7 @@ export class PurchasingSettingsService {
     private readonly context: PurchasingContextService,
     private readonly policy: PurchaseOrderPolicy,
     private readonly delivery: PurchasingDeliveryService,
+    private readonly stocks: StocksService,
     @Inject(PURCHASING_EMAIL_TRANSPORT)
     private readonly emailTransport: PurchasingEmailTransport,
   ) {}
@@ -59,6 +58,7 @@ export class PurchasingSettingsService {
       sites,
       locations,
       permissions: this.policy.effectivePermissions(actor),
+      canManageProductFavorites: this.stocks.canManageProductFavorites(actor),
     };
   }
 
@@ -67,11 +67,7 @@ export class PurchasingSettingsService {
     this.policy.assertPermission(actor, 'purchasing.manage');
   }
 
-  async update(
-    organizationId: string,
-    actor: AuthenticatedUser,
-    dto: UpdatePurchasingSettingsDto,
-  ) {
+  async update(organizationId: string, actor: AuthenticatedUser, dto: UpdatePurchasingSettingsDto) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.manage');
     const current = await this.context.ensureSettings(organizationId);
@@ -154,11 +150,7 @@ export class PurchasingSettingsService {
     };
   }
 
-  async assertReceiptUpload(
-    organizationId: string,
-    actor: AuthenticatedUser,
-    orderId: string,
-  ) {
+  async assertReceiptUpload(organizationId: string, actor: AuthenticatedUser, orderId: string) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.receive');
     await this.context.ensureOrder(organizationId, orderId);

@@ -94,7 +94,7 @@ const EQUIPMENT_DOCUMENT_SOURCE_TYPE = 'equipment-contract';
 const MAX_EQUIPMENT_DOCUMENTS = 8;
 const MAX_EQUIPMENT_DOCUMENT_SIZE = 20 * 1024 * 1024;
 
-type Actor = { id: string; role: string };
+type Actor = { id: string; role: string; permissions?: string[] };
 type Tx = Prisma.TransactionClient;
 type EquipmentDocumentFile = {
   originalname: string;
@@ -115,6 +115,19 @@ export class StocksService {
   private assertManager(actor: Actor) {
     if (!ADMIN_MANAGER_ROLES.includes(actor.role))
       throw new ForbiddenException('Manager permissions required');
+  }
+
+  canManageProductFavorites(actor: Pick<Actor, 'role' | 'permissions'>) {
+    return (
+      WRITE_ROLES.includes(actor.role) ||
+      Boolean(actor.permissions?.includes('stocks.write')) ||
+      Boolean(actor.permissions?.includes('catalog.write'))
+    );
+  }
+
+  private assertProductFavoriteWrite(actor: Actor) {
+    if (!this.canManageProductFavorites(actor))
+      throw new ForbiddenException('Insufficient permissions to manage product favorites');
   }
 
   private async assertEquipmentProduct(organizationId: string, productId: string) {
@@ -267,9 +280,7 @@ export class StocksService {
         data: { stocksInstalledAt: new Date() },
         select: { regulatoryCountryCode: true },
       });
-      const defaultVatRate = stockCategoryVatPolicy(
-        organization.regulatoryCountryCode,
-      ).defaultRate;
+      const defaultVatRate = stockCategoryVatPolicy(organization.regulatoryCountryCode).defaultRate;
       await tx.category.createMany({
         data: DEFAULT_STOCK_CATEGORIES.map((name) => ({
           organizationId,
@@ -386,13 +397,10 @@ export class StocksService {
       dto.kind ?? ProductKind.UNSPECIFIED,
       true,
     );
-    return this.createAudited(
-      'category',
-      organizationId,
-      actor.id,
-      AuditAction.CATEGORY_CREATED,
-      { ...dto, ...(vatRate == null ? {} : { vatRate }) },
-    );
+    return this.createAudited('category', organizationId, actor.id, AuditAction.CATEGORY_CREATED, {
+      ...dto,
+      ...(vatRate == null ? {} : { vatRate }),
+    });
   }
   async updateCategory(organizationId: string, actor: Actor, id: string, dto: UpsertCategoryDto) {
     this.assertWrite(actor);
@@ -479,8 +487,7 @@ export class StocksService {
     const unitsToRestore = units.filter((unit) => {
       const native = canonicalBySymbol.get(unit.symbol);
       return Boolean(
-        native &&
-          (unit.isArchived || unit.name !== native.name || unit.type !== native.type),
+        native && (unit.isArchived || unit.name !== native.name || unit.type !== native.type),
       );
     });
     for (const unit of unitsToRestore) {
@@ -505,8 +512,7 @@ export class StocksService {
     const bySymbol = new Map(
       units.filter((unit) => !unit.isArchived).map((unit) => [unit.symbol, unit]),
     );
-    return NATIVE_STOCK_UNITS
-      .map((native) => bySymbol.get(native.symbol))
+    return NATIVE_STOCK_UNITS.map((native) => bySymbol.get(native.symbol))
       .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
       .filter(
         (unit) =>
@@ -516,13 +522,19 @@ export class StocksService {
       );
   }
   async createUnit(_organizationId: string, _actor: Actor, _dto: UpsertUnitDto) {
-    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être ajoutées.');
+    throw new BadRequestException(
+      'Les unités ToqueHub sont natives et ne peuvent pas être ajoutées.',
+    );
   }
   async updateUnit(_organizationId: string, _actor: Actor, _id: string, _dto: UpsertUnitDto) {
-    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être modifiées.');
+    throw new BadRequestException(
+      'Les unités ToqueHub sont natives et ne peuvent pas être modifiées.',
+    );
   }
   archiveUnit(_organizationId: string, _actor: Actor, _id: string) {
-    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être supprimées.');
+    throw new BadRequestException(
+      'Les unités ToqueHub sont natives et ne peuvent pas être supprimées.',
+    );
   }
   async upsertConversion(organizationId: string, actor: Actor, dto: UpsertUnitConversionDto) {
     this.assertWrite(actor);
@@ -979,6 +991,39 @@ export class StocksService {
       ) {
         await this.recalculateTechnicalSheetsForProductTx(tx, organizationId, item.id, actor.id);
       }
+      return item;
+    });
+  }
+  async updateProductFavorite(
+    organizationId: string,
+    actor: Actor,
+    id: string,
+    isFavorite: boolean,
+  ) {
+    this.assertProductFavoriteWrite(actor);
+    const product = await this.ensureProduct(organizationId, id, false);
+    return this.prisma.$transaction(async (tx) => {
+      const item = await tx.product.update({
+        where: { id, organizationId },
+        data: { isFavorite },
+        include: {
+          category: true,
+          unit: true,
+          primarySupplier: true,
+          stocks: true,
+          equipmentProfile: true,
+        },
+      });
+      await this.audit(
+        tx,
+        organizationId,
+        actor.id,
+        AuditAction.PRODUCT_UPDATED,
+        'Product',
+        item.id,
+        item.name,
+        { isFavorite, previousIsFavorite: product.isFavorite },
+      );
       return item;
     });
   }
@@ -1712,24 +1757,25 @@ export class StocksService {
                 ? `Commande ${reception.purchaseOrderNumber}`
                 : reception.receiptNumber
                   ? `Ticket ${reception.receiptNumber}`
-                  : reception.document?.originalName ?? 'Document sans numéro'
+                  : (reception.document?.originalName ?? 'Document sans numéro')
           : null;
 
         const categoryVatRate = product.category?.vatRate ?? null;
         return {
           ...line,
           product,
-          financialSource: source || categoryVatRate != null
-            ? {
-                documentId: reception?.documentId ?? null,
-                documentLabel,
-                documentDate: reception?.documentDate ?? reception?.deliveryDate ?? null,
-                supplierName: reception?.supplier?.name ?? reception?.supplierName ?? null,
-                unitPriceExcludingTax: source?.unitPrice ?? null,
-                vatRate: categoryVatRate ?? source?.vatRate ?? null,
-                vatRateSource: categoryVatRate != null ? 'CATEGORY' : 'RECEPTION',
-              }
-            : null,
+          financialSource:
+            source || categoryVatRate != null
+              ? {
+                  documentId: reception?.documentId ?? null,
+                  documentLabel,
+                  documentDate: reception?.documentDate ?? reception?.deliveryDate ?? null,
+                  supplierName: reception?.supplier?.name ?? reception?.supplierName ?? null,
+                  unitPriceExcludingTax: source?.unitPrice ?? null,
+                  vatRate: categoryVatRate ?? source?.vatRate ?? null,
+                  vatRateSource: categoryVatRate != null ? 'CATEGORY' : 'RECEPTION',
+                }
+              : null,
         };
       }),
     }));
@@ -2048,7 +2094,7 @@ export class StocksService {
       select: { regulatoryCountryCode: true },
     });
     const policy = stockCategoryVatPolicy(organization?.regulatoryCountryCode);
-    const rate = requestedRate ?? (useDefault ? policy.defaultRate ?? undefined : undefined);
+    const rate = requestedRate ?? (useDefault ? (policy.defaultRate ?? undefined) : undefined);
     if (rate != null && policy.options.length && !isStockCategoryVatRateAllowed(policy, rate)) {
       throw new BadRequestException(
         `Le taux de TVA ${rate} % ne correspond pas au barème ${policy.countryLabel}.`,
