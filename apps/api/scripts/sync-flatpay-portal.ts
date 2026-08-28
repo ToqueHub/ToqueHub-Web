@@ -908,6 +908,12 @@ async function main() {
           if (type === 'orders') await generateCurrentOrdersReport(page, options, range);
           else await generateReport(page, options, type, range);
           generationCount += 1;
+          const key = `${type}:${range.from}:${range.to}`;
+          generated.add(key);
+          state.generatedKeys = [...generated].slice(-5000);
+          if (type !== 'sales-overview') state.generatedThrough[type] = range.to;
+          state.lastGeneratedTo = range.to;
+          await saveState(options.statePath, state);
           results.push({ type, ...range, generated: true, liveRefresh: true });
         } catch (error) {
           results.push({
