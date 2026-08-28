@@ -202,6 +202,7 @@ async function main() {
       null as unknown as FennoaSyncService,
       null as never,
       null as never,
+      null as never,
     );
     const before = {
       rows: await prisma.financeDailySales.count({
