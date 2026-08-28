@@ -902,7 +902,7 @@ export class FinanceImportParserService {
       rows,
       {
         parser: 'flatpay-products',
-        parserVersion: 5,
+        parserVersion: 6,
         filePeriodStart: period?.startDate.toISOString() ?? null,
         filePeriodEnd: period?.endDate.toISOString() ?? null,
       },
@@ -913,7 +913,7 @@ export class FinanceImportParserService {
     );
     return {
       ...parsed,
-      ready: Boolean(period && rows.length),
+      ready: Boolean(period),
       periodStart: period?.startDate ?? null,
       periodEnd: period?.endDate ?? null,
     };
