@@ -17,7 +17,14 @@ import {
   Truck,
 } from 'lucide-react';
 import type { Category, Product, Supplier, PurchasingBootstrap } from '../../../types';
-import { dateLabel, money } from '../components/PurchasingUi';
+import {
+  dateLabel,
+  money,
+  productOrderBaseQuantityLabel,
+  productOrderFactor,
+  productOrderUnitLabel,
+  productOrderUnitPrice,
+} from '../components/PurchasingUi';
 
 export type ComposerLine = {
   product: Product;
@@ -470,7 +477,15 @@ export function OrderCatalog({
             <article key={line.product.id}>
               <div>
                 <strong>{line.product.name}</strong>
-                <span>{money(line.quantity * line.unitPrice)} HT</span>
+                <span>
+                  {line.quantity} × {productOrderUnitLabel(line.product)} ·{' '}
+                  {money(line.quantity * line.unitPrice)} HT
+                </span>
+                {productOrderFactor(line.product) > 1 ? (
+                  <small>
+                    Entrée en stock : {productOrderBaseQuantityLabel(line.product, line.quantity)}
+                  </small>
+                ) : null}
               </div>
               <QuantityControl
                 quantity={line.quantity}
@@ -667,9 +682,14 @@ function ProductCard({
         </span>
       </div>
       <div className="purchasing-product-meta">
-        <strong>{money(Number(product.averagePrice ?? 0))} HT</strong>
+        <strong>{money(productOrderUnitPrice(product))} HT</strong>
         <span>Stock {Number(product.stockQuantity ?? 0)}</span>
       </div>
+      {productOrderFactor(product) > 1 ? (
+        <span className="purchasing-product-pack-hint">
+          1 {productOrderUnitLabel(product)} = {productOrderBaseQuantityLabel(product, 1)}
+        </span>
+      ) : null}
       <QuantityControl
         quantity={quantity}
         onChange={(next) => onQuantity(product, next)}

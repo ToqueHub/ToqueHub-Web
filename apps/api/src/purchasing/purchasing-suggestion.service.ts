@@ -104,7 +104,10 @@ export class PurchasingSuggestionService {
         );
         const target = Math.max(minimumStock, daily * settings.replenishmentDays);
         const needBase = Math.max(0, target - stock - (ordered.get(product.id) ?? 0));
-        const rounded = needBase > 0 ? Math.ceil(needBase) : 0;
+        const configuredFactor = Number(product.unitsPerPackage ?? 1);
+        const factor =
+          Number.isFinite(configuredFactor) && configuredFactor > 0 ? configuredFactor : 1;
+        const rounded = needBase > 0 ? Math.ceil(needBase / factor) : 0;
         return {
           product: {
             ...product,
@@ -118,7 +121,7 @@ export class PurchasingSuggestionService {
           targetStock: target,
           openOrderQuantity: ordered.get(product.id) ?? 0,
           recommendedQuantity: rounded,
-          estimatedAmount: rounded * Number(product.averagePrice),
+          estimatedAmount: rounded * factor * Number(product.averagePrice),
         };
       })
       .filter((item) => item.recommendedQuantity > 0)
