@@ -139,6 +139,77 @@ describe('PurchaseOrderQueryService', () => {
     );
   });
 
+  it('combines favorite filtering with supplier, site, search, pagination and archived exclusion', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-1' }) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      stock: { groupBy: jest.fn() },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    const result = await queries.products('org-1', actor, {
+      supplierId: 'supplier-1',
+      siteId: 'site-1',
+      favoriteOnly: true,
+      search: 'huile',
+      page: 3,
+      pageSize: 12,
+    });
+
+    expect(result).toEqual({ items: [], total: 0, page: 3, pageSize: 12 });
+    const query = prisma.product.findMany.mock.calls[0][0];
+    expect(query).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          primarySupplierId: 'supplier-1',
+          isFavorite: true,
+          isArchived: false,
+          siteAssignments: { some: { siteId: 'site-1', isActive: true } },
+          OR: [
+            { name: { contains: 'huile', mode: 'insensitive' } },
+            { sku: { contains: 'huile', mode: 'insensitive' } },
+            { gtin: { contains: 'huile', mode: 'insensitive' } },
+          ],
+        }),
+        skip: 24,
+        take: 12,
+      }),
+    );
+    expect(prisma.product.count).toHaveBeenCalledWith({ where: query.where });
+    expect(prisma.stock.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('does not apply the favorite predicate when favoriteOnly is false', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-1' }) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      stock: { groupBy: jest.fn() },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await queries.products('org-1', actor, {
+      supplierId: 'supplier-1',
+      favoriteOnly: false,
+    });
+
+    expect(prisma.product.findMany.mock.calls[0][0].where.isFavorite).toBeUndefined();
+  });
+
   it('does not leak whether a supplier exists in another organization', async () => {
     const prisma = {
       organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },

@@ -1,5 +1,5 @@
 import { englishCatalog } from './en.generated';
-import { englishOverrides } from './overrides';
+import { englishOverrides, finnishOverrides } from './overrides';
 import { activeLanguage, type AppLanguage } from './runtime';
 
 export function normalizeTranslationSource(value: string): string {
@@ -13,17 +13,31 @@ const english: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-const frenchSignal = /[àâçéèêëîïôùûüÿœ]|\b(?:accueil|achat|ajouter|annuler|aucun|avec|catégorie|choisir|commande|confirmer|connexion|créer|dans|depuis|document|donnée|enregistrer|établissement|fermer|fiche|fournisseur|français|général|historique|jour|langue|ligne|modifier|nouveau|paramètres|planning|produit|réception|rechercher|retour|sans|sélectionner|service|site|stock|suivant|supprimer|tableau|terminer|utilisateur|valider|votre|vous)\b/iu;
+const finnish: Record<string, string> = Object.fromEntries(
+  Object.entries(finnishOverrides).map(([source, target]) => [
+    normalizeTranslationSource(source),
+    normalizeTranslationSource(target),
+  ]),
+);
+
+const frenchSignal =
+  /[àâçéèêëîïôùûüÿœ]|\b(?:accueil|achat|ajouter|annuler|aucun|avec|catégorie|choisir|commande|confirmer|connexion|créer|dans|depuis|document|donnée|enregistrer|établissement|fermer|fiche|fournisseur|français|général|historique|jour|langue|ligne|modifier|nouveau|paramètres|planning|produit|réception|rechercher|retour|sans|sélectionner|service|site|stock|suivant|supprimer|tableau|terminer|utilisateur|valider|votre|vous)\b/iu;
 
 const embeddedTranslationsByWord = new Map<string, Array<readonly [string, string]>>();
 function indexEmbeddedTranslation(source: string, target: string) {
-  if (source.length < 4 || source.length > 1_500 || source === target || !frenchSignal.test(source)) {
+  if (
+    source.length < 4 ||
+    source.length > 1_500 ||
+    source === target ||
+    !frenchSignal.test(source)
+  ) {
     return;
   }
   const firstWord = source.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœ]+/u)?.[0].toLocaleLowerCase('fr');
   if (!firstWord) return;
-  const candidates = (embeddedTranslationsByWord.get(firstWord) ?? [])
-    .filter(([candidateSource]) => candidateSource !== source);
+  const candidates = (embeddedTranslationsByWord.get(firstWord) ?? []).filter(
+    ([candidateSource]) => candidateSource !== source,
+  );
   candidates.push([source, target]);
   candidates.sort(([left], [right]) => right.length - left.length);
   embeddedTranslationsByWord.set(firstWord, candidates);
@@ -84,9 +98,7 @@ const fallbackPhrases: ReadonlyArray<readonly [RegExp, string]> = [
 
 function translateEmbeddedCatalogPhrases(value: string): string {
   const words = new Set(
-    (value.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœ]+/gu) ?? []).map((word) =>
-      word.toLocaleLowerCase('fr'),
-    ),
+    (value.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœ]+/gu) ?? []).map((word) => word.toLocaleLowerCase('fr')),
   );
   const candidates = new Map<string, string>();
   for (const word of words) {
@@ -106,17 +118,18 @@ function translateEmbeddedCatalogPhrases(value: string): string {
 
 function translateFallback(value: string): string {
   let result = translateEmbeddedCatalogPhrases(value);
-  for (const [pattern, replacement] of fallbackPhrases) result = result.replace(pattern, replacement);
+  for (const [pattern, replacement] of fallbackPhrases)
+    result = result.replace(pattern, replacement);
   return result;
 }
 
-export function translateText(
-  value: string,
-  language: AppLanguage = activeLanguage(),
-): string {
+export function translateText(value: string, language: AppLanguage = activeLanguage()): string {
   if (language === 'fr' || !value.trim()) return value;
   const source = normalizeTranslationSource(value);
-  const translated = english[source] ?? translateFallback(source);
+  const translated =
+    language === 'fi'
+      ? (finnish[source] ?? english[source] ?? translateFallback(source))
+      : (english[source] ?? translateFallback(source));
   if (translated === source) return value;
   const leading = value.match(/^\s*/u)?.[0] ?? '';
   const trailing = value.match(/\s*$/u)?.[0] ?? '';

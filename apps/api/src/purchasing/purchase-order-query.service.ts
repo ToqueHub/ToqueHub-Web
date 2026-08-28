@@ -167,6 +167,7 @@ export class PurchaseOrderQueryService {
       organizationId,
       primarySupplierId: supplier.id,
       categoryId: query.categoryId,
+      isFavorite: query.favoriteOnly ? true : undefined,
       isArchived: false,
       ...(query.siteId
         ? { siteAssignments: { some: { siteId: query.siteId, isActive: true } } }

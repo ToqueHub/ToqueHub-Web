@@ -42,6 +42,7 @@ import {
 import {
   ListArticlesQueryDto,
   ListQueryDto,
+  UpdateProductFavoriteDto,
   UpsertCategoryDto,
   UpsertLocationDto,
   UpsertLotDto,
@@ -76,7 +77,7 @@ export class StocksController {
     return user.organizationId;
   }
   private actor(user: AuthenticatedUser) {
-    return { id: user.id, role: user.role };
+    return { id: user.id, role: user.role, permissions: user.permissions };
   }
 
   @Post('stocks/install') install(@CurrentUser() user: AuthenticatedUser) {
@@ -387,6 +388,13 @@ export class StocksController {
   ) {
     return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d);
   }
+  @Patch('products/:id/favorite') updateProductFavorite(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() d: UpdateProductFavoriteDto,
+  ) {
+    return this.stocksService.updateProductFavorite(this.org(u), this.actor(u), id, d.isFavorite);
+  }
   @Post('products/:id/stock-adjustment') adjustProductStock(
     @CurrentUser() u: AuthenticatedUser,
     @Param('id') id: string,
@@ -593,18 +601,10 @@ export class StocksController {
     @Body() d: AnalyzeInventoryImportDto,
     @UploadedFile() file: any,
   ) {
-    return this.stocksInventoryImportService.analyze(
-      this.org(u),
-      this.actor(u),
-      d.siteId,
-      file,
-    );
+    return this.stocksInventoryImportService.analyze(this.org(u), this.actor(u), d.siteId, file);
   }
   @Post('inventories/import/commit')
-  commitInventoryImport(
-    @CurrentUser() u: AuthenticatedUser,
-    @Body() d: CommitInventoryImportDto,
-  ) {
+  commitInventoryImport(@CurrentUser() u: AuthenticatedUser, @Body() d: CommitInventoryImportDto) {
     return this.stocksInventoryImportService.commit(this.org(u), this.actor(u), d);
   }
 

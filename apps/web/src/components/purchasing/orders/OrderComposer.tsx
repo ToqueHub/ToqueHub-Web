@@ -14,6 +14,7 @@ import { Modal } from '../../ui/Modal';
 import { messageOf } from '../components/PurchasingUi';
 import {
   DeliverySelection,
+  FAVORITES_FILTER_ID,
   OrderCatalog,
   SupplierSelection,
   type ComposerLine,
@@ -122,6 +123,7 @@ export function OrderComposer({
   const [productSearch, setProductSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [productsLoading, setProductsLoading] = useState(false);
+  const [favoritePendingIds, setFavoritePendingIds] = useState<Set<string>>(() => new Set());
   const [notes, setNotes] = useState(order?.notes ?? '');
   const [supplierMessage, setSupplierMessage] = useState(order?.supplierMessage ?? '');
   const [lines, setLines] = useState<ComposerLine[]>(() =>
@@ -261,7 +263,8 @@ export function OrderComposer({
       .purchasingProducts(token, {
         supplierId,
         siteId,
-        categoryId: categoryId || undefined,
+        categoryId: categoryId && categoryId !== FAVORITES_FILTER_ID ? categoryId : undefined,
+        favoriteOnly: categoryId === FAVORITES_FILTER_ID || undefined,
         search: debouncedProductSearch.trim() || undefined,
         page: 1,
         pageSize: 24,
@@ -349,7 +352,8 @@ export function OrderComposer({
       const response = await api.purchasingProducts(token, {
         supplierId,
         siteId,
-        categoryId: categoryId || undefined,
+        categoryId: categoryId && categoryId !== FAVORITES_FILTER_ID ? categoryId : undefined,
+        favoriteOnly: categoryId === FAVORITES_FILTER_ID || undefined,
         search: productSearch.trim() || undefined,
         page: nextPage,
         pageSize: 24,
@@ -387,6 +391,42 @@ export function OrderComposer({
         },
       ];
     });
+  };
+
+  const toggleFavorite = async (product: Product) => {
+    if (favoritePendingIds.has(product.id) || !bootstrap.canManageProductFavorites) return;
+    setFavoritePendingIds((current) => new Set(current).add(product.id));
+    try {
+      const updated = await api.updateProductFavorite(token, product.id, !product.isFavorite);
+      const mergeUpdated = (item: Product) =>
+        item.id === updated.id ? { ...item, ...updated } : item;
+      setProducts((current) => {
+        const next = current.map(mergeUpdated);
+        return categoryId === FAVORITES_FILTER_ID && !updated.isFavorite
+          ? next.filter((item) => item.id !== updated.id)
+          : next;
+      });
+      if (categoryId === FAVORITES_FILTER_ID && !updated.isFavorite) {
+        setProductTotal((current) => Math.max(0, current - 1));
+      }
+      setRecent((current) => current.map(mergeUpdated));
+      setFrequent((current) => current.map(mergeUpdated));
+      setLines((current) =>
+        current.map((line) =>
+          line.product.id === updated.id
+            ? { ...line, product: { ...line.product, ...updated } }
+            : line,
+        ),
+      );
+    } catch (error) {
+      flash('error', messageOf(error, 'Impossible de modifier ce favori.'));
+    } finally {
+      setFavoritePendingIds((current) => {
+        const next = new Set(current);
+        next.delete(product.id);
+        return next;
+      });
+    }
   };
 
   const addSuggestions = async () => {
@@ -637,6 +677,7 @@ export function OrderComposer({
             productSearch={productSearch}
             categoryId={categoryId}
             productsLoading={productsLoading || contextLoading}
+            favoritePendingIds={favoritePendingIds}
             productTotal={productTotal}
             siteId={siteId}
             supplierMessage={supplierMessage}
@@ -651,6 +692,7 @@ export function OrderComposer({
             onCategory={setCategoryId}
             onLoadMore={() => void loadMoreProducts()}
             onQuantity={setQuantity}
+            onToggleFavorite={(product) => void toggleFavorite(product)}
             onSuggestions={() => void addSuggestions()}
             onSite={setSiteId}
             onDeliveryDate={setDeliveryDate}

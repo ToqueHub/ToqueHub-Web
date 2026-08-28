@@ -5883,7 +5883,7 @@ a:hover {
 
 .sidebar-language-segments {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.4rem;
 }
 
@@ -6704,6 +6704,49 @@ button:disabled,
 
 .table-modern tbody tr.clickable-row:hover {
   background: #f0fdf4;
+}
+
+.product-favorite-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.product-favorite-toggle,
+.product-favorite-indicator {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #94a3b8;
+}
+
+.product-favorite-toggle {
+  cursor: pointer;
+}
+
+.product-favorite-toggle:hover:not(:disabled),
+.product-favorite-toggle.active,
+.product-favorite-indicator.active {
+  border-color: #fde047;
+  background: #fefce8;
+  color: #eab308;
+}
+
+.product-favorite-toggle:focus-visible {
+  outline: 3px solid rgba(250, 204, 21, 0.35);
+  outline-offset: 2px;
+}
+
+.product-favorite-toggle:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .product-detail {
@@ -39068,7 +39111,9 @@ input:checked + .slider-round:before {
   color: #047857;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
 }
 
 .caterer-client-import-dropzone:hover,

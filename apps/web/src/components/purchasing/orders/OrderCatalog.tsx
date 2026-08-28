@@ -12,6 +12,7 @@ import {
   Search,
   ShoppingCart,
   Sparkles,
+  Star,
   Trash2,
   Truck,
 } from 'lucide-react';
@@ -25,6 +26,8 @@ export type ComposerLine = {
   vatRate: number;
   unitsPerOrderUnit: number;
 };
+
+export const FAVORITES_FILTER_ID = '__favorites__';
 
 export function SupplierSelection({
   suppliers,
@@ -265,6 +268,7 @@ export function OrderCatalog({
   productSearch,
   categoryId,
   productsLoading,
+  favoritePendingIds,
   productTotal,
   siteId,
   supplierMessage,
@@ -279,6 +283,7 @@ export function OrderCatalog({
   onCategory,
   onLoadMore,
   onQuantity,
+  onToggleFavorite,
   onSuggestions,
   onSite,
   onDeliveryDate,
@@ -297,6 +302,7 @@ export function OrderCatalog({
   productSearch: string;
   categoryId: string;
   productsLoading: boolean;
+  favoritePendingIds: Set<string>;
   productTotal: number;
   siteId: string;
   supplierMessage: string;
@@ -311,6 +317,7 @@ export function OrderCatalog({
   onCategory: (value: string) => void;
   onLoadMore: () => void;
   onQuantity: (product: Product, quantity: number) => void;
+  onToggleFavorite: (product: Product) => void;
   onSuggestions: () => void;
   onSite: (value: string) => void;
   onDeliveryDate: (value: string) => void;
@@ -352,6 +359,13 @@ export function OrderCatalog({
           >
             Toutes les catégories
           </button>
+          <button
+            type="button"
+            className={categoryId === FAVORITES_FILTER_ID ? 'active' : ''}
+            onClick={() => onCategory(FAVORITES_FILTER_ID)}
+          >
+            <Star size={13} fill="currentColor" /> Favoris
+          </button>
           {categories.map((category) => (
             <button
               type="button"
@@ -369,6 +383,9 @@ export function OrderCatalog({
             products={recent}
             quantityOf={quantityOf}
             onQuantity={onQuantity}
+            onToggleFavorite={onToggleFavorite}
+            canManageProductFavorites={bootstrap.canManageProductFavorites}
+            favoritePendingIds={favoritePendingIds}
           />
         ) : null}
         {!productSearch && !categoryId && frequent.length ? (
@@ -377,6 +394,9 @@ export function OrderCatalog({
             products={frequent}
             quantityOf={quantityOf}
             onQuantity={onQuantity}
+            onToggleFavorite={onToggleFavorite}
+            canManageProductFavorites={bootstrap.canManageProductFavorites}
+            favoritePendingIds={favoritePendingIds}
           />
         ) : null}
         <section className="purchasing-catalog-section">
@@ -385,7 +405,9 @@ export function OrderCatalog({
               <span>Catalogue Stocks</span>
               <strong>
                 {categoryId
-                  ? categories.find((category) => category.id === categoryId)?.name
+                  ? categoryId === FAVORITES_FILTER_ID
+                    ? 'Favoris'
+                    : categories.find((category) => category.id === categoryId)?.name
                   : 'Tous les produits'}
               </strong>
             </div>
@@ -405,6 +427,9 @@ export function OrderCatalog({
                   product={product}
                   quantity={quantityOf(product.id)}
                   onQuantity={onQuantity}
+                  onToggleFavorite={onToggleFavorite}
+                  canManageProductFavorites={bootstrap.canManageProductFavorites}
+                  favoritePending={favoritePendingIds.has(product.id)}
                   key={product.id}
                 />
               ))}
@@ -546,11 +571,17 @@ function ProductShelf({
   products,
   quantityOf,
   onQuantity,
+  onToggleFavorite,
+  canManageProductFavorites,
+  favoritePendingIds,
 }: {
   title: string;
   products: Product[];
   quantityOf: (productId: string) => number;
   onQuantity: (product: Product, quantity: number) => void;
+  onToggleFavorite: (product: Product) => void;
+  canManageProductFavorites: boolean;
+  favoritePendingIds: Set<string>;
 }) {
   return (
     <section className="purchasing-catalog-section compact">
@@ -563,6 +594,9 @@ function ProductShelf({
             product={product}
             quantity={quantityOf(product.id)}
             onQuantity={onQuantity}
+            onToggleFavorite={onToggleFavorite}
+            canManageProductFavorites={canManageProductFavorites}
+            favoritePending={favoritePendingIds.has(product.id)}
             compact
             key={product.id}
           />
@@ -576,11 +610,17 @@ function ProductCard({
   product,
   quantity,
   onQuantity,
+  onToggleFavorite,
+  canManageProductFavorites,
+  favoritePending,
   compact = false,
 }: {
   product: Product;
   quantity: number;
   onQuantity: (product: Product, quantity: number) => void;
+  onToggleFavorite: (product: Product) => void;
+  canManageProductFavorites: boolean;
+  favoritePending: boolean;
   compact?: boolean;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -589,6 +629,23 @@ function ProductCard({
   return (
     <article className={`purchasing-product-card${compact ? ' compact' : ''}`}>
       <div className={`purchasing-product-visual${showImage ? ' has-image' : ''}`}>
+        {canManageProductFavorites ? (
+          <button
+            type="button"
+            className={`purchasing-product-favorite${product.isFavorite ? ' active' : ''}`}
+            aria-label={product.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            title={product.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            aria-pressed={Boolean(product.isFavorite)}
+            disabled={favoritePending}
+            onClick={() => onToggleFavorite(product)}
+          >
+            <Star size={16} fill={product.isFavorite ? 'currentColor' : 'none'} />
+          </button>
+        ) : product.isFavorite ? (
+          <div className="purchasing-product-favorite-indicator" aria-label="Produit favori">
+            <Star size={16} fill="currentColor" />
+          </div>
+        ) : null}
         {showImage ? (
           <img
             src={product.imageUrl ?? undefined}
