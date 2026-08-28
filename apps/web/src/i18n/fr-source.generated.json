@@ -74554,6 +74554,15 @@
     ]
   },
   {
+    "text": "lazy",
+    "files": [
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Le",
     "files": [
       "apps/api/src/hr/hr-contract-ocr.service.ts"
@@ -91650,6 +91659,15 @@
     ]
   },
   {
+    "text": "Ouvrir l'image produit",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ouvrir l’import existant",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -94452,7 +94470,8 @@
   {
     "text": "Photo de",
     "files": [
-      "apps/web/src/components/UsersPage.tsx"
+      "apps/web/src/components/UsersPage.tsx",
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
       "template"
@@ -130236,6 +130255,15 @@
     "files": [
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "URL de l'image produit",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "jsx"

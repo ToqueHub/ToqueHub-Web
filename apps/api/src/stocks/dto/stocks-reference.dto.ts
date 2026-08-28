@@ -318,6 +318,11 @@ export class UpsertProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
+  imageUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(120)
   originCountry?: string | null;
 

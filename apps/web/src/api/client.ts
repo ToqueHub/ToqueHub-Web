@@ -238,6 +238,7 @@ type ProductMutationPayload = {
   minimumStock?: number;
   gtin?: string | null;
   productUrl?: string | null;
+  imageUrl?: string | null;
   originCountry?: string | null;
   packageLabel?: string | null;
   unitsPerPackage?: number | null;
