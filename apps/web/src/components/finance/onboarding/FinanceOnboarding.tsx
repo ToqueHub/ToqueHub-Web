@@ -22,6 +22,7 @@ import { useLanguage } from '../../../i18n';
 import type { FinanceBootstrap } from '../../../types';
 import { GuidedWelcome } from '../../ui/GuidedWelcome';
 import { GuidedWizard } from '../../ui/GuidedWizard';
+import { ZettleApiKeyGuide } from '../ZettleApiKeyGuide';
 
 type CashService = 'LOYVERSE' | 'PAYPAL_POS' | 'FLATPAY';
 type BusyAction = 'fennoa' | CashService;
@@ -298,8 +299,12 @@ export function FinanceOnboarding({
           historyStart: loyverse.historyStart,
           schedule: loyverse.schedule,
         });
-        const result = await api.testFinancePos(token, 'loyverse', loyverse.siteId);
-        setSuccess(result.message);
+        if (existing && !loyverse.secret.trim()) {
+          setSuccess('Configuration Loyverse conservée.');
+        } else {
+          const result = await api.testFinancePos(token, 'loyverse', loyverse.siteId);
+          setSuccess(result.message);
+        }
         setLoyverse((current) => ({ ...current, secret: '' }));
         setConfiguredNow((current) => [...current, `LOYVERSE:${loyverse.siteId}`]);
       } else if (activeService === 'PAYPAL_POS') {
@@ -316,8 +321,13 @@ export function FinanceOnboarding({
           historyStart: paypal.historyStart,
           schedule: paypal.schedule,
         });
-        const result = await api.testFinancePos(token, 'paypal_pos', paypal.siteId);
-        setSuccess(result.message);
+        const clientIdUnchanged = paypal.clientId.trim() === (paypalExisting?.clientId ?? '');
+        if (existing && !paypal.secret.trim() && clientIdUnchanged) {
+          setSuccess('Configuration PayPal / Zettle conservée.');
+        } else {
+          const result = await api.testFinancePos(token, 'paypal_pos', paypal.siteId);
+          setSuccess(result.message);
+        }
         setPaypal((current) => ({ ...current, secret: '' }));
         setConfiguredNow((current) => [...current, `PAYPAL_POS:${paypal.siteId}`]);
       } else {
@@ -744,42 +754,45 @@ export function FinanceOnboarding({
               </ServiceFields>
             ) : null}
             {activeService === 'PAYPAL_POS' ? (
-              <ServiceFields
-                sites={data.sites}
-                siteId={paypal.siteId}
-                onSiteId={(siteId) => setPaypal({ ...paypal, siteId })}
-                historyStart={paypal.historyStart}
-                onHistoryStart={(historyStart) => setPaypal({ ...paypal, historyStart })}
-                schedule={paypal.schedule}
-                onToggleSchedule={(time) =>
-                  toggleSchedule(time, paypal.schedule, (schedule) =>
-                    setPaypal({ ...paypal, schedule }),
-                  )
-                }
-              >
-                <label>
-                  <span>Client ID PayPal / Zettle</span>
-                  <input
-                    value={paypal.clientId}
-                    onChange={(event) => setPaypal({ ...paypal, clientId: event.target.value })}
-                    placeholder="Client ID du compte marchand"
-                  />
-                </label>
-                <label>
-                  <span>Clé API PayPal / Zettle</span>
-                  <input
-                    type="password"
-                    value={paypal.secret}
-                    onChange={(event) => setPaypal({ ...paypal, secret: event.target.value })}
-                    placeholder={
-                      serviceIsConfigured('PAYPAL_POS', paypal.siteId)
-                        ? 'Laisser vide pour conserver la clé'
-                        : 'Clé API signée'
-                    }
-                    autoComplete="new-password"
-                  />
-                </label>
-              </ServiceFields>
+              <>
+                <ZettleApiKeyGuide />
+                <ServiceFields
+                  sites={data.sites}
+                  siteId={paypal.siteId}
+                  onSiteId={(siteId) => setPaypal({ ...paypal, siteId })}
+                  historyStart={paypal.historyStart}
+                  onHistoryStart={(historyStart) => setPaypal({ ...paypal, historyStart })}
+                  schedule={paypal.schedule}
+                  onToggleSchedule={(time) =>
+                    toggleSchedule(time, paypal.schedule, (schedule) =>
+                      setPaypal({ ...paypal, schedule }),
+                    )
+                  }
+                >
+                  <label>
+                    <span>Client ID PayPal / Zettle</span>
+                    <input
+                      value={paypal.clientId}
+                      onChange={(event) => setPaypal({ ...paypal, clientId: event.target.value })}
+                      placeholder="Client ID du compte marchand"
+                    />
+                  </label>
+                  <label>
+                    <span>Clé API PayPal / Zettle</span>
+                    <input
+                      type="password"
+                      value={paypal.secret}
+                      onChange={(event) => setPaypal({ ...paypal, secret: event.target.value })}
+                      placeholder={
+                        serviceIsConfigured('PAYPAL_POS', paypal.siteId)
+                          ? 'Laisser vide pour conserver la clé'
+                          : 'Clé API signée'
+                      }
+                      autoComplete="new-password"
+                    />
+                  </label>
+                </ServiceFields>
+              </>
             ) : null}
             {activeService === 'FLATPAY' ? (
               <ServiceFields

@@ -1115,6 +1115,16 @@ export const api = {
   purchasingOrder(token: string, id: string) {
     return request<PurchaseOrder>(`/purchasing/orders/${id}`, {}, token);
   },
+  purchasingDrafts(token: string) {
+    return request<PurchaseOrder[]>('/purchasing/orders/drafts/mine', {}, token);
+  },
+  resumePurchaseOrderDraft(token: string, payload: { supplierId: string; siteId: string }) {
+    return request<PurchaseOrder>(
+      '/purchasing/orders/drafts/resume',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
   purchasingSuggestions(token: string, supplierId?: string, siteId?: string) {
     const params = new URLSearchParams();
     if (supplierId) params.set('supplierId', supplierId);
@@ -1403,7 +1413,11 @@ export const api = {
   haccpSensor(token: string, id: string) {
     return request<any>(`/haccp/sensors/${id}`, {}, token);
   },
-  haccpSensorReadings(token: string, id: string, filters: { from?: string; to?: string; limit?: number } = {}) {
+  haccpSensorReadings(
+    token: string,
+    id: string,
+    filters: { from?: string; to?: string; limit?: number } = {},
+  ) {
     const params = new URLSearchParams();
     if (filters.from) params.set('from', filters.from);
     if (filters.to) params.set('to', filters.to);
@@ -1688,10 +1702,7 @@ export const api = {
       token,
     );
   },
-  commitCatererClientImport(
-    token: string,
-    rows: CatererClientImportPreview['rows'],
-  ) {
+  commitCatererClientImport(token: string, rows: CatererClientImportPreview['rows']) {
     return request<CatererClientImportCommitResult>(
       '/menus/caterer/clients/import/commit',
       {
@@ -3752,15 +3763,19 @@ export const api = {
     );
   },
   async downloadProductImportTemplate(token: string) {
-    const response = await fetch(`${API_URL}/api/products/import/template.csv?lang=${activeLanguage()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(
+      `${API_URL}/api/products/import/template.csv?lang=${activeLanguage()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');
     link.href = url;
-    link.download = activeLanguage() === 'en' ? 'product-import-template.csv' : 'modele-import-produits.csv';
+    link.download =
+      activeLanguage() === 'en' ? 'product-import-template.csv' : 'modele-import-produits.csv';
     link.click();
     URL.revokeObjectURL(url);
   },
@@ -3830,11 +3845,14 @@ export const api = {
     token: string,
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>,
   ) {
-    const response = await fetch(`${API_URL}/api/products/csv-creator/export?lang=${activeLanguage()}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows }),
-    });
+    const response = await fetch(
+      `${API_URL}/api/products/csv-creator/export?lang=${activeLanguage()}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      },
+    );
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     const url = URL.createObjectURL(await response.blob());
     const link = globalThis.document.createElement('a');
@@ -3991,9 +4009,12 @@ export const api = {
     );
   },
   async downloadMarginReportCsv(token: string, reportId: string, filename = 'rapport-marges.csv') {
-    const response = await fetch(`${API_URL}/api/stocks/margins/reports/${reportId}.csv?lang=${activeLanguage()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(
+      `${API_URL}/api/stocks/margins/reports/${reportId}.csv?lang=${activeLanguage()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
     if (!response.ok) throw new ApiError(await response.text(), response.status);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);

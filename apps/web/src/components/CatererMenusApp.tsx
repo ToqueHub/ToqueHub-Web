@@ -739,6 +739,7 @@ export function CatererMenusApp({
 
 export function ClientsApp({ token, canManage }: { token: string; canManage: boolean }) {
   const [clients, setClients] = useState<CatererClient[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -767,6 +768,29 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
   useEffect(() => {
     void refreshClients();
   }, [token]);
+
+  const filteredClients = useMemo(() => {
+    const query = clientSearch.trim().toLocaleLowerCase(activeLocale());
+    if (!query) return clients;
+    return clients.filter((client) =>
+      [
+        client.name,
+        client.name2,
+        client.firstName,
+        client.lastName,
+        client.contactName,
+        client.phone,
+        client.email,
+        client.address,
+        client.postalCode,
+        client.city,
+        client.customerNumber,
+        client.businessId,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase(activeLocale()).includes(query)),
+    );
+  }, [clientSearch, clients]);
 
   const startCreateClient = () => {
     setEditingClient(null);
@@ -966,9 +990,22 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
             </span>
             <p className="muted">Fiches clients centralisées, avec factures et encours.</p>
           </div>
+          <div className="stocks-filter-bar caterer-client-search-bar">
+            <div className="search-input-wrapper">
+              <Search size={16} />
+              <input
+                className="search-input"
+                type="search"
+                value={clientSearch}
+                onChange={(event) => setClientSearch(event.target.value)}
+                placeholder="Rechercher un client, téléphone ou adresse e-mail…"
+                aria-label="Rechercher un client par nom, téléphone ou adresse e-mail"
+              />
+            </div>
+          </div>
         </div>
         <div className="caterer-client-grid" aria-busy={loading}>
-          {clients.map((client) => (
+          {filteredClients.map((client) => (
             <article key={client.id} className="caterer-client-card caterer-client-card-rich">
               <div className="caterer-client-card-main">
                 <div className="caterer-client-avatar">{(client.name[0] ?? 'C').toUpperCase()}</div>
@@ -977,11 +1014,7 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
                     <strong>{client.name}</strong>
                     {client.source?.includes('FENNOA') ? (
                       <span className="caterer-client-source">Synchronisé</span>
-                    ) : client.source === 'CLIENT_IMPORT' ? (
-                      <span className="caterer-client-source imported">Importé</span>
-                    ) : (
-                      <span className="caterer-client-source manual">Manuel</span>
-                    )}
+                    ) : null}
                   </div>
                   <small>
                     {[client.customerNumber, client.businessId, client.city]
@@ -1038,6 +1071,12 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
             <Empty
               title="Aucun client"
               text="Ajoutez votre premier client ou synchronisez votre logiciel comptable."
+            />
+          ) : null}
+          {!loading && clients.length > 0 && !filteredClients.length ? (
+            <Empty
+              title="Aucun client trouvé"
+              text="Essayez un autre nom, numéro de téléphone ou adresse e-mail."
             />
           ) : null}
         </div>

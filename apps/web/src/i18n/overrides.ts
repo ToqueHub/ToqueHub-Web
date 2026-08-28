@@ -223,6 +223,7 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Collez ci-dessous l’utilisateur ou alias API, puis la clé générée. La clé sera chiffrée côté serveur.':
     'Paste the API user or alias below, followed by the generated key. The key will be encrypted on the server.',
   'Comment obtenir une clé API Fennoa ?': 'How do I obtain a Fennoa API key?',
+  'Comment obtenir une clé API Zettle ?': 'How do I obtain a Zettle API key?',
   'Configuration terminée': 'Setup complete',
   'Configurez votre': 'Set up your',
   'pilotage financier': 'financial management',
@@ -233,6 +234,7 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Connexion FlatPay et synchronisations enregistrées.':
     'FlatPay connection and synchronisations saved.',
   'Créez un utilisateur API': 'Create an API user',
+  'Créez et copiez la clé': 'Create and copy the key',
   'Dans les paramètres Fennoa, ouvrez la gestion des utilisateurs ou des accès API, puis créez un accès dédié à ToqueHub.':
     'In Fennoa settings, open user or API access management, then create dedicated access for ToqueHub.',
   'Déjà configuré': 'Already set up',
@@ -286,6 +288,9 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Clé API Fennoa': 'Fennoa API key',
   'URL de l’API': 'API URL',
   'Ouvrez Fennoa': 'Open Fennoa',
+  'Connectez-vous à MyZettle': 'Sign in to MyZettle',
+  'Ouvrez Intégrations': 'Open Integrations',
+  'Accédez aux clés API': 'Open API keys',
   'Autorisez la lecture comptable': 'Allow accounting read access',
   'Copiez les deux valeurs': 'Copy both values',
   'Horaires de synchronisation': 'Synchronisation schedule',

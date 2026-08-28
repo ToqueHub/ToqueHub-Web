@@ -852,6 +852,10 @@ async function main() {
     acceptDownloads: true,
     downloadsPath: options.inbox,
     viewport: { width: 1440, height: 1000 },
+    args:
+      process.env.FLATPAY_CHROME_NO_SANDBOX === 'true'
+        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        : [],
   });
   try {
     const pages = context.pages();

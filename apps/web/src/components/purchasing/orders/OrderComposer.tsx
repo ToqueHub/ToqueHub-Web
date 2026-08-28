@@ -33,21 +33,35 @@ export function OrderComposerButton({
   token: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeOrder, setActiveOrder] = useState<PurchaseOrder | null>(null);
+  const close = () => {
+    setOpen(false);
+    setActiveOrder(null);
+    onSaved();
+  };
   return (
     <>
-      <button className="btn btn-primary" onClick={() => setOpen(true)}>
+      <button
+        className="btn btn-primary"
+        onClick={() => {
+          setActiveOrder(null);
+          setOpen(true);
+        }}
+      >
         <Plus size={17} /> Nouvelle commande
       </button>
       {open ? (
         <OrderComposer
+          key={activeOrder?.id ?? 'new-order'}
           bootstrap={bootstrap}
           token={token}
-          order={null}
-          onClose={() => setOpen(false)}
-          onSaved={() => {
-            setOpen(false);
+          order={activeOrder}
+          onDraftReady={(draft) => {
+            setActiveOrder(draft);
             onSaved();
           }}
+          onClose={close}
+          onSaved={close}
           flash={flash}
         />
       ) : null}
@@ -59,6 +73,7 @@ export function OrderComposer({
   bootstrap,
   token,
   order,
+  onDraftReady,
   onClose,
   onSaved,
   flash,
@@ -66,6 +81,7 @@ export function OrderComposer({
   bootstrap: PurchasingBootstrap;
   token: string;
   order: PurchaseOrder | null;
+  onDraftReady?: (order: PurchaseOrder) => void;
   onClose: () => void;
   onSaved: () => void;
   flash: (kind: 'success' | 'error', message: string) => void;
@@ -73,7 +89,14 @@ export function OrderComposer({
   const initialSupplier =
     order?.supplier ?? bootstrap.suppliers.find((item) => item.id === order?.supplierId);
   const orderableBootstrapSuppliers = bootstrap.suppliers.filter(isOrderableSupplier);
-  const [step, setStep] = useState<ComposerStep>(order ? 'catalog' : 'supplier');
+  const [step, setStep] = useState<ComposerStep>(
+    order
+      ? initialSupplier?.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS' &&
+        !order.expectedDeliveryDate
+        ? 'delivery'
+        : 'catalog'
+      : 'supplier',
+  );
   const [supplierId, setSupplierId] = useState(order?.supplierId ?? '');
   const [supplierOptions, setSupplierOptions] = useState<Supplier[]>(() =>
     initialSupplier && !orderableBootstrapSuppliers.some((item) => item.id === initialSupplier.id)
@@ -82,6 +105,7 @@ export function OrderComposer({
   );
   const [supplierSearch, setSupplierSearch] = useState('');
   const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [resumingDraft, setResumingDraft] = useState(false);
   const [siteId, setSiteId] = useState(order?.siteId ?? bootstrap.sites[0]?.id ?? '');
   const [deliveryDate, setDeliveryDate] = useState(order?.expectedDeliveryDate?.slice(0, 10) ?? '');
   const [deliveryMode, setDeliveryMode] = useState<PurchasingDeliveryMode>(
@@ -168,6 +192,7 @@ export function OrderComposer({
   });
   const formSignature = JSON.stringify(payload());
   const lastSavedSignature = useRef(formSignature);
+  const autosavePromise = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     if (step !== 'supplier') return;
@@ -260,20 +285,26 @@ export function OrderComposer({
   useEffect(() => {
     if (!order || step !== 'catalog' || formSignature === lastSavedSignature.current) return;
     setSaveState('dirty');
-    const timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(() => {
       setSaveState('saving');
-      try {
-        const saved = await api.updatePurchaseOrder(token, order.id, {
+      const request = api
+        .updatePurchaseOrder(token, order.id, {
           ...payload(),
           expectedVersion: versionRef.current,
+        })
+        .then((saved) => {
+          versionRef.current = saved.version;
+          lastSavedSignature.current = formSignature;
+          setSaveState('saved');
+        })
+        .catch((error) => {
+          setSaveState('error');
+          flash('error', messageOf(error));
+        })
+        .finally(() => {
+          if (autosavePromise.current === request) autosavePromise.current = null;
         });
-        versionRef.current = saved.version;
-        lastSavedSignature.current = formSignature;
-        setSaveState('saved');
-      } catch (error) {
-        setSaveState('error');
-        flash('error', messageOf(error));
-      }
+      autosavePromise.current = request;
     }, 900);
     return () => window.clearTimeout(timer);
     // La signature contient déjà toutes les valeurs métier autosauvegardées.
@@ -281,6 +312,21 @@ export function OrderComposer({
   }, [formSignature, order?.id, step, token]);
 
   const selectSupplier = async (supplier: Supplier) => {
+    if (!order && onDraftReady) {
+      if (!siteId || resumingDraft) return;
+      setResumingDraft(true);
+      try {
+        const draft = await api.resumePurchaseOrderDraft(token, {
+          supplierId: supplier.id,
+          siteId,
+        });
+        onDraftReady(draft);
+      } catch (error) {
+        flash('error', messageOf(error, 'Impossible de créer ou reprendre ce brouillon.'));
+        setResumingDraft(false);
+      }
+      return;
+    }
     const changed = supplier.id !== supplierId;
     setSupplierId(supplier.id);
     setSupplierOptions((current) =>
@@ -411,12 +457,38 @@ export function OrderComposer({
         : 'Enregistrer et fermer'
     : 'Enregistrer la commande';
 
+  const closeComposer = async () => {
+    if (!order || step !== 'catalog') {
+      onClose();
+      return;
+    }
+    if (autosavePromise.current) await autosavePromise.current;
+    if (formSignature === lastSavedSignature.current) {
+      onClose();
+      return;
+    }
+    setSaveState('saving');
+    try {
+      const saved = await api.updatePurchaseOrder(token, order.id, {
+        ...payload(),
+        expectedVersion: versionRef.current,
+      });
+      versionRef.current = saved.version;
+      lastSavedSignature.current = formSignature;
+      setSaveState('saved');
+      onClose();
+    } catch (error) {
+      setSaveState('error');
+      flash('error', messageOf(error, 'Le brouillon n’a pas pu être enregistré.'));
+    }
+  };
+
   return (
     <Modal
       isOpen
       size="full"
       title={order ? `Modifier ${order.number}` : 'Nouvelle commande'}
-      onClose={onClose}
+      onClose={() => void closeComposer()}
       bodyClassName="purchasing-composer purchasing-catalog-modal"
       overlayClassName="purchasing-composer-overlay"
     >
@@ -532,7 +604,7 @@ export function OrderComposer({
         <SupplierSelection
           suppliers={supplierOptions}
           search={supplierSearch}
-          loading={suppliersLoading}
+          loading={suppliersLoading || resumingDraft}
           onSearch={setSupplierSearch}
           onSelect={(supplier) => void selectSupplier(supplier)}
         />

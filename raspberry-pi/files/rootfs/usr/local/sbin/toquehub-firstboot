@@ -286,6 +286,7 @@ fi
 
 set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
 set_env_if_placeholder JWT_SECRET "$(secret)"
+set_env_if_placeholder FINANCE_SECRETS_ENCRYPTION_KEY "$(grep -E '^JWT_SECRET=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
 set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
 set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"

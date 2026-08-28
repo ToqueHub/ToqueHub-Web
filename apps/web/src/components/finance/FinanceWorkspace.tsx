@@ -51,6 +51,7 @@ import {
   prefetchFinanceSalesInsights,
 } from './FinanceSalesInsights';
 import { FinanceOnboarding } from './onboarding/FinanceOnboarding';
+import { ZettleApiKeyGuide } from './ZettleApiKeyGuide';
 
 export type FinanceTab =
   | 'cockpit'
@@ -3637,6 +3638,7 @@ function PosApiSettingsModal({
                 </span>
               </div>
             </div>
+            {provider === 'PAYPAL_POS' ? <ZettleApiKeyGuide /> : null}
             <div className="finance-config-grid">
               <label className="wide">
                 <span>Établissement ToqueHub</span>

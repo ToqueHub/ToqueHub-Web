@@ -96,6 +96,11 @@ export class CreatePurchaseOrderDto {
   lines!: PurchaseOrderLineDto[];
 }
 
+export class ResumePurchaseOrderDraftDto {
+  @IsUUID() supplierId!: string;
+  @IsUUID() siteId!: string;
+}
+
 export class UpdatePurchaseOrderDto extends CreatePurchaseOrderDto {
   @Type(() => Number) @IsInt() @Min(1) expectedVersion!: number;
 }

@@ -68,6 +68,29 @@ export class PurchaseOrderQueryService {
     };
   }
 
+  async myDrafts(organizationId: string, actor: AuthenticatedUser) {
+    await this.assertReadable(organizationId, actor);
+    this.policy.assertPermission(actor, 'purchasing.draft');
+    const drafts = await this.prisma.purchaseOrder.findMany({
+      where: {
+        organizationId,
+        createdById: actor.id,
+        status: PurchaseOrderStatus.DRAFT,
+      },
+      include: { site: true, _count: { select: { lines: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    });
+    return drafts.map(({ _count, ...order }) => ({
+      ...order,
+      deliveryFeeSnapshot: Number(order.deliveryFeeSnapshot ?? 0),
+      totalExcludingTax: Number(order.totalExcludingTax),
+      totalTax: Number(order.totalTax),
+      totalIncludingTax: Number(order.totalIncludingTax),
+      lineCount: _count.lines,
+    }));
+  }
+
   async suppliers(
     organizationId: string,
     actor: AuthenticatedUser,

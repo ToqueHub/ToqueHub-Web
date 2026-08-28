@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   CreatePurchaseOrderDto,
   PurchaseOrderLineDto,
+  ResumePurchaseOrderDraftDto,
   UpdatePurchaseOrderDto,
 } from './dto/purchasing.dto';
 import { PurchaseOrderNumberService } from './purchase-order-number.service';
@@ -15,6 +16,7 @@ import { PurchasingContextService } from './purchasing-context.service';
 import { PurchasingDeliveryService } from './purchasing-delivery.service';
 import {
   createPurchaseOrderEvent,
+  purchaseOrderDetailArgs,
   purchaseOrderInclude,
   serializePurchaseOrder,
 } from './purchasing-records';
@@ -30,7 +32,61 @@ export class PurchaseOrderCommandService {
     private readonly orderQueries: PurchaseOrderQueryService,
   ) {}
 
+  async resumeDraft(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    dto: ResumePurchaseOrderDraftDto,
+  ) {
+    await this.context.assertInstalled(organizationId);
+    this.policy.assertPermission(actor, 'purchasing.draft');
+    const existing = await this.prisma.purchaseOrder.findFirst({
+      where: {
+        organizationId,
+        supplierId: dto.supplierId,
+        createdById: actor.id,
+        status: PurchaseOrderStatus.DRAFT,
+      },
+      ...purchaseOrderDetailArgs,
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (existing) return serializePurchaseOrder(existing);
+
+    return this.createNew(organizationId, actor, {
+      supplierId: dto.supplierId,
+      siteId: dto.siteId,
+      lines: [],
+    });
+  }
+
   async create(organizationId: string, actor: AuthenticatedUser, dto: CreatePurchaseOrderDto) {
+    await this.context.assertInstalled(organizationId);
+    this.policy.assertPermission(actor, 'purchasing.draft');
+    const supplier = await this.context.ensureSupplier(organizationId, dto.supplierId);
+    this.delivery.assertOrderable(supplier.purchasingProfile);
+    const existing = await this.prisma.purchaseOrder.findFirst({
+      where: {
+        organizationId,
+        supplierId: dto.supplierId,
+        createdById: actor.id,
+        status: PurchaseOrderStatus.DRAFT,
+      },
+      select: { id: true, version: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (existing) {
+      return this.update(organizationId, actor, existing.id, {
+        ...dto,
+        expectedVersion: existing.version,
+      });
+    }
+    return this.createNew(organizationId, actor, dto);
+  }
+
+  private async createNew(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    dto: CreatePurchaseOrderDto,
+  ) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.draft');
     const [supplier, site, settings] = await Promise.all([

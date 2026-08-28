@@ -213,6 +213,57 @@ describe('Purchasing installation safeguards', () => {
 });
 
 describe('Purchasing Stocks source of truth', () => {
+  it('resumes the current user draft for a supplier without creating another order', async () => {
+    const existingDraft = {
+      id: 'draft-1',
+      number: 'CA-2026-00001',
+      supplierId: 'supplier-1',
+      siteId: 'site-1',
+      status: 'DRAFT',
+      createdById: 'user-1',
+      deliveryFeeSnapshot: 0,
+      totalExcludingTax: 12,
+      totalTax: 1.2,
+      totalIncludingTax: 13.2,
+      lines: [],
+      receipts: [],
+    };
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          purchasingInstalledAt: new Date(),
+        }),
+      },
+      purchaseOrder: { findFirst: jest.fn().mockResolvedValue(existingDraft) },
+      $transaction: jest.fn(),
+    };
+
+    const result = await commandService(prisma).resumeDraft(
+      'org-1',
+      {
+        id: 'user-1',
+        email: 'user@example.com',
+        organizationId: 'org-1',
+        role: 'Utilisateur',
+        permissions: ['purchasing.draft'],
+      },
+      { supplierId: 'supplier-1', siteId: 'site-1' },
+    );
+
+    expect(result).toEqual(expect.objectContaining({ id: 'draft-1', totalIncludingTax: 13.2 }));
+    expect(prisma.purchaseOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          supplierId: 'supplier-1',
+          createdById: 'user-1',
+          status: 'DRAFT',
+        }),
+      }),
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('refuses to create an order for a supplier configured for in-store purchases', async () => {
     const prisma = {
       organization: {

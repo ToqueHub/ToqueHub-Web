@@ -1,14 +1,12 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle,
+  ChevronRight,
   CheckCircle2,
+  Clock3,
   FileText,
+  FilePenLine,
   MailCheck,
   PackageCheck,
   ShoppingCart,
@@ -26,14 +24,10 @@ import type {
   PurchasingDashboard,
   PurchasingEmailConnection,
 } from '../../types';
-import {
-  PurchasingSkeleton,
-  messageOf,
-  tabTitle,
-} from './components/PurchasingUi';
+import { PurchasingSkeleton, messageOf, tabTitle } from './components/PurchasingUi';
 import { PurchasingDashboardView } from './pages/PurchasingDashboard';
 import { OrdersView } from './pages/PurchaseOrders';
-import { OrderComposerButton } from './orders/OrderComposer';
+import { OrderComposer, OrderComposerButton } from './orders/OrderComposer';
 import { PurchasingOnboarding } from './onboarding/PurchasingOnboarding';
 import { ReceiptsView } from './receipts/ReceiptWorkspace';
 
@@ -49,6 +43,8 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
   const [bootstrap, setBootstrap] = useState<PurchasingBootstrap | null>(null);
   const [dashboard, setDashboard] = useState<PurchasingDashboard | null>(null);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [drafts, setDrafts] = useState<PurchaseOrder[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
   const [receipts, setReceipts] = useState<PurchaseReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -78,7 +74,8 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
       setOnboardingOpen(
         !configured.onboarding.completedAt &&
           configured.permissions.includes('purchasing.manage') &&
-          sessionStorage.getItem(`purchasing:onboarding-dismissed:${configured.organizationId}`) !== '1',
+          sessionStorage.getItem(`purchasing:onboarding-dismissed:${configured.organizationId}`) !==
+            '1',
       );
     }
     return configured;
@@ -116,17 +113,26 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
     [debouncedOrderSearch, orderPage, orderStatus, receiptPage, token],
   );
 
-  const refresh = useCallback(
-    async () => {
-      setError(undefined);
-      try {
-        await loadTab(tab);
-      } catch (err) {
-        setError(messageOf(err, 'Impossible de charger le module Achats.'));
-      }
-    },
-    [loadTab, tab],
-  );
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    try {
+      setDrafts(await api.purchasingDrafts(token));
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [token]);
+
+  const refresh = useCallback(async () => {
+    setError(undefined);
+    try {
+      await Promise.all([
+        loadTab(tab),
+        bootstrap?.permissions.includes('purchasing.draft') ? loadDrafts() : Promise.resolve(),
+      ]);
+    } catch (err) {
+      setError(messageOf(err, 'Impossible de charger le module Achats.'));
+    }
+  }, [bootstrap?.permissions, loadDrafts, loadTab, tab]);
 
   useEffect(() => {
     setLoading(true);
@@ -138,11 +144,11 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
 
   useEffect(() => {
     if (!bootstrap) return;
-    void loadTab(
-      tab,
-      tab === 'orders' ? orderPage : tab === 'receipts' ? receiptPage : undefined,
-    ).catch((err) => setError(messageOf(err, 'Impossible de charger cet onglet.')));
-  }, [bootstrap, loadTab, orderPage, orderStatus, receiptPage, tab]);
+    void Promise.all([
+      loadTab(tab, tab === 'orders' ? orderPage : tab === 'receipts' ? receiptPage : undefined),
+      bootstrap.permissions.includes('purchasing.draft') ? loadDrafts() : Promise.resolve(),
+    ]).catch((err) => setError(messageOf(err, 'Impossible de charger cet onglet.')));
+  }, [bootstrap, loadDrafts, loadTab, orderPage, orderStatus, receiptPage, tab]);
 
   const can = useCallback(
     (permission: string) => Boolean(bootstrap?.permissions.includes(permission)),
@@ -201,24 +207,56 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
           padding: '2.5rem',
           border: '1px solid rgba(16, 185, 129, 0.2)',
           borderRadius: '24px',
-          background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 65%), radial-gradient(circle at 90% 80%, rgba(5, 150, 105, 0.08) 0%, transparent 55%), linear-gradient(135deg, #06090f 0%, #0c121e 100%)',
+          background:
+            'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 65%), radial-gradient(circle at 90% 80%, rgba(5, 150, 105, 0.08) 0%, transparent 55%), linear-gradient(135deg, #06090f 0%, #0c121e 100%)',
           color: 'white',
         }}
       >
         <div>
-          <span className="welcome-tag" style={{ color: 'var(--primary)', marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.42rem' }}>
+          <span
+            className="welcome-tag"
+            style={{
+              color: 'var(--primary)',
+              marginBottom: '0.5rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.42rem',
+            }}
+          >
             <ShoppingCart size={15} /> Module Achats
           </span>
-          <h1 className="welcome-title" style={{ color: 'white', margin: '0.2rem 0', fontSize: '2rem', fontWeight: 800 }}>{tabTitle(tab)}</h1>
-          <p className="welcome-desc" style={{ color: '#94a3b8', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>
+          <h1
+            className="welcome-title"
+            style={{ color: 'white', margin: '0.2rem 0', fontSize: '2rem', fontWeight: 800 }}
+          >
+            {tabTitle(tab)}
+          </h1>
+          <p
+            className="welcome-desc"
+            style={{ color: '#94a3b8', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}
+          >
             Préparez, envoyez et réceptionnez vos commandes sans dupliquer les référentiels Stocks.
           </p>
         </div>
-        <div className="purchasing-hero-actions" style={{ display: 'flex', gap: '0.55rem', alignSelf: 'flex-end', flexWrap: 'wrap', zIndex: 1 }}>
+        <div
+          className="purchasing-hero-actions"
+          style={{
+            display: 'flex',
+            gap: '0.55rem',
+            alignSelf: 'flex-end',
+            flexWrap: 'wrap',
+            zIndex: 1,
+          }}
+        >
           {tab === 'dashboard' && (
             <button
               className="btn btn-secondary btn-outline"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px' }}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '10px',
+              }}
               onClick={() => void openEmailStatus()}
             >
               <MailCheck size={16} /> Messagerie
@@ -226,7 +264,12 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
           )}
           <button
             className="btn btn-secondary btn-outline"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px' }}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '10px',
+            }}
             onClick={() => setOnboardingOpen(true)}
           >
             <Sparkles size={16} /> Guide de configuration
@@ -256,6 +299,17 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
         ))}
       </nav>
 
+      {can('purchasing.draft') && (
+        <PurchasingDraftsBar
+          bootstrap={bootstrap!}
+          drafts={drafts}
+          loading={draftsLoading}
+          token={token}
+          flash={flash}
+          onChanged={() => void refresh()}
+        />
+      )}
+
       {error && (
         <div className="alert-modern error dismissible">
           <AlertTriangle size={18} />
@@ -276,12 +330,20 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
       )}
 
       {tab === 'dashboard' && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <PurchasingDashboardView dashboard={dashboard} orders={orders} onNavigate={onNavigate} />
         </motion.div>
       )}
       {tab === 'orders' && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <OrdersView
             bootstrap={bootstrap!}
             orders={orders}
@@ -306,7 +368,11 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
         </motion.div>
       )}
       {tab === 'receipts' && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <ReceiptsView
             bootstrap={bootstrap!}
             receipts={receipts}
@@ -361,6 +427,112 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
   );
 }
 
+function PurchasingDraftsBar({
+  bootstrap,
+  drafts,
+  loading,
+  token,
+  flash,
+  onChanged,
+}: {
+  bootstrap: PurchasingBootstrap;
+  drafts: PurchaseOrder[];
+  loading: boolean;
+  token: string;
+  flash: (kind: 'success' | 'error', message: string) => void;
+  onChanged: () => void;
+}) {
+  const [opening, setOpening] = useState<string>();
+  const [composerOrder, setComposerOrder] = useState<PurchaseOrder>();
+  const visibleDrafts = drafts.filter(
+    (draft, index, list) =>
+      list.findIndex((candidate) => candidate.supplierId === draft.supplierId) === index,
+  );
+
+  const openDraft = async (draft: PurchaseOrder) => {
+    setOpening(draft.id);
+    try {
+      setComposerOrder(await api.purchasingOrder(token, draft.id));
+    } catch (error) {
+      flash('error', messageOf(error, 'Impossible d’ouvrir ce brouillon.'));
+    } finally {
+      setOpening(undefined);
+    }
+  };
+  const closeComposer = () => {
+    setComposerOrder(undefined);
+    onChanged();
+  };
+
+  return (
+    <section className="purchasing-drafts" aria-labelledby="purchasing-drafts-title">
+      <div className="purchasing-drafts-heading">
+        <span className="purchasing-drafts-icon">
+          <FilePenLine size={18} />
+        </span>
+        <div>
+          <h2 id="purchasing-drafts-title">
+            Brouillons <span>{visibleDrafts.length}</span>
+          </h2>
+          <p>Une commande en cours est conservée automatiquement pour chaque fournisseur.</p>
+        </div>
+      </div>
+      {visibleDrafts.length ? (
+        <div className="purchasing-drafts-list">
+          {visibleDrafts.map((draft) => (
+            <button
+              type="button"
+              className="purchasing-draft-card"
+              key={draft.id}
+              disabled={opening === draft.id}
+              onClick={() => void openDraft(draft)}
+            >
+              <span className="purchasing-draft-main">
+                <strong>{draft.supplierNameSnapshot}</strong>
+                <small>
+                  {draft.number} · {draft.site?.name ?? 'Site non renseigné'}
+                </small>
+              </span>
+              <span className="purchasing-draft-meta">
+                <small>
+                  {draft.lineCount ?? 0} article{(draft.lineCount ?? 0) > 1 ? 's' : ''}
+                </small>
+                <small>
+                  <Clock3 size={12} /> {draftUpdatedLabel(draft.updatedAt)}
+                </small>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="purchasing-drafts-empty">
+          {loading ? 'Chargement des brouillons…' : 'Aucun brouillon en cours.'}
+        </p>
+      )}
+      {composerOrder && (
+        <OrderComposer
+          bootstrap={bootstrap}
+          token={token}
+          order={composerOrder}
+          onClose={closeComposer}
+          onSaved={closeComposer}
+          flash={flash}
+        />
+      )}
+    </section>
+  );
+}
+
+function draftUpdatedLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'récemment';
+  return `modifié ${date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+  })} à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 function PurchasingEmailStatusModal({
   activeProvider,
   connections,
@@ -384,7 +556,9 @@ function PurchasingEmailStatusModal({
     SMTP: 'Messagerie SMTP',
     RESEND: 'Resend',
   };
-  const active = activeProvider ? connections.find((item) => item.provider === activeProvider) : null;
+  const active = activeProvider
+    ? connections.find((item) => item.provider === activeProvider)
+    : null;
   const resendIsActive = !activeProvider && Boolean(resendVerifiedAt);
   const connected = Boolean(active && active.status === 'CONNECTED') || resendIsActive;
   const identity = active?.senderName || active?.senderEmail || null;
@@ -405,18 +579,46 @@ function PurchasingEmailStatusModal({
   };
 
   return (
-    <div className="modal-overlay purchasing-email-status-overlay" role="presentation" onMouseDown={onClose}>
-      <section className="purchasing-email-status-modal" role="dialog" aria-modal="true" aria-labelledby="purchasing-email-status-title" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="icon-btn purchasing-email-status-close" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
-        <span className={`purchasing-email-status-icon ${connected ? 'ready' : ''}`}><MailCheck size={22} /></span>
+    <div
+      className="modal-overlay purchasing-email-status-overlay"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <section
+        className="purchasing-email-status-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="purchasing-email-status-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          className="icon-btn purchasing-email-status-close"
+          onClick={onClose}
+          aria-label="Fermer"
+        >
+          <X size={18} />
+        </button>
+        <span className={`purchasing-email-status-icon ${connected ? 'ready' : ''}`}>
+          <MailCheck size={22} />
+        </span>
         <span className="purchasing-email-status-kicker">Envoi fournisseur</span>
-        <h2 id="purchasing-email-status-title">Messagerie {connected ? 'prête' : 'à configurer'}</h2>
+        <h2 id="purchasing-email-status-title">
+          Messagerie {connected ? 'prête' : 'à configurer'}
+        </h2>
         {loading ? (
           <p>Vérification de la connexion…</p>
         ) : connected ? (
           <>
             <p>
-              {resendIsActive ? 'Resend est testé et actif pour les envois fournisseurs.' : <>Les bons de commande partiront depuis <strong>{identity || 'la boîte connectée'}</strong>{active?.senderName && active.senderEmail ? ` (${active.senderEmail})` : ''}.</>}
+              {resendIsActive ? (
+                'Resend est testé et actif pour les envois fournisseurs.'
+              ) : (
+                <>
+                  Les bons de commande partiront depuis{' '}
+                  <strong>{identity || 'la boîte connectée'}</strong>
+                  {active?.senderName && active.senderEmail ? ` (${active.senderEmail})` : ''}.
+                </>
+              )}
             </p>
             <div className="purchasing-email-status-provider">
               <span>{resendIsActive ? 'Resend' : labels[active!.provider]}</span>
@@ -425,8 +627,13 @@ function PurchasingEmailStatusModal({
           </>
         ) : (
           <>
-            <p>Connectez Google, Microsoft, votre SMTP ou Resend avant d’envoyer une commande fournisseur.</p>
-            <button className="btn btn-primary" onClick={onConfigure}>Configurer la messagerie</button>
+            <p>
+              Connectez Google, Microsoft, votre SMTP ou Resend avant d’envoyer une commande
+              fournisseur.
+            </p>
+            <button className="btn btn-primary" onClick={onConfigure}>
+              Configurer la messagerie
+            </button>
           </>
         )}
         {!loading && connectedConnections.length > 0 && (
@@ -436,7 +643,11 @@ function PurchasingEmailStatusModal({
               <div key={item.provider} className="purchasing-email-status-choice">
                 <span>
                   <b>{labels[item.provider]}</b>
-                  <small>{item.senderName && item.senderEmail ? `${item.senderName} · ${item.senderEmail}` : item.senderEmail || 'Connectée'}</small>
+                  <small>
+                    {item.senderName && item.senderEmail
+                      ? `${item.senderName} · ${item.senderEmail}`
+                      : item.senderEmail || 'Connectée'}
+                  </small>
                 </span>
                 <button
                   className="btn btn-secondary btn-small"

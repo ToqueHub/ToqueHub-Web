@@ -78,8 +78,18 @@ export class PosApiCredentialsService {
       throw new BadRequestException('Le Client ID PayPal POS/Zettle est requis.');
     }
     const defaults = PROVIDER_DEFAULTS[provider];
-    const effectiveSecret = secret || this.secrets.decrypt(current!.secretEncrypted);
-    const accountFingerprint = this.accountFingerprint(provider, clientId, effectiveSecret);
+    // Editing schedules or resuming the wizard must not require decrypting and
+    // resubmitting an unchanged credential. Its stored fingerprint is already valid.
+    const credentialsUnchanged = Boolean(
+      current && !secret && clientId === (current.clientId || null),
+    );
+    const accountFingerprint = credentialsUnchanged
+      ? current!.accountFingerprint
+      : this.accountFingerprint(
+          provider,
+          clientId,
+          secret || this.secrets.decrypt(current!.secretEncrypted),
+        );
     const conflictingConnection = await this.prisma.financePosConnection.findFirst({
       where: {
         organizationId,

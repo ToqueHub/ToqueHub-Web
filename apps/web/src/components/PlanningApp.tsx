@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -185,7 +186,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [siteFilter, setSiteFilter] = useState('');
   const [serviceFilter, setServiceFilter] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState('');
-  const [seasonalTemplateId, setSeasonalTemplateId] = useState('');
   const [search, setSearch] = useState('');
   const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>('month');
   const [planningView, setPlanningView] = useState<PlanningView>('month');
@@ -219,7 +219,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
 
   useEffect(() => {
     void loadContext({ showLoading: !data });
-  }, [token, selectedDate, siteFilter, serviceFilter, employeeFilter, seasonalTemplateId]);
+  }, [token, selectedDate, siteFilter, serviceFilter, employeeFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,7 +270,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         siteId: siteFilter || undefined,
         departmentId: serviceFilter || undefined,
         employeeId: employeeFilter || undefined,
-        seasonalTemplateId: seasonalTemplateId || undefined,
       });
       if (mounted) setData(normalizePlanningBootstrap(payload));
     } catch (err) {
@@ -683,8 +682,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           setServiceFilter={setServiceFilter}
           employeeFilter={employeeFilter}
           setEmployeeFilter={setEmployeeFilter}
-          seasonalTemplateId={seasonalTemplateId}
-          setSeasonalTemplateId={setSeasonalTemplateId}
           search={search}
           setSearch={setSearch}
           sites={effectiveSites}
@@ -1281,9 +1278,9 @@ function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config
   const distribution = remoteDashboard?.hoursByDepartment?.length ? normalizeHoursByDepartment(remoteDashboard.hoursByDepartment) : periodAssignments.length ? normalizeHoursByDepartment(departmentHoursFromAssignments(periodAssignments)) : normalizeHoursByDepartment(hoursByDepartment);
   const actionRows = remoteDashboard?.actions?.length ? remoteDashboard.actions : actions?.length ? actions : [];
   const kpis = [
-    { key: 'plannedHours' as const, label: 'Heures planifiées', value: formatMinutesValue(periodDashboard.plannedMinutes), Icon: Clock },
-    { key: 'estimatedCost' as const, label: 'Coût estimé', value: Number(periodDashboard.estimatedCost) > 0 ? `${periodDashboard.estimatedCost} €` : 'Non configuré', Icon: Coins },
-    { key: 'activeAlerts' as const, label: 'Alertes actives', value: periodDashboard.activeAlerts, Icon: Bell },
+    { key: 'plannedHours' as const, label: 'Heures planifiées', value: formatMinutesValue(periodDashboard.plannedMinutes), Icon: Clock, tone: 'emerald' },
+    { key: 'estimatedCost' as const, label: 'Coût estimé', value: Number(periodDashboard.estimatedCost) > 0 ? `${periodDashboard.estimatedCost} €` : 'Non configuré', Icon: Coins, tone: 'blue' },
+    { key: 'activeAlerts' as const, label: 'Alertes actives', value: periodDashboard.activeAlerts, Icon: Bell, tone: 'orange' },
   ].filter((item) => config.blocks[item.key]);
   function setPlanningMode(mode: PlanningBlockMode) {
     onConfigChange({ ...config, planningBlockMode: mode });
@@ -1311,8 +1308,26 @@ function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config
       </div>
 
       {kpis.length ? (
-        <div className="stats-grid planning-kpi-grid">
-          {kpis.map(({ label, value, Icon }) => <motion.div className="stat-card-modern" key={label} whileHover={{ y: -2 }}><div className="stat-icon"><Icon size={20} /></div><div><span>{label}</span><strong>{value}</strong></div></motion.div>)}
+        <div className="metrics-grid planning-kpi-grid">
+          {kpis.map(({ label, value, Icon, tone }, index) => (
+            <motion.div
+              className={`metric-card-modern tone-${tone}`}
+              key={label}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.38, delay: (index + 1) * 0.05, ease: 'easeOut' }}
+              whileHover={{ y: -5, boxShadow: '0 20px 30px rgba(9, 13, 22, 0.06)' }}
+            >
+              <div className="metric-header">
+                <div className={`metric-icon-wrapper-modern tone-${tone}`}><Icon size={20} /></div>
+              </div>
+              <div className="metric-body-modern">
+                <span className="metric-value-modern">{value}</span>
+                <span className="metric-label-modern">{label}</span>
+              </div>
+              <div className="metric-shine" />
+            </motion.div>
+          ))}
         </div>
       ) : null}
 
@@ -1542,8 +1557,6 @@ function PlanningWorkspace(props: {
   setServiceFilter: (value: string) => void;
   employeeFilter: string;
   setEmployeeFilter: (value: string) => void;
-  seasonalTemplateId: string;
-  setSeasonalTemplateId: (value: string) => void;
   search: string;
   setSearch: (value: string) => void;
   sites: Site[];
@@ -1611,7 +1624,6 @@ function PlanningWorkspace(props: {
               <button key={view} type="button" className={props.planningView === view ? 'active' : ''} onClick={() => props.setPlanningView(view)}>{viewLabels[view]}</button>
             ))}
           </div>
-          <span className="muted tiny">{props.planningView === 'day' ? 'Toutes les personnes prévues sur la journée.' : props.planningView === 'week' ? 'Vue semaine par jour, avec les affectations en pastilles.' : props.planningView === 'year' ? 'Synthèse charge, absences et zones à vérifier.' : 'Vue calendrier avec détail complet par jour.'}</span>
         </div>
         {activeQuickMode || !props.quickPanelOpen ? (
           <div className={`quick-mode-banner ${activeQuickMode ? 'active' : ''}`}>
@@ -1647,9 +1659,35 @@ function PlanningWorkspace(props: {
   );
 }
 
-function PlanningPlannerFilters(props: { selectedDate: string; setSelectedDate: (value: string) => void; siteFilter: string; setSiteFilter: (value: string) => void; serviceFilter: string; setServiceFilter: (value: string) => void; employeeFilter: string; setEmployeeFilter: (value: string) => void; seasonalTemplateId: string; setSeasonalTemplateId: (value: string) => void; search: string; setSearch: (value: string) => void; sites: Site[]; departments: HrDepartment[]; collaborators: HrCollaborator[]; templates: PlanningTemplate[] }) {
-  const selectedYear = new Date(props.selectedDate).getFullYear();
-  const years = Array.from({ length: 9 }, (_, index) => selectedYear - 2 + index);
+function PlanningPlannerFilters(props: { selectedDate: string; setSelectedDate: (value: string) => void; siteFilter: string; setSiteFilter: (value: string) => void; serviceFilter: string; setServiceFilter: (value: string) => void; employeeFilter: string; setEmployeeFilter: (value: string) => void; search: string; setSearch: (value: string) => void; sites: Site[]; departments: HrDepartment[]; collaborators: HrCollaborator[] }) {
+  const selectedPeriod = parseLocalDate(props.selectedDate);
+  const selectedYear = selectedPeriod.getFullYear();
+  const selectedMonth = selectedPeriod.getMonth();
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [pickerYearText, setPickerYearText] = useState(String(selectedYear));
+  const monthChoices = Array.from({ length: 12 }, (_, month) => ({
+    month,
+    label: new Intl.DateTimeFormat(activeLocale(), { month: 'short' }).format(new Date(2024, month, 1)),
+  }));
+
+  useEffect(() => {
+    if (!periodPickerOpen) setPickerYearText(String(selectedYear));
+  }, [periodPickerOpen, selectedYear]);
+
+  function pickerYear() {
+    const parsed = Number(pickerYearText);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 9999 ? parsed : selectedYear;
+  }
+
+  function movePickerYear(offset: number) {
+    setPickerYearText(String(Math.max(1, Math.min(9999, pickerYear() + offset))));
+  }
+
+  function selectPeriod(month: number) {
+    props.setSelectedDate(`${String(pickerYear()).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-01`);
+    setPeriodPickerOpen(false);
+  }
+
   return (
     <div className="card-modern planning-filter-card">
       <div className="planning-month-header">
@@ -1657,36 +1695,92 @@ function PlanningPlannerFilters(props: { selectedDate: string; setSelectedDate: 
           <span className="section-tagline">Calendrier mensuel</span>
           <h2>{monthLabel(props.selectedDate)}</h2>
         </div>
-        <div className="setup-actions">
-          <button className="btn btn-secondary" onClick={() => props.setSelectedDate(addMonths(props.selectedDate, -1))}><ChevronLeft size={16} /> Mois précédent</button>
-          <button className="btn btn-secondary" onClick={() => props.setSelectedDate(todayIso())}>Aujourd’hui</button>
-          <button className="btn btn-secondary" onClick={() => props.setSelectedDate(addMonths(props.selectedDate, 1))}>Mois suivant <ChevronRight size={16} /></button>
+        <div className="setup-actions planning-month-actions">
+          <button className="btn btn-secondary" type="button" onClick={() => props.setSelectedDate(addMonths(props.selectedDate, -1))}><ChevronLeft size={16} /> Mois précédent</button>
+          <button className="btn btn-secondary" type="button" onClick={() => props.setSelectedDate(todayIso())}>Aujourd’hui</button>
+          <button className="btn btn-secondary" type="button" onClick={() => props.setSelectedDate(addMonths(props.selectedDate, 1))}>Mois suivant <ChevronRight size={16} /></button>
         </div>
       </div>
       <div className="planning-filter-grid planning-desktop-filters">
-        <input type="month" value={props.selectedDate.slice(0, 7)} onChange={(event) => props.setSelectedDate(`${event.target.value}-01`)} />
-        <select value={selectedYear} onChange={(event) => props.setSelectedDate(setYear(props.selectedDate, Number(event.target.value)))}>
-          {years.map((year) => <option key={year} value={year}>{year}</option>)}
-        </select>
-        <select value={props.siteFilter} onChange={(event) => props.setSiteFilter(event.target.value)}>
-          <option value="">Tous sites</option>
-          {props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-        </select>
-        <select value={props.serviceFilter} onChange={(event) => props.setServiceFilter(event.target.value)}>
-          <option value="">Tous services</option>
-          {props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
-        </select>
-        <select value={props.seasonalTemplateId} onChange={(event) => props.setSeasonalTemplateId(event.target.value)}>
-          <option value="">Modèle saisonnier</option>
-          {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-        </select>
-        <select value={props.employeeFilter} onChange={(event) => props.setEmployeeFilter(event.target.value)}>
-          <CollaboratorOptions collaborators={props.collaborators} placeholder="Voir salarié" />
-        </select>
-        <div className="search-input-wrapper">
-          <Search size={16} />
-          <input className="search-input" placeholder="Nom, poste, commentaire..." value={props.search} onChange={(event) => props.setSearch(event.target.value)} />
+        <div
+          className="planning-filter-field planning-period-field"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPeriodPickerOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setPeriodPickerOpen(false);
+          }}
+        >
+          <span><CalendarDays size={14} /> Période</span>
+          <button
+            className={`planning-period-trigger ${periodPickerOpen ? 'active' : ''}`}
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={periodPickerOpen}
+            onClick={() => setPeriodPickerOpen((open) => !open)}
+          >
+            <span>{monthLabel(props.selectedDate)}</span>
+            <ChevronDown size={16} />
+          </button>
+          {periodPickerOpen ? (
+            <div className="planning-period-popover" role="dialog" aria-label="Choisir le mois et l’année">
+              <div className="planning-period-year-control">
+                <button type="button" aria-label="Année précédente" onClick={() => movePickerYear(-1)}><ChevronLeft size={17} /></button>
+                <input
+                  aria-label="Année"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={pickerYearText}
+                  onChange={(event) => setPickerYearText(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onBlur={() => setPickerYearText(String(pickerYear()))}
+                />
+                <button type="button" aria-label="Année suivante" onClick={() => movePickerYear(1)}><ChevronRight size={17} /></button>
+              </div>
+              <div className="planning-period-months">
+                {monthChoices.map(({ month, label }) => (
+                  <button
+                    type="button"
+                    key={month}
+                    className={month === selectedMonth && pickerYear() === selectedYear ? 'active' : ''}
+                    onClick={() => selectPeriod(month)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button className="planning-period-today" type="button" onClick={() => { props.setSelectedDate(todayIso()); setPeriodPickerOpen(false); }}>
+                Revenir à aujourd’hui
+              </button>
+            </div>
+          ) : null}
         </div>
+        <label className="planning-filter-field">
+          <span><Building2 size={14} /> Établissement</span>
+          <select value={props.siteFilter} onChange={(event) => props.setSiteFilter(event.target.value)}>
+            <option value="">Tous les établissements</option>
+            {props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+          </select>
+        </label>
+        <label className="planning-filter-field">
+          <span><Layers size={14} /> Service</span>
+          <select value={props.serviceFilter} onChange={(event) => props.setServiceFilter(event.target.value)}>
+            <option value="">Tous les services</option>
+            {props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+          </select>
+        </label>
+        <label className="planning-filter-field">
+          <span><UserRound size={14} /> Salarié</span>
+          <select value={props.employeeFilter} onChange={(event) => props.setEmployeeFilter(event.target.value)}>
+            <CollaboratorOptions collaborators={props.collaborators} placeholder="Tous les salariés" />
+          </select>
+        </label>
+        <label className="planning-filter-field planning-search-field">
+          <span><Search size={14} /> Recherche</span>
+          <div className="search-input-wrapper">
+            <Search size={16} />
+            <input className="search-input" placeholder="Rechercher un nom, un poste ou un commentaire…" value={props.search} onChange={(event) => props.setSearch(event.target.value)} />
+          </div>
+        </label>
       </div>
     </div>
   );
@@ -2902,7 +2996,6 @@ function normalizeMonthDays(selectedDate: string, monthDays?: Array<Record<strin
   return Array.from(merged).sort().filter((day) => day >= base[0] && day <= base[base.length - 1]);
 }
 function addMonths(value: string, months: number) { const date = parseLocalDate(value); date.setMonth(date.getMonth() + months); return localDateIso(date); }
-function setYear(value: string, year: number) { const date = parseLocalDate(value); date.setFullYear(year); return localDateIso(date); }
 function dayNumber(value: string) { return parseLocalDate(value).getDate(); }
 function normalizePlanningDate(value?: string | null) {
   if (!value) return '';

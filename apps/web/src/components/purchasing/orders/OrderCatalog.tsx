@@ -70,6 +70,7 @@ export function SupplierSelection({
               type="button"
               className="purchasing-supplier-card"
               key={supplier.id}
+              disabled={loading}
               onClick={() => onSelect(supplier)}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}

@@ -41,7 +41,7 @@ export class FennoaSecretService {
       ]).toString('utf8');
     } catch {
       throw new ServiceUnavailableException(
-        'Impossible de déchiffrer le secret Finance avec la clé serveur configurée.',
+        'Le secret Finance enregistré ne peut plus être déchiffré. Saisissez de nouveau le jeton ou la clé API pour rétablir cette connexion.',
       );
     }
   }
@@ -53,11 +53,9 @@ export class FennoaSecretService {
 
   private encryptionKey() {
     const dedicated = this.config.get<string>('FINANCE_SECRETS_ENCRYPTION_KEY')?.trim();
-    const developmentFallback =
-      this.config.get<string>('NODE_ENV') === 'production'
-        ? undefined
-        : this.config.get<string>('JWT_SECRET')?.trim();
-    const configured = dedicated || developmentFallback;
+    // JWT_SECRET was historically used by installed instances. Keep it as a stable
+    // compatibility fallback so an upgrade can still decrypt their existing tokens.
+    const configured = dedicated || this.config.get<string>('JWT_SECRET')?.trim();
     if (!configured) {
       throw new ServiceUnavailableException(
         'La clé serveur FINANCE_SECRETS_ENCRYPTION_KEY doit être configurée avant d’enregistrer un connecteur Finance.',

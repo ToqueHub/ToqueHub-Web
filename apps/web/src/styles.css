@@ -15181,6 +15181,7 @@ input:checked + .slider-round:before {
 
 .planning-filter-card {
   margin-bottom: 0px;
+  padding: 1.25rem;
 }
 
 .planning-tabs {
@@ -15229,11 +15230,12 @@ input:checked + .slider-round:before {
 
 .planning-filter-grid {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 1.2fr 2fr;
-  gap: 0.85rem;
-  align-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 0.9rem;
+  align-items: end;
 }
 
+.planning-filter-grid input[type='month'],
 .planning-filter-grid input[type='date'],
 .planning-filter-grid select {
   font-family: var(--font-sans);
@@ -15251,9 +15253,201 @@ input:checked + .slider-round:before {
   width: 100%;
 }
 
+.planning-filter-grid input[type='month']:focus,
 .planning-filter-grid input[type='date']:focus,
 .planning-filter-grid select:focus {
   border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.planning-filter-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.42rem;
+  margin: 0;
+}
+
+.planning-filter-field > span {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 18px;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.planning-filter-field > span svg {
+  flex: none;
+  color: #0ea5e9;
+}
+
+.planning-filter-field select,
+.planning-filter-field input {
+  min-width: 0;
+  height: 42px;
+  text-overflow: ellipsis;
+}
+
+.planning-period-field {
+  position: relative;
+}
+
+.planning-period-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  height: 42px;
+  padding: 0.65rem 0.85rem;
+  overflow: hidden;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  background: white;
+  box-shadow: var(--shadow-sm);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  text-transform: capitalize;
+}
+
+.planning-period-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-period-trigger svg {
+  flex: none;
+  color: #64748b;
+  transition: transform 160ms ease;
+}
+
+.planning-period-trigger.active {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.planning-period-trigger.active svg {
+  transform: rotate(180deg);
+}
+
+.planning-period-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 0.55rem);
+  left: 0;
+  width: min(310px, calc(100vw - 3rem));
+  padding: 0.85rem;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+}
+
+.planning-period-year-control {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.planning-period-year-control button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  box-shadow: none;
+}
+
+.planning-period-year-control input {
+  height: 38px;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.planning-period-months {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.planning-period-months button {
+  min-height: 38px;
+  padding: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f8fafc;
+  box-shadow: none;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.planning-period-months button:hover {
+  border-color: rgba(14, 165, 233, 0.25);
+  background: #f0f9ff;
+  color: #0369a1;
+  transform: none;
+}
+
+.planning-period-months button.active {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+}
+
+.planning-period-today {
+  width: 100%;
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-radius: 10px;
+  background: #eef2f7;
+  box-shadow: none;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.planning-period-today:hover {
+  background: #e2e8f0;
+  transform: none;
+}
+
+.planning-search-field {
+  grid-column: span 2;
+}
+
+.planning-search-field .search-input-wrapper {
+  width: 100%;
+  max-width: none;
+}
+
+.planning-search-field .search-input-wrapper > svg {
+  color: #0ea5e9;
+}
+
+.planning-search-field .search-input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
 
 .planning-prerequisite {
@@ -15286,58 +15480,6 @@ input:checked + .slider-round:before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.25rem;
-}
-
-.stat-card-modern {
-  background: var(--light-surface);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--light-border);
-  border-radius: 20px;
-  padding: 1.5rem;
-  box-shadow: var(--shadow-premium);
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  transition: all var(--transition-normal);
-}
-
-.stat-card-modern:hover {
-  transform: translateY(-2px);
-  border-color: rgba(14, 165, 233, 0.3);
-  box-shadow: 0 15px 30px rgba(9, 13, 22, 0.05);
-}
-
-.stat-card-modern .stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(14, 165, 233, 0.08);
-  color: #0284c7;
-  flex-shrink: 0;
-}
-
-.stat-card-modern div {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-card-modern span {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-.stat-card-modern strong {
-  font-size: 1.75rem;
-  font-weight: 800;
-  color: var(--text-main);
-  line-height: 1.1;
-  font-family: var(--font-heading);
-  margin-top: 0.2rem;
 }
 
 .planning-alert-list {
@@ -15989,7 +16131,36 @@ input:checked + .slider-round:before {
 }
 
 .planning-kpi-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 240px));
+  justify-content: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.planning-kpi-grid .metric-card-modern {
+  min-height: 0;
+  gap: 0.75rem;
+  padding: 1.05rem 1.15rem;
+  border-radius: 16px;
+  cursor: default;
+}
+
+.planning-kpi-grid .metric-header {
+  justify-content: flex-start;
+}
+
+.planning-kpi-grid .metric-icon-wrapper-modern {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.planning-kpi-grid .metric-value-modern {
+  font-size: 1.7rem;
+}
+
+.planning-kpi-grid .metric-label-modern {
+  font-size: 0.78rem;
 }
 
 .planning-dashboard-grid {
@@ -16304,9 +16475,8 @@ input:checked + .slider-round:before {
 }
 
 .planning-desktop-filters {
-  grid-template-columns:
-    minmax(112px, 0.9fr) minmax(84px, 0.55fr) repeat(4, minmax(110px, 0.9fr))
-    minmax(150px, 1.1fr);
+  padding-top: 1rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.85);
 }
 
 .planning-calendar-card {
@@ -17732,7 +17902,6 @@ input:checked + .slider-round:before {
   .planning-filter-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .planning-kpi-grid,
   .planning-dashboard-grid,
   .planning-workspace-grid,
   .planning-settings-layout,
@@ -17789,6 +17958,38 @@ input:checked + .slider-round:before {
   .planning-settings-controls {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .planning-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .planning-month-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planning-month-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .planning-month-actions .btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .planning-filter-grid,
+  .planning-desktop-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-search-field {
+    grid-column: auto;
   }
 }
 
@@ -38484,10 +38685,20 @@ input:checked + .slider-round:before {
 
 .caterer-client-directory-header {
   align-items: flex-start;
+  flex-direction: column;
 }
 
 .caterer-client-directory-header p {
   margin: 0.35rem 0 0;
+}
+
+.caterer-client-search-bar {
+  width: 100%;
+  margin: 0.95rem 0 0;
+}
+
+.caterer-client-search-bar .search-input-wrapper {
+  width: 100%;
 }
 
 .caterer-client-grid {

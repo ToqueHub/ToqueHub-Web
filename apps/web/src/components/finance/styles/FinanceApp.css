@@ -412,6 +412,29 @@
   font-size: 0.65rem;
   line-height: 1.45;
 }
+.finance-onboarding-api-guide a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  color: #1d4ed8;
+  font-weight: 800;
+  text-decoration: none;
+}
+.finance-onboarding-api-guide a:hover {
+  text-decoration: underline;
+}
+.finance-onboarding-api-guide.zettle li > span {
+  background: #003087;
+}
+.finance-settings-block .finance-onboarding-zettle-guide {
+  margin-top: 0.9rem;
+}
+.finance-onboarding-zettle-guide .finance-onboarding-help {
+  margin-bottom: 0;
+}
+.finance-onboarding-zettle-guide .finance-onboarding-api-guide {
+  margin-top: 0.65rem;
+}
 .finance-onboarding-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

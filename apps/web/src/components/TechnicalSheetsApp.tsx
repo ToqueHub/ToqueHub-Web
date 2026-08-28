@@ -6526,35 +6526,12 @@ function RecipeDialog({
               borderTop: '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'flex-end',
               padding: '0 2.5rem',
               flexShrink: 0,
               boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.02)',
             }}
           >
-            <label
-              className="toggle-inline"
-              style={{
-                userSelect: 'none',
-                margin: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={form.status === 'ACTIVE'}
-                onChange={(e) =>
-                  setForm({ ...form, status: e.target.checked ? 'ACTIVE' : 'DRAFT' })
-                }
-                style={{ cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
-                Fiche terminée et active
-              </span>
-            </label>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
                 type="button"
