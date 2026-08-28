@@ -321,10 +321,24 @@ export class PurchaseOrderCommandService {
           `Le produit « ${product.name} » n’est pas rattaché à ce fournisseur dans Stocks.`,
         );
       const quantity = new Prisma.Decimal(line.quantity);
-      const factor = new Prisma.Decimal(product.unitsPerPackage ?? 1);
-      const unitPrice = new Prisma.Decimal(product.averagePrice);
+      const configuredFactor = new Prisma.Decimal(product.unitsPerPackage ?? 1);
+      const factor = configuredFactor.greaterThan(0) ? configuredFactor : new Prisma.Decimal(1);
+      const baseUnitPrice = new Prisma.Decimal(product.averagePrice);
+      const unitPrice = baseUnitPrice.mul(factor);
       const vatRate = new Prisma.Decimal(line.vatRate ?? 0);
       const totals = calculateLineTotals(quantity, unitPrice, vatRate);
+      const packageLabel = product.packageLabel?.trim();
+      const factorLabel = Number(factor).toLocaleString('en-GB', {
+        maximumFractionDigits: 3,
+      });
+      const packageIncludesFactor = (packageLabel?.match(/\d+(?:[.,]\d+)?/gu) ?? []).some(
+        (value) => Number(value.replace(',', '.')) === Number(factor),
+      );
+      const orderUnitLabel = factor.greaterThan(1)
+        ? packageLabel && packageIncludesFactor
+          ? packageLabel
+          : `${packageLabel || 'Pack'} · ${factorLabel} ${product.unit.symbol}`
+        : packageLabel || product.unit.symbol;
       calculated.push(totals);
       return {
         organizationId,
@@ -334,7 +348,7 @@ export class PurchaseOrderCommandService {
         productNameSnapshot: product.name,
         supplierReferenceSnapshot: product.sku,
         supplierLabelSnapshot: product.name,
-        unitSymbolSnapshot: product.unit.symbol,
+        unitSymbolSnapshot: orderUnitLabel,
         orderedQuantity: quantity,
         unitsPerOrderUnit: factor,
         expectedStockQuantity: quantity.mul(factor),

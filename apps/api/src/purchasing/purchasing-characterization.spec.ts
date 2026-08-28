@@ -345,6 +345,45 @@ describe('Purchasing Stocks source of truth', () => {
     expect(Number(result.totals.totalIncludingTax)).toBe(7.5);
   });
 
+  it('orders supplier packs while valuing and receiving their full base-unit content', async () => {
+    const prisma = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'milk-1',
+            name: 'Pirkka laktoositon maitojuoma 1l 3%',
+            sku: '21913615',
+            gtin: '6410405216182',
+            unitId: 'unit-litre',
+            primarySupplierId: 'supplier-kespro',
+            unit: { symbol: 'L' },
+            packageLabel: 'Carton de 20 × 1 L',
+            unitsPerPackage: 20,
+            averagePrice: 1.1959,
+          },
+        ]),
+      },
+    };
+
+    const result = await commandService(prisma).buildOrderLines('org-1', 'supplier-kespro', [
+      { productId: 'milk-1', quantity: 1 },
+    ]);
+
+    expect(result.lines[0]).toEqual(
+      expect.objectContaining({
+        orderedQuantity: expect.anything(),
+        unitsPerOrderUnit: expect.anything(),
+        expectedStockQuantity: expect.anything(),
+        unitSymbolSnapshot: 'Carton de 20 × 1 L',
+      }),
+    );
+    expect(Number(result.lines[0].orderedQuantity)).toBe(1);
+    expect(Number(result.lines[0].unitsPerOrderUnit)).toBe(20);
+    expect(Number(result.lines[0].expectedStockQuantity)).toBe(20);
+    expect(Number(result.lines[0].unitPrice)).toBeCloseTo(23.918, 4);
+    expect(Number(result.totals.totalIncludingTax)).toBeCloseTo(23.918, 4);
+  });
+
   it('does not carry the historical price when duplicating an order', async () => {
     const prisma = {
       purchaseOrderEvent: { create: jest.fn().mockResolvedValue({}) },

@@ -11,7 +11,7 @@ import type {
   Supplier,
 } from '../../../types';
 import { Modal } from '../../ui/Modal';
-import { messageOf } from '../components/PurchasingUi';
+import { messageOf, productOrderFactor, productOrderUnitPrice } from '../components/PurchasingUi';
 import {
   DeliverySelection,
   FAVORITES_FILTER_ID,
@@ -135,11 +135,9 @@ export function OrderComposer({
           ? {
               product,
               quantity: Number(line.orderedQuantity),
-              unitPrice: Number(
-                product.averagePrice ?? product.averagePurchasePrice ?? line.unitPrice ?? 0,
-              ),
+              unitPrice: productOrderUnitPrice(product),
               vatRate: Number(line.vatRate),
-              unitsPerOrderUnit: Number(line.unitsPerOrderUnit),
+              unitsPerOrderUnit: productOrderFactor(product),
             }
           : null;
       })
@@ -385,9 +383,9 @@ export function OrderComposer({
         {
           product,
           quantity: safeQuantity,
-          unitPrice: Number(product.averagePrice ?? product.averagePurchasePrice ?? 0),
+          unitPrice: productOrderUnitPrice(product),
           vatRate: 0,
-          unitsPerOrderUnit: Number(product.unitsPerPackage ?? 1),
+          unitsPerOrderUnit: productOrderFactor(product),
         },
       ];
     });
@@ -439,9 +437,9 @@ export function OrderComposer({
           byId.set(item.product.id, {
             product: item.product,
             quantity: item.recommendedQuantity,
-            unitPrice: Number(item.product.averagePrice ?? item.product.averagePurchasePrice ?? 0),
+            unitPrice: productOrderUnitPrice(item.product),
             vatRate: 0,
-            unitsPerOrderUnit: Number(item.product.unitsPerPackage ?? 1),
+            unitsPerOrderUnit: productOrderFactor(item.product),
           }),
         );
         return [...byId.values()];

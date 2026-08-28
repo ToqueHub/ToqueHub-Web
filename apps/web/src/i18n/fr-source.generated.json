@@ -35215,6 +35215,15 @@
     ]
   },
   {
+    "text": "Colis",
+    "files": [
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Colis fournisseur:",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
@@ -52455,7 +52464,8 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
-      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
     ],
     "kinds": [
       "literal"
@@ -52785,6 +52795,7 @@
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/api/src/production/production-operational-export.service.ts",
+      "apps/api/src/purchasing/purchase-order-command.service.ts",
       "apps/api/src/purchasing/purchase-order-pdf.service.ts",
       "apps/api/src/purchasing/purchasing-delivery.service.ts",
       "apps/api/src/purchasing/purchasing-email-template.service.ts",
@@ -53939,6 +53950,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Entrée en stock :",
+    "files": [
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -58912,7 +58932,8 @@
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/menus/caterer-client-import.service.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
     ],
     "kinds": [
       "literal"
@@ -92182,7 +92203,9 @@
   {
     "text": "Pack",
     "files": [
-      "apps/api/src/stocks/stocks-product-import.service.ts"
+      "apps/api/src/purchasing/purchase-order-command.service.ts",
+      "apps/api/src/stocks/stocks-product-import.service.ts",
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
     ],
     "kinds": [
       "literal"
@@ -92432,6 +92455,15 @@
     "text": "pak",
     "files": [
       "apps/api/src/stocks/stocks-product-import.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Pakkaus",
+    "files": [
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
     ],
     "kinds": [
       "literal"
@@ -129768,6 +129800,7 @@
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
@@ -130139,6 +130172,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "unités de stock",
+    "files": [
+      "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {

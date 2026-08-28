@@ -1,8 +1,9 @@
-import { activeLocale } from '../../../i18n/runtime';
+import { activeLanguage, activeLocale } from '../../../i18n/runtime';
 import { useState, type ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ShoppingCart } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import type {
+  Product,
   PurchaseOrder,
   PurchaseOrderStatus,
   PurchaseReceipt,
@@ -87,7 +88,12 @@ export function OrderLinesTable({ order }: { order: PurchaseOrder }) {
             <tr key={line.id}>
               <td>{line.productNameSnapshot}</td>
               <td>{line.product?.gtin?.trim() || '—'}</td>
-              <td>{line.orderedQuantity}</td>
+              <td>
+                {line.orderedQuantity} {line.unitSymbolSnapshot || ''}
+                {Number(line.unitsPerOrderUnit) > 1 ? (
+                  <small>{line.expectedStockQuantity} unités de stock</small>
+                ) : null}
+              </td>
               <td>{line.receivedQuantity}</td>
               <td>{money(line.unitPrice, order.currency)}</td>
               <td>{money(line.lineIncludingTax, order.currency)}</td>
@@ -270,16 +276,30 @@ export function Pagination({
 export function PurchasingSkeleton() {
   return (
     <div className="purchasing-app">
-      <section className="welcome-hero stocks-hero skeleton" style={{ minHeight: '190px', background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 65%), radial-gradient(circle at 90% 80%, rgba(5, 150, 105, 0.08) 0%, transparent 55%), linear-gradient(135deg, #06090f 0%, #0c121e 100%)' }}>
+      <section
+        className="welcome-hero stocks-hero skeleton"
+        style={{
+          minHeight: '190px',
+          background:
+            'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 65%), radial-gradient(circle at 90% 80%, rgba(5, 150, 105, 0.08) 0%, transparent 55%), linear-gradient(135deg, #06090f 0%, #0c121e 100%)',
+        }}
+      >
         <div>
           <span />
           <span />
           <span />
         </div>
       </section>
-      <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.85rem' }}>
+      <div
+        className="metrics-grid"
+        style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.85rem' }}
+      >
         {Array.from({ length: 5 }, (_, index) => (
-          <div className="metric-card skeleton" key={index} style={{ minHeight: '100px', background: '#f8fafc' }} />
+          <div
+            className="metric-card skeleton"
+            key={index}
+            style={{ minHeight: '100px', background: '#f8fafc' }}
+          />
         ))}
       </div>
     </div>
@@ -295,7 +315,45 @@ export function tabTitle(tab: 'dashboard' | 'orders' | 'receipts') {
 }
 
 export function money(value: number | string | null | undefined, currency = 'EUR') {
-  return new Intl.NumberFormat(activeLocale(), { style: 'currency', currency }).format(Number(value ?? 0));
+  return new Intl.NumberFormat(activeLocale(), { style: 'currency', currency }).format(
+    Number(value ?? 0),
+  );
+}
+
+export function productOrderFactor(product: Product) {
+  const configured = Number(product.unitsPerPackage ?? 1);
+  return Number.isFinite(configured) && configured > 0 ? configured : 1;
+}
+
+export function productOrderUnitPrice(product: Product) {
+  return (
+    Number(product.averagePrice ?? product.averagePurchasePrice ?? 0) * productOrderFactor(product)
+  );
+}
+
+export function productOrderUnitLabel(product: Product) {
+  const factor = productOrderFactor(product);
+  const unitSymbol = product.unit?.symbol || 'unité';
+  const packageLabel = product.packageLabel?.trim();
+  if (factor <= 1) return packageLabel || unitSymbol;
+  const packageIncludesFactor = (packageLabel?.match(/\d+(?:[.,]\d+)?/gu) ?? []).some(
+    (value) => Number(value.replace(',', '.')) === factor,
+  );
+  if (packageLabel && packageIncludesFactor) return packageLabel;
+  const factorLabel = new Intl.NumberFormat(activeLocale(), {
+    maximumFractionDigits: 3,
+  }).format(factor);
+  const fallbackPackageLabel =
+    activeLanguage() === 'fi' ? 'Pakkaus' : activeLanguage() === 'en' ? 'Pack' : 'Colis';
+  return `${packageLabel || fallbackPackageLabel} · ${factorLabel} ${unitSymbol}`;
+}
+
+export function productOrderBaseQuantityLabel(product: Product, orderQuantity: number) {
+  const baseQuantity = orderQuantity * productOrderFactor(product);
+  const quantityLabel = new Intl.NumberFormat(activeLocale(), {
+    maximumFractionDigits: 3,
+  }).format(baseQuantity);
+  return `${quantityLabel} ${product.unit?.symbol || 'unité'}`;
 }
 
 export function dateLabel(value?: string | null) {
