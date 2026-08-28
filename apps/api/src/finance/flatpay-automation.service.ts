@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -17,6 +18,29 @@ import { FinancePolicy } from './finance.policy';
 
 const DEFAULT_SCHEDULE = ['07:00', '15:00', '19:00', '23:00'];
 const RETRY_DELAY_MS = 30 * 60_000;
+
+export function resolveFlatpayAutomationCommand(
+  projectDirectory: string,
+  fileExists: (path: string) => boolean = existsSync,
+) {
+  const compiledScript = resolve(
+    projectDirectory,
+    'apps/api/dist-automation/scripts/sync-flatpay-portal.js',
+  );
+  if (fileExists(compiledScript)) {
+    return { script: compiledScript, nodeArgs: [] as string[] };
+  }
+
+  const sourceScript = resolve(projectDirectory, 'apps/api/scripts/sync-flatpay-portal.ts');
+  const loader = resolve(projectDirectory, 'node_modules/tsx/dist/loader.mjs');
+  if (fileExists(sourceScript) && fileExists(loader)) {
+    return { script: sourceScript, nodeArgs: ['--import', loader] };
+  }
+
+  throw new Error(
+    'Le moteur de synchronisation FlatPay est absent de cette installation ToqueHub.',
+  );
+}
 
 @Injectable()
 export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
@@ -129,8 +153,7 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
       };
     }
     const projectDirectory = resolve(__dirname, '../../../..');
-    const script = resolve(projectDirectory, 'apps/api/scripts/sync-flatpay-portal.ts');
-    const loader = resolve(projectDirectory, 'node_modules/tsx/dist/loader.mjs');
+    const command = resolveFlatpayAutomationCommand(projectDirectory);
     const browserExecutable = await resolveFlatpayBrowserExecutable().catch((error) => {
       throw new ServiceUnavailableException(
         error instanceof Error ? error.message : 'Navigateur compatible introuvable.',
@@ -144,9 +167,8 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
     if (scheduled?.exitCode === null) scheduled.kill();
 
     const args = [
-      '--import',
-      loader,
-      script,
+      ...command.nodeArgs,
+      command.script,
       '--setup',
       '--setup-auto',
       '--run-after-setup',
@@ -248,8 +270,16 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
     if (this.syncing.get(connection.id)?.exitCode === null) return false;
     this.lastAttempts.set(connection.id, Date.now());
     const projectDirectory = resolve(__dirname, '../../../..');
-    const script = resolve(projectDirectory, 'apps/api/scripts/sync-flatpay-portal.ts');
-    const loader = resolve(projectDirectory, 'node_modules/tsx/dist/loader.mjs');
+    let command: ReturnType<typeof resolveFlatpayAutomationCommand>;
+    try {
+      command = resolveFlatpayAutomationCommand(projectDirectory);
+    } catch (error) {
+      await this.prisma.financeFlatpayConnection.update({
+        where: { id: connection.id },
+        data: { lastError: error instanceof Error ? error.message : String(error) },
+      });
+      return false;
+    }
     const browserExecutable = await resolveFlatpayBrowserExecutable().catch(async (error) => {
       await this.prisma.financeFlatpayConnection.update({
         where: { id: connection.id },
@@ -263,9 +293,8 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
       resolve(homedir(), 'Documents/ToqueHub/Finance/FlatPay', connection.id);
     await mkdir(inbox, { recursive: true });
     const args = [
-      '--import',
-      loader,
-      script,
+      ...command.nodeArgs,
+      command.script,
       '--organization-id',
       organizationId,
       '--site-id',

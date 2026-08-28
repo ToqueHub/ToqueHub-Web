@@ -22,7 +22,6 @@ import {
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const run = promisify(execFile);
-const PROJECT_DIRECTORY = resolve(__dirname, '../../..');
 const DEFAULT_PORTAL_URL = 'https://portal.flatpay.fi/';
 const DEFAULT_RUNTIME_DIRECTORY = flatpayRuntimeDirectory();
 const DEFAULT_PROFILE_DIRECTORY = resolve(DEFAULT_RUNTIME_DIRECTORY, 'browser-profile');
@@ -737,15 +736,17 @@ async function diagnose(page: Page, options: Options) {
 }
 
 async function importDownloadedReports(inbox: string, organizationId: string, siteId: string) {
-  const loader = resolve(PROJECT_DIRECTORY, 'node_modules/tsx/dist/loader.mjs');
-  const envFile = resolve(PROJECT_DIRECTORY, '.env');
-  const importScript = resolve(__dirname, 'import-flatpay-reports.ts');
+  const compiledScript = resolve(__dirname, 'import-flatpay-reports.js');
+  const sourceScript = resolve(__dirname, 'import-flatpay-reports.ts');
+  const useCompiledScript = await access(compiledScript)
+    .then(() => true)
+    .catch(() => false);
+  const importScript = useCompiledScript ? compiledScript : sourceScript;
+  const loader = resolve(__dirname, '../../../node_modules/tsx/dist/loader.mjs');
   const result = await run(
     process.execPath,
     [
-      `--env-file=${envFile}`,
-      '--import',
-      loader,
+      ...(useCompiledScript ? [] : ['--import', loader]),
       importScript,
       '--inbox',
       inbox,

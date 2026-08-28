@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-automation",
+    "declaration": false,
+    "sourceMap": true,
+    "incremental": false
+  },
+  "include": ["scripts/sync-flatpay-portal.ts", "scripts/import-flatpay-reports.ts"],
+  "exclude": ["node_modules", "dist", "dist-automation", "**/*spec.ts"]
+}
