@@ -911,8 +911,8 @@ async function main() {
           const key = `${type}:${range.from}:${range.to}`;
           generated.add(key);
           state.generatedKeys = [...generated].slice(-5000);
-          if (type !== 'sales-overview') state.generatedThrough[type] = range.to;
-          state.lastGeneratedTo = range.to;
+          // Le rafraîchissement du jour ne doit pas avancer le curseur historique :
+          // la boucle de rattrapage ci-dessous le fera uniquement dans l'ordre.
           await saveState(options.statePath, state);
           results.push({ type, ...range, generated: true, liveRefresh: true });
         } catch (error) {
