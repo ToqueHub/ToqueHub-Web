@@ -1,4 +1,5 @@
-import { activeLocale } from '../i18n/runtime';
+import { activeLocale, type AppLanguage } from '../i18n/runtime';
+import { useLanguage } from '../i18n';
 import type { ChangeEvent, DragEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,6 +118,7 @@ export function FirstStartLanding({
   onLoginRequested,
   onBootstrapComplete,
 }: FirstStartLandingProps) {
+  const { language, setLanguage } = useLanguage();
   const [step, setStep] = useState<OnboardingStep>(0);
   const [miniStep, setMiniStep] = useState(0);
   const [isMultiSite, setIsMultiSite] = useState<boolean | null>(null);
@@ -531,6 +533,8 @@ export function FirstStartLanding({
                   >
                     {step === 0 && (
                       <WelcomeStep
+                        language={language}
+                        onLanguageChange={setLanguage}
                         onStart={() => changeStep(1)}
                         onRestore={() => setRestoreOpen(true)}
                         onHelp={() => setHelpOpen(true)}
@@ -992,10 +996,53 @@ function BootstrapRestorePanel({
 }
 
 // 0. Welcome Screen
-function WelcomeStep({ onStart, onRestore, onHelp }: { onStart: () => void; onRestore?: () => void; onHelp: () => void }) {
+function WelcomeStep({
+  language,
+  onLanguageChange,
+  onStart,
+  onRestore,
+  onHelp,
+}: {
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
+  onStart: () => void;
+  onRestore?: () => void;
+  onHelp: () => void;
+}) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '1rem 0' }}>
       <div>
+        <div
+          className="first-start-language-picker"
+          role="group"
+          aria-label={language === 'en' ? 'Choose the environment setup language' : 'Choisir la langue de création de l’environnement'}
+        >
+          <span>{language === 'en' ? 'Environment setup language' : 'Langue de création de l’environnement'}</span>
+          <div>
+            <button
+              type="button"
+              className={language === 'fr' ? 'active' : ''}
+              onClick={() => onLanguageChange('fr')}
+              aria-pressed={language === 'fr'}
+              title="Afficher la création de l’environnement en français"
+            >
+              <span className="first-start-language-flag" aria-hidden="true">🇫🇷</span>
+              <strong>Français</strong>
+              {language === 'fr' ? <Check size={14} aria-hidden="true" /> : null}
+            </button>
+            <button
+              type="button"
+              className={language === 'en' ? 'active' : ''}
+              onClick={() => onLanguageChange('en')}
+              aria-pressed={language === 'en'}
+              title="Display environment setup in English"
+            >
+              <span className="first-start-language-flag" aria-hidden="true">🇬🇧</span>
+              <strong>English</strong>
+              {language === 'en' ? <Check size={14} aria-hidden="true" /> : null}
+            </button>
+          </div>
+        </div>
         <span className="badge badge-reception" style={{ marginBottom: '1.25rem', display: 'inline-flex', fontSize: '0.8rem', gap: '0.35rem' }}>
           <Sparkles size={14} /> Premier Démarrage
         </span>
