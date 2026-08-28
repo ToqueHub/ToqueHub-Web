@@ -13,6 +13,7 @@ import {
   type Page,
 } from 'playwright-core';
 import { FennoaSecretService } from '../src/finance/fennoa-secret.service';
+import { resolveFlatpayDownloadFileName } from '../src/finance/flatpay-download';
 import { FlatpayCredentialsService } from '../src/finance/flatpay-credentials.service';
 import { FinancePolicy } from '../src/finance/finance.policy';
 import {
@@ -645,12 +646,12 @@ async function generateCurrentOrdersReport(page: Page, options: Options, range: 
   await submitDialog(dialog, REPORTS.orders.submit);
 }
 
-async function saveDownload(download: Download, inbox: string) {
-  const suggested = download.suggestedFilename();
-  const extension = extname(suggested);
-  const stem = basename(suggested, extension);
+async function saveDownload(download: Download, inbox: string, reportName: string) {
+  const fileName = resolveFlatpayDownloadFileName(download.suggestedFilename(), reportName);
+  const extension = extname(fileName);
+  const stem = basename(fileName, extension);
   const directory = await organizedInbox(inbox);
-  let target = resolve(directory, suggested);
+  let target = resolve(directory, fileName);
   for (let suffix = 2; suffix < 10_000; suffix += 1) {
     if (
       !(await access(target)
@@ -708,7 +709,7 @@ async function downloadReadyReports(
     const pending = page.waitForEvent('download', { timeout: 30_000 });
     await button.click();
     const download = await pending;
-    saved.push(await saveDownload(download, options.inbox));
+    saved.push(await saveDownload(download, options.inbox, reportName));
     if (forcedPrefix) forcedPrefixes.add(forcedPrefix);
     downloadedKeys.add(reportName);
     state.downloadedReportKeys = [...downloadedKeys].slice(-10_000);

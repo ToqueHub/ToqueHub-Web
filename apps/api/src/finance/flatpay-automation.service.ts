@@ -42,6 +42,17 @@ export function resolveFlatpayAutomationCommand(
   );
 }
 
+export function resolveFlatpayAutomationInbox(
+  connectionId: string,
+  currentInbox?: string | null,
+  configuredRoot: string | undefined = process.env.FLATPAY_REPORTS_INBOX,
+) {
+  const persistentRoot = configuredRoot?.trim();
+  if (persistentRoot) return resolve(persistentRoot, connectionId);
+  if (currentInbox?.trim()) return resolve(currentInbox);
+  return resolve(homedir(), 'Documents/ToqueHub/Finance/FlatPay', connectionId);
+}
+
 @Injectable()
 export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
   private readonly reconnecting = new Map<string, ChildProcess>();
@@ -91,7 +102,7 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
         error instanceof Error ? error.message : 'Navigateur compatible introuvable.',
       );
     });
-    const inbox = resolve(homedir(), 'Documents/ToqueHub/Finance/FlatPay', connection.id);
+    const inbox = resolveFlatpayAutomationInbox(connection.id, connection.automationInbox);
     const schedule = [
       ...new Set(dto.schedule?.length ? dto.schedule : connection.automationSchedule),
     ]
@@ -159,10 +170,14 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
         error instanceof Error ? error.message : 'Navigateur compatible introuvable.',
       );
     });
-    const inbox =
-      connection.automationInbox ||
-      resolve(homedir(), 'Documents/ToqueHub/Finance/FlatPay', connection.id);
+    const inbox = resolveFlatpayAutomationInbox(connection.id, connection.automationInbox);
     await mkdir(inbox, { recursive: true });
+    if (connection.automationInbox !== inbox) {
+      await this.prisma.financeFlatpayConnection.update({
+        where: { id: connection.id },
+        data: { automationInbox: inbox },
+      });
+    }
     const scheduled = this.syncing.get(connection.id);
     if (scheduled?.exitCode === null) scheduled.kill();
 
@@ -288,10 +303,14 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
       return null;
     });
     if (!browserExecutable) return false;
-    const inbox =
-      connection.automationInbox ||
-      resolve(homedir(), 'Documents/ToqueHub/Finance/FlatPay', connection.id);
+    const inbox = resolveFlatpayAutomationInbox(connection.id, connection.automationInbox);
     await mkdir(inbox, { recursive: true });
+    if (connection.automationInbox !== inbox) {
+      await this.prisma.financeFlatpayConnection.update({
+        where: { id: connection.id },
+        data: { automationInbox: inbox },
+      });
+    }
     const args = [
       ...command.nodeArgs,
       command.script,
