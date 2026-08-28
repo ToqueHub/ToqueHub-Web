@@ -582,10 +582,23 @@ function ProductCard({
   onQuantity: (product: Product, quantity: number) => void;
   compact?: boolean;
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(product.imageUrl && !imageFailed);
+
   return (
     <article className={`purchasing-product-card${compact ? ' compact' : ''}`}>
-      <div className="purchasing-product-visual">
-        <Package size={compact ? 25 : 31} />
+      <div className={`purchasing-product-visual${showImage ? ' has-image' : ''}`}>
+        {showImage ? (
+          <img
+            src={product.imageUrl ?? undefined}
+            alt={`Photo de ${product.name}`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <Package size={compact ? 25 : 31} />
+        )}
         {product.category?.name ? <span>{product.category.name}</span> : null}
       </div>
       <div className="purchasing-product-copy">

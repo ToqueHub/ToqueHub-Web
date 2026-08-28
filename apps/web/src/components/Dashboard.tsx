@@ -22572,6 +22572,7 @@ type ProductFormPayload = {
   minimumStock?: number;
   gtin?: string | null;
   productUrl?: string | null;
+  imageUrl?: string | null;
   originCountry?: string | null;
   packageLabel?: string | null;
   unitsPerPackage?: number | null;
@@ -22837,6 +22838,7 @@ function ProductForm({
   );
   const [gtin, setGtin] = useState(initialProduct?.gtin ?? '');
   const [productUrl, setProductUrl] = useState(initialProduct?.productUrl ?? '');
+  const [imageUrl, setImageUrl] = useState(initialProduct?.imageUrl ?? '');
   const [originCountry, setOriginCountry] = useState(initialProduct?.originCountry ?? '');
   const [packageLabel, setPackageLabel] = useState(initialProduct?.packageLabel ?? '');
   const [unitsPerPackage, setUnitsPerPackage] = useState(
@@ -22933,6 +22935,7 @@ function ProductForm({
     );
     setGtin(initialProduct?.gtin ?? '');
     setProductUrl(initialProduct?.productUrl ?? '');
+    setImageUrl(initialProduct?.imageUrl ?? '');
     setOriginCountry(initialProduct?.originCountry ?? '');
     setPackageLabel(initialProduct?.packageLabel ?? '');
     setUnitsPerPackage(productFieldString(initialProduct?.unitsPerPackage));
@@ -22978,6 +22981,7 @@ function ProductForm({
         minimumStock: productOptionalNumber(minimumStock),
         gtin: productNullableText(gtin, clearWhenEmpty),
         productUrl: productNullableText(productUrl, clearWhenEmpty),
+        imageUrl: productNullableText(imageUrl, clearWhenEmpty),
         originCountry: productNullableText(originCountry, clearWhenEmpty),
         packageLabel: productNullableText(packageLabel, clearWhenEmpty),
         unitsPerPackage: productNullableNumber(unitsPerPackage, clearWhenEmpty),
@@ -23082,6 +23086,15 @@ function ProductForm({
                   placeholder="https://www.kespro.fi/..."
                   value={productUrl}
                   onChange={(e) => setProductUrl(e.target.value)}
+                />
+              </label>
+              <label className="product-sheet-wide">
+                URL de l'image produit
+                <input
+                  type="url"
+                  placeholder="https://public.keskofiles.com/..."
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
                 />
               </label>
               <label className="product-sheet-wide">
@@ -23558,7 +23571,13 @@ function computeProductCompletion(product: Product) {
   const sectionInputs = [
     {
       label: 'Identification',
-      values: [product.name, product.gtin, product.productUrl, product.originCountry],
+      values: [
+        product.name,
+        product.gtin,
+        product.productUrl,
+        product.imageUrl,
+        product.originCountry,
+      ],
     },
     { label: 'Fournisseur', values: [supplierId, product.sku ?? product.reference] },
     {
@@ -24239,6 +24258,18 @@ function ProductDetailModal({
                       {product.productUrl ? (
                         <a href={product.productUrl} target="_blank" rel="noreferrer">
                           Ouvrir la fiche produit
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>URL de l'image produit</dt>
+                    <dd>
+                      {product.imageUrl ? (
+                        <a href={product.imageUrl} target="_blank" rel="noreferrer">
+                          Ouvrir l'image produit
                         </a>
                       ) : (
                         '—'

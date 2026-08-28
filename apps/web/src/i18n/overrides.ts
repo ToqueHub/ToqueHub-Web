@@ -33,6 +33,8 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Non renseignée': 'Not provided',
   'URL du produit fournisseur': 'Supplier product URL',
   'Ouvrir la fiche produit': 'Open product page',
+  "URL de l'image produit": 'Product image URL',
+  "Ouvrir l'image produit": 'Open product image',
   Fermer: 'Close',
   Annuler: 'Cancel',
   Confirmer: 'Confirm',
