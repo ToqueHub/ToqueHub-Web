@@ -1,4 +1,7 @@
-import { resolveFlatpayAutomationCommand } from './flatpay-automation.service';
+import {
+  resolveFlatpayAutomationCommand,
+  resolveFlatpayAutomationInbox,
+} from './flatpay-automation.service';
 
 describe('FlatPay automation runtime', () => {
   const projectDirectory = '/srv/toquehub';
@@ -32,5 +35,19 @@ describe('FlatPay automation runtime', () => {
     expect(() => resolveFlatpayAutomationCommand(projectDirectory, () => false)).toThrow(
       'Le moteur de synchronisation FlatPay est absent de cette installation ToqueHub.',
     );
+  });
+
+  it('uses the persistent configured reports volume for every connection', () => {
+    expect(
+      resolveFlatpayAutomationInbox(
+        'connection-1',
+        '/home/node/Documents/ToqueHub/Finance/FlatPay/connection-1',
+        '/app/data/flatpay/reports',
+      ),
+    ).toBe('/app/data/flatpay/reports/connection-1');
+  });
+
+  it('keeps an existing local inbox when no persistent root is configured', () => {
+    expect(resolveFlatpayAutomationInbox('connection-1', '/tmp/flatpay', '')).toBe('/tmp/flatpay');
   });
 });
