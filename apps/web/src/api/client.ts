@@ -126,6 +126,9 @@ import type {
   OperationalTaskQuery,
   OperationalTaskStatus,
   OperationalTaskOptions,
+  OperationalTaskPreset,
+  OperationalTaskPresetOptions,
+  OperationalTaskPresetPayload,
   MenuCalendarView,
   MenuAvailabilityReport,
   MenuCategory,
@@ -2044,6 +2047,45 @@ export const api = {
       managesPeople: boolean;
       canCreateUnassigned: boolean;
     }>('/production/tasks/context', {}, token);
+  },
+  productionTaskPresetOptions(token: string) {
+    return request<OperationalTaskPresetOptions>('/production/task-presets/options', {}, token);
+  },
+  productionTaskPresets(
+    token: string,
+    params: { departmentId?: string; employeeId?: string; siteId?: string } = {},
+  ) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) search.set(key, value);
+    });
+    const query = search.toString();
+    return request<OperationalTaskPreset[]>(
+      `/production/task-presets${query ? `?${query}` : ''}`,
+      {},
+      token,
+    );
+  },
+  createProductionTaskPreset(token: string, payload: OperationalTaskPresetPayload) {
+    return request<OperationalTaskPreset>(
+      '/production/task-presets',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  updateProductionTaskPreset(token: string, id: string, payload: OperationalTaskPresetPayload) {
+    return request<OperationalTaskPreset>(
+      `/production/task-presets/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  archiveProductionTaskPreset(token: string, id: string) {
+    return request<OperationalTaskPreset>(
+      `/production/task-presets/${id}`,
+      { method: 'DELETE' },
+      token,
+    );
   },
   productionTaskOptions(
     token: string,

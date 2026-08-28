@@ -29,6 +29,7 @@ import {
   type HrPositionTaskPreset,
 } from '../hr/hr-task-presets';
 import { CatererEventLifecycleService } from './caterer-event-lifecycle.service';
+import { OperationalTaskPresetsService } from './operational-task-presets.service';
 
 type TaskActor = {
   id: string;
@@ -111,6 +112,7 @@ export class OperationalTasksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly catererLifecycle?: CatererEventLifecycleService,
+    private readonly operationalPresets?: OperationalTaskPresetsService,
   ) {}
 
   async context(organizationId: string, actor: TaskActor) {
@@ -288,6 +290,8 @@ export class OperationalTasksService {
     if (end.getTime() - start.getTime() > 1000 * 60 * 60 * 24 * 93) {
       throw new BadRequestException('La période ne peut pas dépasser 93 jours.');
     }
+
+    await this.operationalPresets?.materialize(organizationId, start, end);
 
     const visibility = this.visibilityWhere(scope, actor);
     const where: Prisma.OperationalTaskWhereInput = {
@@ -673,8 +677,7 @@ export class OperationalTasksService {
         where: { id },
         data: {
           title: dto.title?.trim(),
-          sourceKey:
-            dto.sourceKey === undefined ? undefined : dto.sourceKey?.trim() || null,
+          sourceKey: dto.sourceKey === undefined ? undefined : dto.sourceKey?.trim() || null,
           description: dto.description === undefined ? undefined : dto.description?.trim() || null,
           category: dto.category,
           departmentId: dto.departmentId,
@@ -976,10 +979,7 @@ export class OperationalTasksService {
     }
     if (
       wholeTask.status !== OperationalTaskStatus.CANCELLED ||
-      activeSteps.some(
-        (task) =>
-          task.status !== OperationalTaskStatus.TODO || task.isTimeScheduled,
-      )
+      activeSteps.some((task) => task.status !== OperationalTaskStatus.TODO || task.isTimeScheduled)
     ) {
       throw new ConflictException(
         'Recomposition impossible : toutes les étapes doivent être à placer et non démarrées.',
@@ -1156,11 +1156,10 @@ export class OperationalTasksService {
       role.includes('CHEF') ||
       role.includes('SECOND'),
     );
-    const traceabilityRecords =
-      await this.prisma.haccpProductionIngredientTraceability.findMany({
-        where: { organizationId, productionBatchId: batch.id },
-        select: { ingredientKey: true, photos: true },
-      });
+    const traceabilityRecords = await this.prisma.haccpProductionIngredientTraceability.findMany({
+      where: { organizationId, productionBatchId: batch.id },
+      select: { ingredientKey: true, photos: true },
+    });
     const completedTraceabilityKeys = new Set(
       traceabilityRecords
         .filter((record) => Array.isArray(record.photos) && record.photos.length > 0)

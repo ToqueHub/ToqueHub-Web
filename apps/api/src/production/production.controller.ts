@@ -69,6 +69,11 @@ import {
 import { ProductionDayClosureService } from './production-day-closure.service';
 import { ProductionOperationalExportService } from './production-operational-export.service';
 import { ProductionIngredientTraceabilityService } from './production-ingredient-traceability.service';
+import { OperationalTaskPresetsService } from './operational-task-presets.service';
+import {
+  OperationalTaskPresetQueryDto,
+  UpsertOperationalTaskPresetDto,
+} from './dto/operational-task-preset.dto';
 
 @ApiTags('production')
 @ApiBearerAuth()
@@ -83,6 +88,7 @@ export class ProductionController {
     private readonly dayClosures: ProductionDayClosureService,
     private readonly operationalExport: ProductionOperationalExportService,
     private readonly ingredientTraceability: ProductionIngredientTraceabilityService,
+    private readonly operationalTaskPresets: OperationalTaskPresetsService,
   ) {}
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required');
@@ -112,6 +118,39 @@ export class ProductionController {
     @Query() query: OperationalTaskQueryDto,
   ) {
     return this.operationalTasks.list(this.org(user), this.actor(user), query);
+  }
+
+  @Get('task-presets/options') taskPresetOptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.operationalTaskPresets.options(this.org(user), this.actor(user));
+  }
+
+  @Get('task-presets') taskPresets(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: OperationalTaskPresetQueryDto,
+  ) {
+    return this.operationalTaskPresets.list(this.org(user), this.actor(user), query);
+  }
+
+  @Post('task-presets') createTaskPreset(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpsertOperationalTaskPresetDto,
+  ) {
+    return this.operationalTaskPresets.create(this.org(user), this.actor(user), dto);
+  }
+
+  @Patch('task-presets/:id') updateTaskPreset(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpsertOperationalTaskPresetDto,
+  ) {
+    return this.operationalTaskPresets.update(this.org(user), this.actor(user), id, dto);
+  }
+
+  @Delete('task-presets/:id') archiveTaskPreset(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.operationalTaskPresets.archive(this.org(user), this.actor(user), id);
   }
   @Get('tasks/context') taskContext(@CurrentUser() user: AuthenticatedUser) {
     return this.operationalTasks.context(this.org(user), this.actor(user));
@@ -381,10 +420,7 @@ export class ProductionController {
     return this.execution.completeBatch(this.org(user), this.actor(user), id, dto);
   }
   @Get('batches/:id/traceability')
-  batchTraceability(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  batchTraceability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.ingredientTraceability.get(this.org(user), id);
   }
   @Put('batches/:id/traceability/:ingredientKey')
