@@ -8,6 +8,7 @@ import { ProductionDayClosureService } from './production-day-closure.service';
 import { ProductionOperationalExportService } from './production-operational-export.service';
 import { CatererEventLifecycleService } from './caterer-event-lifecycle.service';
 import { ProductionIngredientTraceabilityService } from './production-ingredient-traceability.service';
+import { OperationalTaskPresetsService } from './operational-task-presets.service';
 
 @Module({
   controllers: [ProductionController],
@@ -16,6 +17,7 @@ import { ProductionIngredientTraceabilityService } from './production-ingredient
     ProductionPlanningService,
     ProductionExecutionService,
     OperationalTasksService,
+    OperationalTaskPresetsService,
     ProductionDayClosureService,
     ProductionOperationalExportService,
     CatererEventLifecycleService,
@@ -26,6 +28,7 @@ import { ProductionIngredientTraceabilityService } from './production-ingredient
     ProductionPlanningService,
     ProductionExecutionService,
     OperationalTasksService,
+    OperationalTaskPresetsService,
     ProductionDayClosureService,
     ProductionOperationalExportService,
     CatererEventLifecycleService,

@@ -44,6 +44,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Table,
+  Trash2,
   UserRound,
   Users,
   Utensils,
@@ -315,7 +316,7 @@ function canSplitProductionRecipe(task: OperationalTask) {
 function canPlaceOperationalTask(task: OperationalTask) {
   return Boolean(
     (task.source === 'PRODUCTION' && task.productionBatchId) ||
-      (task.status === 'TODO' && task.sourceKey?.startsWith('CATERER:')),
+    (task.status === 'TODO' && task.sourceKey?.startsWith('CATERER:')),
   );
 }
 
@@ -522,9 +523,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
       setPositions((hr.positions ?? []).filter((item) => !item.isArchived));
       const mergedTasks = new Map(taskList.map((task) => [task.id, task] as const));
       queueTaskList
-        .filter(
-          (task) => canPlaceOperationalTask(task) && task.isTimeScheduled === false,
-        )
+        .filter((task) => canPlaceOperationalTask(task) && task.isTimeScheduled === false)
         .forEach((task) => mergedTasks.set(task.id, task));
       setTasks([...mergedTasks.values()]);
       setQueueScopeTasks(view === 'day' ? queueTaskList : taskList);
@@ -549,9 +548,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
     try {
       const plan = await api.catererEventProductionPlan(token, eventId);
       const orderIds = new Set(
-        plan.lines
-          .map((line) => line.productionOrderId)
-          .filter((id): id is string => Boolean(id)),
+        plan.lines.map((line) => line.productionOrderId).filter((id): id is string => Boolean(id)),
       );
       setCatererPlan(plan);
       setCatererEventFilter({
@@ -560,8 +557,8 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
         name: plan.event.name,
         orderIds,
       });
-      const existingLogisticsDepartment =
-        plan.logistics.find((line) => line.task?.departmentId)?.task?.departmentId;
+      const existingLogisticsDepartment = plan.logistics.find((line) => line.task?.departmentId)
+        ?.task?.departmentId;
       setLogisticsDepartmentId((current) => current || existingLogisticsDepartment || '');
     } catch {
       setCatererPlan(undefined);
@@ -1124,6 +1121,22 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
     }
   }
 
+  async function cancelPresetOccurrence() {
+    if (!editingTask?.operationalTaskPresetId) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.updateProductionTaskStatus(token, editingTask.id, 'CANCELLED');
+      setEditorOpen(false);
+      setEditingTask(null);
+      await load();
+    } catch (cancelError) {
+      setError(errorMessage(cancelError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function splitRecipeTask(task: OperationalTask) {
     setBusyId(task.id);
     setError('');
@@ -1195,26 +1208,22 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
     setLogisticsSaving(true);
     setCampaignError('');
     try {
-      const saved = await api.saveCatererEventProductionPlan(
-        token,
-        catererPlan.event.id,
-        {
-          serviceId,
-          logisticsDepartmentId,
-          lines: catererPlan.lines.map((line) => ({
-            menuItemId: line.menuItemId,
-            portions: Number(line.portions),
-            productionDate: line.productionDate,
-            plannedTime: line.plannedTime,
-          })),
-          logistics: catererPlan.logistics.map((line) => ({
-            key: line.key,
-            enabled: true,
-            startsAt: line.startsAt,
-            endsAt: line.endsAt,
-          })),
-        },
-      );
+      const saved = await api.saveCatererEventProductionPlan(token, catererPlan.event.id, {
+        serviceId,
+        logisticsDepartmentId,
+        lines: catererPlan.lines.map((line) => ({
+          menuItemId: line.menuItemId,
+          portions: Number(line.portions),
+          productionDate: line.productionDate,
+          plannedTime: line.plannedTime,
+        })),
+        logistics: catererPlan.logistics.map((line) => ({
+          key: line.key,
+          enabled: true,
+          startsAt: line.startsAt,
+          endsAt: line.endsAt,
+        })),
+      });
       setCatererPlan(saved);
       setCatererEventFilter({
         id: saved.event.id,
@@ -1367,13 +1376,13 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
   }, [catererPlan]);
   const catererReadyForPlanning = Boolean(
     catererPlan?.lines.length &&
-      catererPlan.lines.every(
-        (line) =>
-          line.productionOrderId &&
-          ['VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED', 'COMPLETED'].includes(
-            line.productionOrderStatus ?? '',
-          ),
-      ),
+    catererPlan.lines.every(
+      (line) =>
+        line.productionOrderId &&
+        ['VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED', 'COMPLETED'].includes(
+          line.productionOrderStatus ?? '',
+        ),
+    ),
   );
   const catererFocusDate =
     (catererPlan && sessionStorage.getItem('toquehub.production.focusDate')) ||
@@ -1484,7 +1493,9 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
               exit={{ opacity: 0 }}
               style={overlayStyle}
               onMouseDown={(event) =>
-                event.target === event.currentTarget && !logisticsSaving && setLogisticsSetupOpen(false)
+                event.target === event.currentTarget &&
+                !logisticsSaving &&
+                setLogisticsSetupOpen(false)
               }
             >
               <motion.form
@@ -1507,11 +1518,23 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
                       « À placer » du planning existant.
                     </p>
                   </div>
-                  <button type="button" style={iconButtonStyle} onClick={() => setLogisticsSetupOpen(false)}>
+                  <button
+                    type="button"
+                    style={iconButtonStyle}
+                    onClick={() => setLogisticsSetupOpen(false)}
+                  >
                     <X size={18} />
                   </button>
                 </div>
-                <label style={{ display: 'grid', gap: '.4rem', marginTop: '1.1rem', color: '#334155', fontWeight: 750 }}>
+                <label
+                  style={{
+                    display: 'grid',
+                    gap: '.4rem',
+                    marginTop: '1.1rem',
+                    color: '#334155',
+                    fontWeight: 750,
+                  }}
+                >
                   Service responsable
                   <select
                     required
@@ -1527,12 +1550,31 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
                     ))}
                   </select>
                 </label>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.7rem', marginTop: '1.2rem' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setLogisticsSetupOpen(false)}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '.7rem',
+                    marginTop: '1.2rem',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setLogisticsSetupOpen(false)}
+                  >
                     Annuler
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={logisticsSaving || !logisticsDepartmentId}>
-                    {logisticsSaving ? <Loader2 size={15} className="spin" /> : <CalendarDays size={15} />}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={logisticsSaving || !logisticsDepartmentId}
+                  >
+                    {logisticsSaving ? (
+                      <Loader2 size={15} className="spin" />
+                    ) : (
+                      <CalendarDays size={15} />
+                    )}
                     Ouvrir le planning
                   </button>
                 </div>
@@ -1627,7 +1669,9 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
             <strong>
               {catererPlan.event.reference} · {catererPlan.event.name}
             </strong>
-            <span style={{ display: 'block', marginTop: '.2rem', color: '#475569', fontSize: '.8rem' }}>
+            <span
+              style={{ display: 'block', marginTop: '.2rem', color: '#475569', fontSize: '.8rem' }}
+            >
               Les tâches Traiteur sont signalées ; toutes les autres tâches de la journée restent
               visibles.
             </span>
@@ -2944,7 +2988,18 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
                   >
                     Annuler
                   </button>
-                  <span />
+                  {editingTask.operationalTaskPresetId ? (
+                    <button
+                      type="button"
+                      onClick={() => void cancelPresetOccurrence()}
+                      disabled={saving}
+                      className="btn btn-secondary danger"
+                    >
+                      <Trash2 size={17} /> Retirer cette occurrence
+                    </button>
+                  ) : (
+                    <span />
+                  )}
                   <button
                     type="submit"
                     style={primaryButtonStyle}
@@ -4532,9 +4587,7 @@ function FabricationView({
                       style={primaryButtonStyle}
                       disabled={readOnly || validatingId === selected.id}
                       title={
-                        readOnly
-                          ? 'Sélectionnez un site pour valider cette campagne'
-                          : undefined
+                        readOnly ? 'Sélectionnez un site pour valider cette campagne' : undefined
                       }
                       onClick={() => void handleValidateCampaign(selected)}
                     >
@@ -4658,7 +4711,7 @@ function ProductionPlanningQueue({
           const referenceTask = recipeTask ?? group.tasks[0];
           const isLogistics = Boolean(
             referenceTask.category === 'LOGISTICS' &&
-              referenceTask.sourceKey?.startsWith('CATERER:'),
+            referenceTask.sourceKey?.startsWith('CATERER:'),
           );
           const stepCount = productionStepCount(referenceTask);
           const activeRecipeSteps = referenceTask.productionBatchId
@@ -4668,10 +4721,7 @@ function ProductionPlanningQueue({
                   Boolean(task.productionOperationId || task.technicalSheetStepId),
               )
             : [];
-          const isSplitRecipe =
-            !isLogistics &&
-            !recipeTask &&
-            activeRecipeSteps.length > 0;
+          const isSplitRecipe = !isLogistics && !recipeTask && activeRecipeSteps.length > 0;
           const canMergeRecipe =
             isSplitRecipe &&
             activeRecipeSteps.every(
@@ -5260,9 +5310,7 @@ function TimelineTaskCard({
     <article
       className={`production-timeline-task-card${dense ? ' is-dense' : ''}${
         short ? ' is-short' : ''
-      }${
-        highlighted ? ' is-caterer' : ''
-      }`}
+      }${highlighted ? ' is-caterer' : ''}`}
       role="button"
       tabIndex={0}
       aria-label={`Modifier ${task.title}`}
@@ -5444,7 +5492,8 @@ function CatererProductionPlanner({
                 width: '48px',
                 height: '48px',
                 borderRadius: '14px',
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%)',
+                background:
+                  'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%)',
                 color: '#059669',
                 display: 'grid',
                 placeItems: 'center',
@@ -5476,7 +5525,14 @@ function CatererProductionPlanner({
               <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.35rem', fontWeight: 800 }}>
                 Planifier dans Fabrication
               </h2>
-              <p style={{ margin: '0.3rem 0 0', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.45 }}>
+              <p
+                style={{
+                  margin: '0.3rem 0 0',
+                  color: '#64748b',
+                  fontSize: '0.88rem',
+                  lineHeight: 1.45,
+                }}
+              >
                 Répartissez les recettes sur plusieurs jours. Après validation, elles suivent le
                 même Planning opérationnel et le même déstockage que Restaurant/Café.
               </p>
@@ -5562,7 +5618,12 @@ function CatererProductionPlanner({
               <div>
                 <label
                   htmlFor="caterer-service-select"
-                  style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem', cursor: 'pointer' }}
+                  style={{
+                    fontWeight: 800,
+                    color: '#0f172a',
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                  }}
                 >
                   Service cuisine responsable <span style={{ color: '#ef4444' }}>*</span>
                 </label>
@@ -5688,7 +5749,14 @@ function CatererProductionPlanner({
                           </strong>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
                           <span
                             style={{
                               display: 'inline-flex',
@@ -5734,7 +5802,16 @@ function CatererProductionPlanner({
                         }}
                       >
                         <label style={{ display: 'grid', gap: '0.3rem' }}>
-                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.76rem',
+                              fontWeight: 750,
+                              color: '#475569',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                            }}
+                          >
                             <Package size={13} color="#059669" /> Quantité (portions)
                           </span>
                           <input
@@ -5768,7 +5845,16 @@ function CatererProductionPlanner({
                         </label>
 
                         <label style={{ display: 'grid', gap: '0.3rem' }}>
-                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.76rem',
+                              fontWeight: 750,
+                              color: '#475569',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                            }}
+                          >
                             <CalendarDays size={13} color="#0284c7" /> Jour de fabrication
                           </span>
                           <input
@@ -5801,7 +5887,16 @@ function CatererProductionPlanner({
                         </label>
 
                         <label style={{ display: 'grid', gap: '0.3rem' }}>
-                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.76rem',
+                              fontWeight: 750,
+                              color: '#475569',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                            }}
+                          >
                             <Clock3 size={13} color="#6366f1" /> Heure
                           </span>
                           <input
@@ -5853,10 +5948,19 @@ function CatererProductionPlanner({
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.88rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              color: '#64748b',
+              fontSize: '0.88rem',
+            }}
+          >
             <CheckCircle2 size={16} color="#10b981" />
             <span>
-              <strong style={{ color: '#0f172a' }}>{totalRecipesCount}</strong> recette{totalRecipesCount > 1 ? 's' : ''} à planifier
+              <strong style={{ color: '#0f172a' }}>{totalRecipesCount}</strong> recette
+              {totalRecipesCount > 1 ? 's' : ''} à planifier
             </span>
           </div>
 
@@ -5886,12 +5990,11 @@ function CatererProductionPlanner({
                 borderRadius: '12px',
                 fontWeight: 700,
                 fontSize: '0.9rem',
-                background: saving || !serviceId
-                  ? '#94a3b8'
-                  : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                boxShadow: saving || !serviceId
-                  ? 'none'
-                  : '0 4px 14px rgba(16, 185, 129, 0.35)',
+                background:
+                  saving || !serviceId
+                    ? '#94a3b8'
+                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                boxShadow: saving || !serviceId ? 'none' : '0 4px 14px rgba(16, 185, 129, 0.35)',
                 border: 'none',
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -5906,7 +6009,7 @@ function CatererProductionPlanner({
         </footer>
       </motion.form>
     </motion.div>,
-    document.body
+    document.body,
   );
 }
 
@@ -5973,9 +6076,7 @@ function TaskCard({
             fontWeight: 800,
           }}
         >
-          {canPlaceOperationalTask(task) && (
-            <GripVertical size={13} color="#94a3b8" />
-          )}
+          {canPlaceOperationalTask(task) && <GripVertical size={13} color="#94a3b8" />}
           <Clock3 size={13} color="#94a3b8" /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
           {highlighted && <span className="production-caterer-task-badge">Traiteur</span>}
         </div>

@@ -4748,6 +4748,7 @@ export interface OperationalTask {
   technicalSheetStepId?: string | null;
   productionBatchId?: string | null;
   productionOperationId?: string | null;
+  operationalTaskPresetId?: string | null;
   positionTaskPresetId?: string | null;
   startsAt: string;
   endsAt: string;
@@ -4810,6 +4811,75 @@ export interface OperationalTaskQuery {
   siteId?: string;
   employeeId?: string;
   status?: OperationalTaskStatus;
+}
+
+export interface OperationalTaskPreset {
+  id: string;
+  name: string;
+  description?: string | null;
+  category: OperationalTaskCategory;
+  departmentId: string;
+  siteId?: string | null;
+  assignedEmployeeId: string;
+  technicalSheetId?: string | null;
+  technicalSheetStepId?: string | null;
+  serviceWeekdays: number[];
+  leadDays: number;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  quantity?: number | string | null;
+  unitLabel?: string | null;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  department?: HrDepartment | null;
+  site?: Site | null;
+  assignedEmployee?: HrCollaborator | null;
+  technicalSheet?: { id: string; name: string; referencePortions?: number | string | null } | null;
+  technicalSheetStep?: { id: string; order: number; title: string } | null;
+}
+
+export interface OperationalTaskPresetPayload {
+  name: string;
+  description?: string | null;
+  category: OperationalTaskCategory;
+  departmentId: string;
+  siteId?: string | null;
+  assignedEmployeeId: string;
+  technicalSheetId?: string | null;
+  technicalSheetStepId?: string | null;
+  serviceWeekdays: number[];
+  leadDays: number;
+  startTime: string;
+  endTime: string;
+  timezone?: string;
+  quantity?: number | null;
+  unitLabel?: string | null;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  isActive?: boolean;
+}
+
+export interface OperationalTaskPresetOptions {
+  canManage: boolean;
+  departments: HrDepartment[];
+  sites: Site[];
+  employees: HrCollaborator[];
+  technicalSheets: Array<{
+    id: string;
+    name: string;
+    referencePortions?: number | string | null;
+    totalTimeMinutes?: number | null;
+    steps: Array<{
+      id: string;
+      order: number;
+      title: string;
+      estimatedMinutes?: number | null;
+    }>;
+  }>;
 }
 
 export interface OperationalTaskPayload {

@@ -106,6 +106,7 @@ import {
   Landmark,
   Target,
   Star,
+  Repeat2,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -114,6 +115,7 @@ import { HrApp } from './HrApp';
 import { PlanningApp } from './PlanningApp';
 import { TechnicalSheetsApp } from './TechnicalSheetsApp';
 import { ProductionApp } from './ProductionApp';
+import { OperationalPresetsApp } from './OperationalPresetsApp';
 import { MenusApp } from './MenusApp';
 import { ClientsApp } from './CatererMenusApp';
 import { StockAssistantPanel } from './StockAssistantPanel';
@@ -527,6 +529,7 @@ type ActiveTab =
   | 'production-orders'
   | 'production-calendar'
   | 'production-today'
+  | 'production-presets'
   | 'production-assignments'
   | 'production-materials'
   | 'production-exports'
@@ -1428,6 +1431,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       [
         'production-dashboard',
         'production-today',
+        'production-presets',
         'production-assignments',
         'production-materials',
         'production-history',
@@ -1737,6 +1741,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         submenu: [
           { tab: 'production-dashboard', label: 'Fabrication', icon: Factory },
           { tab: 'production-today', label: 'Planning opérationnel', icon: CalendarDays },
+          { tab: 'production-presets', label: 'Presets opérationnels', icon: Repeat2 },
         ],
       },
       {
@@ -3852,6 +3857,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'production-orders': 'Production',
     'production-calendar': 'Production',
     'production-today': 'Productions',
+    'production-presets': 'Presets opérationnels',
     'production-assignments': 'À produire',
     'production-materials': 'Produits fabriqués',
     'production-exports': 'Production',
@@ -5182,16 +5188,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 />
               )}
 
-              {isProductionTab && productionInstalled && (
-                <ProductionApp
-                  token={token}
-                  session={session}
-                  tab={activeTab === 'production-today' ? 'planning' : 'fabrication'}
-                  onNavigate={(next) =>
-                    setActiveTab(next === 'planning' ? 'production-today' : 'production-dashboard')
-                  }
-                />
-              )}
+              {isProductionTab &&
+                productionInstalled &&
+                (activeTab === 'production-presets' ? (
+                  <OperationalPresetsApp token={token} />
+                ) : (
+                  <ProductionApp
+                    token={token}
+                    session={session}
+                    tab={activeTab === 'production-today' ? 'planning' : 'fabrication'}
+                    onNavigate={(next) =>
+                      setActiveTab(
+                        next === 'planning' ? 'production-today' : 'production-dashboard',
+                      )
+                    }
+                  />
+                ))}
 
               {isMenusTab && menusInstalled && (
                 <MenusApp
