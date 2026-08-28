@@ -43,6 +43,10 @@ export class PurchasingReferenceQueryDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   favoriteOnly?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  menuOnly?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
 }

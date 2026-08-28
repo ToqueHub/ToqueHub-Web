@@ -101953,6 +101953,16 @@
     ]
   },
   {
+    "text": "Produits de la carte",
+    "files": [
+      "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "jsx",
+      "literal"
+    ]
+  },
+  {
     "text": "produits de la mer",
     "files": [
       "apps/web/src/components/Dashboard.tsx"

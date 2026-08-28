@@ -210,6 +210,96 @@ describe('PurchaseOrderQueryService', () => {
     expect(prisma.product.findMany.mock.calls[0][0].where.isFavorite).toBeUndefined();
   });
 
+  it('filters supplier products to direct and recursively expanded primary-card ingredients', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-kespro' }) },
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([
+          { productId: 'direct-drink', technicalSheetId: null },
+          { productId: null, technicalSheetId: 'sheet-card-item' },
+        ]),
+      },
+      technicalSheetIngredient: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { productId: 'raw-flour', sourceTechnicalSheetId: null },
+            { productId: 'intermediate-dough', sourceTechnicalSheetId: 'sheet-dough' },
+          ])
+          .mockResolvedValueOnce([
+            { productId: 'raw-salt', sourceTechnicalSheetId: null },
+            { productId: 'raw-oil', sourceTechnicalSheetId: null },
+          ]),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      stock: { groupBy: jest.fn() },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await queries.products('org-1', actor, {
+      supplierId: 'supplier-kespro',
+      siteId: 'site-1',
+      menuOnly: true,
+      search: 'huile',
+      page: 2,
+      pageSize: 12,
+    });
+
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        availabilityEnabled: true,
+        menu: {
+          organizationId: 'org-1',
+          kind: 'CATALOG',
+          status: { not: 'ARCHIVED' },
+          isPrimary: true,
+          OR: [{ siteId: 'site-1' }, { siteId: null }],
+        },
+      },
+      select: { productId: true, technicalSheetId: true },
+    });
+    expect(prisma.technicalSheetIngredient.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        organizationId: 'org-1',
+        technicalSheetId: { in: ['sheet-card-item'] },
+      },
+      select: { productId: true, sourceTechnicalSheetId: true },
+    });
+    expect(prisma.technicalSheetIngredient.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        organizationId: 'org-1',
+        technicalSheetId: { in: ['sheet-dough'] },
+      },
+      select: { productId: true, sourceTechnicalSheetId: true },
+    });
+    expect(prisma.product.findMany.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          id: { in: ['direct-drink', 'raw-flour', 'raw-salt', 'raw-oil'] },
+          primarySupplierId: 'supplier-kespro',
+          isArchived: false,
+          siteAssignments: { some: { siteId: 'site-1', isActive: true } },
+          OR: [
+            { name: { contains: 'huile', mode: 'insensitive' } },
+            { sku: { contains: 'huile', mode: 'insensitive' } },
+            { gtin: { contains: 'huile', mode: 'insensitive' } },
+          ],
+        }),
+        skip: 12,
+        take: 12,
+      }),
+    );
+  });
+
   it('does not leak whether a supplier exists in another organization', async () => {
     const prisma = {
       organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },

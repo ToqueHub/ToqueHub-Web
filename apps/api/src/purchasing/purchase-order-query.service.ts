@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PurchaseOrderStatus, PurchasingDeliveryMode } from '@prisma/client';
+import {
+  MenuKind,
+  MenuStatus,
+  Prisma,
+  PurchaseOrderStatus,
+  PurchasingDeliveryMode,
+} from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { PurchasingListQueryDto, PurchasingReferenceQueryDto } from './dto/purchasing.dto';
@@ -163,8 +169,12 @@ export class PurchaseOrderQueryService {
     const supplier = await this.ensureSupplier(organizationId, query.supplierId);
     const page = query.page ?? 1;
     const pageSize = Math.min(query.pageSize ?? 30, 100);
+    const menuProductIds = query.menuOnly
+      ? await this.activeCatalogProductIds(organizationId, query.siteId)
+      : undefined;
     const where: Prisma.ProductWhereInput = {
       organizationId,
+      id: menuProductIds ? { in: menuProductIds } : undefined,
       primarySupplierId: supplier.id,
       categoryId: query.categoryId,
       isFavorite: query.favoriteOnly ? true : undefined,
@@ -215,6 +225,55 @@ export class PurchaseOrderQueryService {
       page,
       pageSize,
     };
+  }
+
+  private async activeCatalogProductIds(organizationId: string, siteId?: string) {
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: {
+        organizationId,
+        availabilityEnabled: true,
+        menu: {
+          organizationId,
+          kind: MenuKind.CATALOG,
+          status: { not: MenuStatus.ARCHIVED },
+          isPrimary: true,
+          ...(siteId ? { OR: [{ siteId }, { siteId: null }] } : {}),
+        },
+      },
+      select: { productId: true, technicalSheetId: true },
+    });
+    const productIds = new Set(
+      menuItems.flatMap((item) => (item.productId ? [item.productId] : [])),
+    );
+    const visitedSheetIds = new Set<string>();
+    let pendingSheetIds = new Set(
+      menuItems.flatMap((item) => (item.technicalSheetId ? [item.technicalSheetId] : [])),
+    );
+
+    while (pendingSheetIds.size) {
+      const currentSheetIds = [...pendingSheetIds].filter((id) => !visitedSheetIds.has(id));
+      if (!currentSheetIds.length) break;
+      currentSheetIds.forEach((id) => visitedSheetIds.add(id));
+      const ingredients = await this.prisma.technicalSheetIngredient.findMany({
+        where: {
+          organizationId,
+          technicalSheetId: { in: currentSheetIds },
+        },
+        select: { productId: true, sourceTechnicalSheetId: true },
+      });
+      pendingSheetIds = new Set<string>();
+      for (const ingredient of ingredients) {
+        if (ingredient.sourceTechnicalSheetId) {
+          if (!visitedSheetIds.has(ingredient.sourceTechnicalSheetId)) {
+            pendingSheetIds.add(ingredient.sourceTechnicalSheetId);
+          }
+        } else {
+          productIds.add(ingredient.productId);
+        }
+      }
+    }
+
+    return [...productIds];
   }
 
   async categories(
