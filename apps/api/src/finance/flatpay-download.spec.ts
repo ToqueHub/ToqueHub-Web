@@ -1,5 +1,6 @@
 import { classifyFinanceFile } from './finance.service';
 import { resolveFlatpayDownloadFileName } from './flatpay-download';
+import { flatpayProductPeriodFromFileName } from './finance-import-parser.service';
 
 describe('FlatPay report download names', () => {
   it('turns a generic Sales Overview download into a classifiable workbook name', () => {
@@ -8,10 +9,14 @@ describe('FlatPay report download names', () => {
       'Sales Overview Report - 2026-08-27 to 2026-08-28',
     );
 
-    expect(fileName).toBe('Sales_Overview_Report_2026_08_27_to_2026_08_28.xlsx');
+    expect(fileName).toBe('Sales_Overview_Report_2026-08-27-2026-08-28.xlsx');
     expect(classifyFinanceFile(fileName)).toMatchObject({
       provider: 'FLATPAY',
       reportKind: 'PRODUCT_SALES',
+    });
+    expect(flatpayProductPeriodFromFileName(fileName)).toMatchObject({
+      startDate: new Date('2026-08-28T00:00:00.000Z'),
+      endDate: new Date('2026-08-28T23:59:59.999Z'),
     });
   });
 

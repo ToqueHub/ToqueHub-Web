@@ -12,6 +12,13 @@ function safeReportStem(value: string) {
     .slice(0, 180);
 }
 
+function reportStemWithPeriod(reportName: string) {
+  const dates = [...reportName.matchAll(/20\d{2}-\d{2}-\d{2}/g)];
+  if (dates.length < 2) return safeReportStem(reportName);
+  const label = safeReportStem(reportName.slice(0, dates[0].index));
+  return `${label || 'FlatPay_Report'}_${dates[0][0]}-${dates[1][0]}`;
+}
+
 /**
  * FlatPay sometimes returns Sales Overview exports as a bare `download` file.
  * Keep meaningful server filenames, but derive generic or extensionless names
@@ -25,6 +32,7 @@ export function resolveFlatpayDownloadFileName(suggestedName: string, reportName
 
   if (!needsReportName) return suggested;
 
-  const reportStem = safeReportStem(reportName) || safeReportStem(suggested) || 'FlatPay_Report';
+  const reportStem =
+    reportStemWithPeriod(reportName) || safeReportStem(suggested) || 'FlatPay_Report';
   return `${reportStem}${hasSupportedExtension ? suggestedExtension : '.xlsx'}`;
 }
