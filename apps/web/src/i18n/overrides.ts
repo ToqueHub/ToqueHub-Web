@@ -1,4 +1,14 @@
 export const englishOverrides: Readonly<Record<string, string>> = {
+  'Afficher la création de l’environnement en français':
+    'Display environment setup in French',
+  'Langue de création de l’environnement': 'Environment setup language',
+  'Choisir la langue de création de l’environnement':
+    'Choose the environment setup language',
+  'Premier Démarrage': 'First-time setup',
+  'Créer le compte pilote': 'Create the administrator account',
+  'Votre Cuisine Connectée': 'Your connected kitchen',
+  'ex: Bistrot des Cocottes, Resto Scolaire...':
+    'e.g. Bistro des Cocottes, School Restaurant...',
   créneaux: 'time slots',
   'Document opérationnel': 'Operational document',
   'Émargement mensuel': 'Monthly attendance sheet',

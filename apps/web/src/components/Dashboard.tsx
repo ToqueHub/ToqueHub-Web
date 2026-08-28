@@ -107,6 +107,7 @@ import {
   Target,
   Star,
   Repeat2,
+  Languages,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -127,7 +128,7 @@ import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
 import { InventoryImportWizard } from './stocks/InventoryImportWizard';
 import { useLanguage } from '../i18n';
-import { activeLanguage, activeLocale } from '../i18n/runtime';
+import { activeLanguage, activeLocale, type AppLanguage } from '../i18n/runtime';
 import { translateText } from '../i18n/translate';
 
 const PurchasingApp = lazy(() =>
@@ -637,7 +638,6 @@ interface DashboardProps {
 
 export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps) {
   const token = session.accessToken;
-  const { language, setLanguage } = useLanguage();
 
   // Data State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -4245,96 +4245,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
         {/* User Profile and Dropdown */}
         <div className="sidebar-footer">
-          <div
-            className="sidebar-language-switcher"
-            role="group"
-            aria-label="Choisir la langue de l’application"
-          >
-            <div className="sidebar-language-segments">
-              <button
-                type="button"
-                className={language === 'fr' ? 'active' : ''}
-                onClick={() => setLanguage('fr')}
-                aria-pressed={language === 'fr'}
-                title="Passer en français"
-              >
-                <span className="sidebar-language-flag" aria-hidden="true">
-                  <svg viewBox="0 0 24 16" focusable="false">
-                    <rect width="8" height="16" fill="#1b45a1" />
-                    <rect x="8" width="8" height="16" fill="#ffffff" />
-                    <rect x="16" width="8" height="16" fill="#ef4135" />
-                  </svg>
-                </span>
-                <span>FR</span>
-              </button>
-              <button
-                type="button"
-                className={language === 'en' ? 'active' : ''}
-                onClick={() => setLanguage('en')}
-                aria-pressed={language === 'en'}
-                title="Passer en anglais"
-              >
-                <span className="sidebar-language-flag" aria-hidden="true">
-                  <svg viewBox="0 0 24 16" focusable="false">
-                    <rect width="24" height="16" fill="#012169" />
-                    <rect
-                      x="-4"
-                      y="5.5"
-                      width="32"
-                      height="5"
-                      fill="#ffffff"
-                      transform="rotate(33 12 8)"
-                    />
-                    <rect
-                      x="-4"
-                      y="5.5"
-                      width="32"
-                      height="5"
-                      fill="#ffffff"
-                      transform="rotate(-33 12 8)"
-                    />
-                    <rect
-                      x="-4"
-                      y="6.5"
-                      width="32"
-                      height="3"
-                      fill="#c8102e"
-                      transform="rotate(33 12 8)"
-                    />
-                    <rect
-                      x="-4"
-                      y="6.5"
-                      width="32"
-                      height="3"
-                      fill="#c8102e"
-                      transform="rotate(-33 12 8)"
-                    />
-                    <rect x="9" width="6" height="16" fill="#ffffff" />
-                    <rect y="5" width="24" height="6" fill="#ffffff" />
-                    <rect x="10.5" width="3" height="16" fill="#c8102e" />
-                    <rect y="6.5" width="24" height="3" fill="#c8102e" />
-                  </svg>
-                </span>
-                <span>EN</span>
-              </button>
-              <button
-                type="button"
-                className={language === 'fi' ? 'active' : ''}
-                onClick={() => setLanguage('fi')}
-                aria-pressed={language === 'fi'}
-                title="Passer en finnois"
-              >
-                <span className="sidebar-language-flag" aria-hidden="true">
-                  <svg viewBox="0 0 24 16" focusable="false">
-                    <rect width="24" height="16" fill="#ffffff" />
-                    <rect x="0" y="6" width="24" height="4" fill="#003580" />
-                    <rect x="7" width="4" height="16" fill="#003580" />
-                  </svg>
-                </span>
-                <span>FI</span>
-              </button>
-            </div>
-          </div>
           <div className="sidebar-footer-profile-container">
             <AnimatePresence>
               {profileMenuOpen && (
@@ -18968,9 +18878,28 @@ type OrganizationSettingModal =
   | 'name'
   | 'establishmentType'
   | 'regulatoryCountry'
+  | 'language'
   | 'secondarySites'
   | 'siteForm'
   | null;
+
+const appLanguageOptions: Array<{
+  code: AppLanguage;
+  label: string;
+  description: string;
+}> = [
+  { code: 'fr', label: 'Français', description: 'France' },
+  { code: 'en', label: 'Anglais', description: 'Royaume-Uni' },
+  { code: 'fi', label: 'Finnois', description: 'Finlande' },
+];
+
+function LanguageFlag({ language }: { language: AppLanguage }) {
+  return (
+    <span className="language-flag" aria-hidden="true">
+      <img src={`/flag-${language}.svg`} alt="" />
+    </span>
+  );
+}
 type SiteDraft = {
   name: string;
   description: string;
@@ -19526,6 +19455,7 @@ function SettingsPage({
   onRestoreComplete: () => void;
   isAdmin?: boolean;
 }) {
+  const { language, setLanguage } = useLanguage();
   const organization = dashboardSummary?.organization;
   const organizationName = organization?.name ?? session.user.organizationName ?? 'Organisation';
   const organizationType = organization?.establishmentType ?? session.user.organizationType ?? null;
@@ -20115,6 +20045,8 @@ function SettingsPage({
           : 'Non activé';
   const remoteStatusBadge =
     effectiveRemoteStatus === 'active' ? 'badge-reception' : 'badge-correction';
+  const currentLanguageOption =
+    appLanguageOptions.find((option) => option.code === language) ?? appLanguageOptions[0];
 
   const settingsSections: Array<{
     id: SettingsSubTab;
@@ -20551,6 +20483,44 @@ function SettingsPage({
                       style={{ width: 'fit-content', marginTop: '0.65rem' }}
                     >
                       {regulatoryCountryCode ? 'Configuré' : 'À configurer'}
+                    </span>
+                  </div>
+
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="info-card-premium clickable"
+                    onClick={() => setEditingSetting('language')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ')
+                        setEditingSetting('language');
+                    }}
+                  >
+                    <div className="info-card-premium-header">
+                      <span
+                        className="info-card-premium-label"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        Langue
+                        <Edit3 size={12} className="edit-indicator" />
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span className="info-card-premium-icon">
+                          <Languages size={16} />
+                        </span>
+                        <ChevronRight
+                          size={14}
+                          className="chevron-indicator"
+                          style={{ color: 'var(--text-muted)', opacity: 0.5 }}
+                        />
+                      </div>
+                    </div>
+                    <div className="info-card-premium-value settings-language-card-value">
+                      <LanguageFlag language={language} />
+                      <span>{currentLanguageOption.label}</span>
+                    </div>
+                    <span className="muted" style={{ marginTop: '0.45rem', fontSize: '0.8rem' }}>
+                      Langue de l’interface
                     </span>
                   </div>
                 </div>
@@ -21959,11 +21929,13 @@ function SettingsPage({
               ? 'Modifier le type d’établissement'
               : editingSetting === 'regulatoryCountry'
                 ? 'Modifier le pays RH'
-                : editingSetting === 'secondarySites'
-                  ? 'Sites secondaires'
-                  : editingSetting === 'siteForm'
-                    ? siteEditorTitle
-                    : 'Modifier le reglage'
+                : editingSetting === 'language'
+                  ? 'Choisir la langue'
+                  : editingSetting === 'secondarySites'
+                    ? 'Sites secondaires'
+                    : editingSetting === 'siteForm'
+                      ? siteEditorTitle
+                      : 'Modifier le reglage'
         }
       >
         {editingSetting === 'name' ? (
@@ -22104,6 +22076,37 @@ function SettingsPage({
               </button>
             </div>
           </form>
+        ) : null}
+
+        {editingSetting === 'language' ? (
+          <div className="settings-language-picker">
+            <p className="muted">Choisissez la langue utilisée dans toute l’interface ToqueHub.</p>
+            <div className="settings-language-options" role="radiogroup" aria-label="Langue">
+              {appLanguageOptions.map((option) => {
+                const selected = language === option.code;
+                return (
+                  <button
+                    key={option.code}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={`settings-language-option ${selected ? 'active' : ''}`}
+                    onClick={() => {
+                      setLanguage(option.code);
+                      setEditingSetting(null);
+                    }}
+                  >
+                    <LanguageFlag language={option.code} />
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>{option.description}</small>
+                    </span>
+                    {selected ? <CheckCircle2 size={20} aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ) : null}
 
         {editingSetting === 'secondarySites' ? (
