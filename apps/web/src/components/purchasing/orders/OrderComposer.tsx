@@ -15,6 +15,7 @@ import { messageOf, productOrderFactor, productOrderUnitPrice } from '../compone
 import {
   DeliverySelection,
   FAVORITES_FILTER_ID,
+  MENU_PRODUCTS_FILTER_ID,
   OrderCatalog,
   SupplierSelection,
   type ComposerLine,
@@ -261,8 +262,12 @@ export function OrderComposer({
       .purchasingProducts(token, {
         supplierId,
         siteId,
-        categoryId: categoryId && categoryId !== FAVORITES_FILTER_ID ? categoryId : undefined,
+        categoryId:
+          categoryId && categoryId !== FAVORITES_FILTER_ID && categoryId !== MENU_PRODUCTS_FILTER_ID
+            ? categoryId
+            : undefined,
         favoriteOnly: categoryId === FAVORITES_FILTER_ID || undefined,
+        menuOnly: categoryId === MENU_PRODUCTS_FILTER_ID || undefined,
         search: debouncedProductSearch.trim() || undefined,
         page: 1,
         pageSize: 24,
@@ -350,8 +355,12 @@ export function OrderComposer({
       const response = await api.purchasingProducts(token, {
         supplierId,
         siteId,
-        categoryId: categoryId && categoryId !== FAVORITES_FILTER_ID ? categoryId : undefined,
+        categoryId:
+          categoryId && categoryId !== FAVORITES_FILTER_ID && categoryId !== MENU_PRODUCTS_FILTER_ID
+            ? categoryId
+            : undefined,
         favoriteOnly: categoryId === FAVORITES_FILTER_ID || undefined,
+        menuOnly: categoryId === MENU_PRODUCTS_FILTER_ID || undefined,
         search: productSearch.trim() || undefined,
         page: nextPage,
         pageSize: 24,

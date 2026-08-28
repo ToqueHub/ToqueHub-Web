@@ -1061,6 +1061,7 @@ export const api = {
       siteId?: string;
       categoryId?: string;
       favoriteOnly?: boolean;
+      menuOnly?: boolean;
       search?: string;
       page?: number;
       pageSize?: number;

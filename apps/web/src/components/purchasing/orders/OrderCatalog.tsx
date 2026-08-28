@@ -15,6 +15,7 @@ import {
   Star,
   Trash2,
   Truck,
+  Utensils,
 } from 'lucide-react';
 import type { Category, Product, Supplier, PurchasingBootstrap } from '../../../types';
 import {
@@ -35,6 +36,7 @@ export type ComposerLine = {
 };
 
 export const FAVORITES_FILTER_ID = '__favorites__';
+export const MENU_PRODUCTS_FILTER_ID = '__menu_products__';
 
 export function SupplierSelection({
   suppliers,
@@ -368,6 +370,13 @@ export function OrderCatalog({
           </button>
           <button
             type="button"
+            className={categoryId === MENU_PRODUCTS_FILTER_ID ? 'active' : ''}
+            onClick={() => onCategory(MENU_PRODUCTS_FILTER_ID)}
+          >
+            <Utensils size={13} /> Produits de la carte
+          </button>
+          <button
+            type="button"
             className={categoryId === FAVORITES_FILTER_ID ? 'active' : ''}
             onClick={() => onCategory(FAVORITES_FILTER_ID)}
           >
@@ -414,7 +423,9 @@ export function OrderCatalog({
                 {categoryId
                   ? categoryId === FAVORITES_FILTER_ID
                     ? 'Favoris'
-                    : categories.find((category) => category.id === categoryId)?.name
+                    : categoryId === MENU_PRODUCTS_FILTER_ID
+                      ? 'Produits de la carte'
+                      : categories.find((category) => category.id === categoryId)?.name
                   : 'Tous les produits'}
               </strong>
             </div>
