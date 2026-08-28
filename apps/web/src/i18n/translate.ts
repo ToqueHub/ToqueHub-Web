@@ -1,5 +1,5 @@
 import { englishCatalog } from './en.generated';
-import { englishOverrides, finnishOverrides } from './overrides';
+import { englishOverrides } from './overrides';
 import { activeLanguage, type AppLanguage } from './runtime';
 
 export function normalizeTranslationSource(value: string): string {
@@ -8,13 +8,6 @@ export function normalizeTranslationSource(value: string): string {
 
 const english: Record<string, string> = Object.fromEntries(
   Object.entries({ ...englishCatalog, ...englishOverrides }).map(([source, target]) => [
-    normalizeTranslationSource(source),
-    normalizeTranslationSource(target),
-  ]),
-);
-
-const finnish: Record<string, string> = Object.fromEntries(
-  Object.entries(finnishOverrides).map(([source, target]) => [
     normalizeTranslationSource(source),
     normalizeTranslationSource(target),
   ]),
@@ -126,10 +119,7 @@ function translateFallback(value: string): string {
 export function translateText(value: string, language: AppLanguage = activeLanguage()): string {
   if (language === 'fr' || !value.trim()) return value;
   const source = normalizeTranslationSource(value);
-  const translated =
-    language === 'fi'
-      ? (finnish[source] ?? english[source] ?? translateFallback(source))
-      : (english[source] ?? translateFallback(source));
+  const translated = english[source] ?? translateFallback(source);
   if (translated === source) return value;
   const leading = value.match(/^\s*/u)?.[0] ?? '';
   const trailing = value.match(/\s*$/u)?.[0] ?? '';

@@ -207,6 +207,22 @@ export class PurchaseOrderCommandService {
       .then(serializePurchaseOrder);
   }
 
+  async deleteDraft(organizationId: string, actor: AuthenticatedUser, id: string) {
+    await this.context.assertInstalled(organizationId);
+    const existing = await this.context.ensureOrder(organizationId, id);
+    this.policy.assertDraftOwner(actor, existing);
+    this.policy.assertMutable(existing.status);
+    const deleted = await this.prisma.purchaseOrder.deleteMany({
+      where: { id, organizationId, status: PurchaseOrderStatus.DRAFT },
+    });
+    if (!deleted.count) {
+      throw new ConflictException(
+        'Ce brouillon a été modifié ou supprimé ailleurs. Actualisez la liste avant de continuer.',
+      );
+    }
+    return { id, deleted: true };
+  }
+
   async duplicate(organizationId: string, actor: AuthenticatedUser, id: string) {
     const source = await this.orderQueries.detail(organizationId, actor, id);
     this.policy.assertPermission(actor, 'purchasing.draft');

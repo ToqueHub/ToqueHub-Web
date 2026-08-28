@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -251,6 +252,12 @@ export class PurchasingController {
     @Body() dto: UpdatePurchaseOrderDto,
   ) {
     return this.orderCommands.update(this.org(user), user, id, dto);
+  }
+  @Delete('orders/:id') deleteDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.orderCommands.deleteDraft(this.org(user), user, id);
   }
   @Post('orders/:id/duplicate') duplicateOrder(
     @CurrentUser() user: AuthenticatedUser,

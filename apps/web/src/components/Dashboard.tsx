@@ -12765,6 +12765,31 @@ function StocksModuleTabs({
   );
 }
 
+function ProductTableThumbnail({ product }: { product: Product }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(product.imageUrl && !imageFailed);
+
+  return (
+    <span
+      className={`articles-product-thumbnail${showImage ? ' has-image' : ''}`}
+      role="img"
+      aria-label={showImage ? `Photo de ${product.name}` : `Aucune photo pour ${product.name}`}
+    >
+      {showImage ? (
+        <img
+          src={product.imageUrl ?? undefined}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <Package size={20} aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
 function ArticlesPage({
   data,
   categories,
@@ -12897,20 +12922,6 @@ function ArticlesPage({
   }, [category, page, search, siteId, status, supplier]);
 
   const resetPage = () => setPage(1);
-  const statusLabels: Record<string, string> = {
-    NORMAL: 'En stock',
-    LOW: 'Stock faible',
-    OUT: 'Rupture',
-    NEGATIVE: 'Négatif',
-    NO_STOCK: 'Aucun stock',
-  };
-  const statusClass: Record<string, string> = {
-    NORMAL: 'badge-reception',
-    LOW: 'badge-correction',
-    OUT: 'badge-loss',
-    NEGATIVE: 'badge-loss',
-    NO_STOCK: 'badge-inventory',
-  };
   return (
     <div className="stocks-dashboard-grid articles-page">
       <header className="stocks-products-header">
@@ -13192,6 +13203,7 @@ function ArticlesPage({
             <table className="table-modern articles-table">
               <thead>
                 <tr>
+                  <th className="articles-photo-column">Photo</th>
                   <th>Produit</th>
                   <th>GTIN / EAN</th>
                   <th>Fournisseur</th>
@@ -13199,7 +13211,6 @@ function ArticlesPage({
                   <th style={{ textAlign: 'right' }}>Stock actuel</th>
                   <th style={{ textAlign: 'right' }}>Valeur du stock</th>
                   <th style={{ textAlign: 'right' }}>Valeur du produit</th>
-                  <th>Statut</th>
                 </tr>
               </thead>
               <tbody>
@@ -13213,6 +13224,9 @@ function ArticlesPage({
                         className={`clickable-row ${isSelected ? 'active-row' : ''}`}
                         onClick={() => setSelected(article)}
                       >
+                        <td className="articles-photo-column">
+                          <ProductTableThumbnail product={product} />
+                        </td>
                         <td>
                           <strong>{product.name}</strong>
                           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
@@ -13237,13 +13251,6 @@ function ArticlesPage({
                             productPreferredPriceUnit(product.unit, product.priceDisplayUnit),
                           ).toFixed(2)}{' '}
                           € / {productPreferredPriceUnit(product.unit, product.priceDisplayUnit)}
-                        </td>
-                        <td>
-                          <span
-                            className={`badge ${statusClass[article.stock.status] ?? 'badge-inventory'}`}
-                          >
-                            {statusLabels[article.stock.status] ?? article.stock.status}
-                          </span>
                         </td>
                       </tr>
                     );
@@ -18890,7 +18897,6 @@ const appLanguageOptions: Array<{
 }> = [
   { code: 'fr', label: 'Français', description: 'France' },
   { code: 'en', label: 'Anglais', description: 'Royaume-Uni' },
-  { code: 'fi', label: 'Finnois', description: 'Finlande' },
 ];
 
 function LanguageFlag({ language }: { language: AppLanguage }) {

@@ -6,12 +6,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ConservationState,
   HrEmployeeStatus,
   OperationalTaskStatus,
   PlanningAssignmentStatus,
   Prisma,
   ProductionBatchStatus,
   ProductionOrderStatus,
+  StockMovementType,
+  StockReservationStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -45,6 +48,22 @@ type TaskScope = {
   actorEmployeeId?: string;
   managesPeople: boolean;
 };
+
+type TransactionClient = Prisma.TransactionClient;
+
+type PresetStockTask = {
+  id: string;
+  title: string;
+  siteId: string | null;
+  technicalSheetId: string | null;
+  productionBatchId: string | null;
+  operationalTaskPresetId: string | null;
+  quantity: Prisma.Decimal | null;
+  assignedEmployee?: { mainSiteId?: string | null } | null;
+  planningAssignment?: { siteId?: string | null } | null;
+};
+
+const OPERATIONAL_TASK_STOCK_SOURCE = 'OperationalTask';
 
 const TASK_INCLUDE = {
   department: true,
@@ -583,6 +602,7 @@ export class OperationalTasksService {
   ) {
     const scope = await this.scope(organizationId, actor);
     const existing = await this.getVisible(organizationId, actor, scope, id);
+    await this.assertPresetStockDefinitionEditable(organizationId, existing, dto);
     const startsAt = dto.startsAt
       ? this.date(dto.startsAt, 'Heure de début invalide')
       : existing.startsAt;
@@ -742,14 +762,17 @@ export class OperationalTasksService {
     dto: UpdateOperationalTaskStatusDto,
   ) {
     const scope = await this.scope(organizationId, actor);
-    await this.getVisible(organizationId, actor, scope, id);
-    const task = await this.prisma.operationalTask.update({
-      where: { id },
-      data: {
-        status: dto.status,
-        completedAt: dto.status === OperationalTaskStatus.COMPLETED ? new Date() : null,
-      },
-      include: TASK_INCLUDE,
+    const existing = await this.getVisible(organizationId, actor, scope, id);
+    const task = await this.prisma.$transaction(async (tx) => {
+      await this.syncPresetTaskStockTx(tx, organizationId, actor.id, existing, dto.status);
+      return tx.operationalTask.update({
+        where: { id },
+        data: {
+          status: dto.status,
+          completedAt: dto.status === OperationalTaskStatus.COMPLETED ? new Date() : null,
+        },
+        include: TASK_INCLUDE,
+      });
     });
     await this.catererLifecycle?.evaluateForTask(organizationId, task.id);
     return task;
@@ -1222,6 +1245,445 @@ export class OperationalTasksService {
     });
     if (!task) throw new NotFoundException('Tâche introuvable dans votre périmètre.');
     return task;
+  }
+
+  private async syncPresetTaskStockTx(
+    tx: TransactionClient,
+    organizationId: string,
+    actorId: string,
+    task: PresetStockTask,
+    targetStatus: OperationalTaskStatus,
+  ) {
+    if (!task.operationalTaskPresetId || !task.technicalSheetId || task.productionBatchId) {
+      return;
+    }
+    if (
+      targetStatus === OperationalTaskStatus.IN_PROGRESS ||
+      targetStatus === OperationalTaskStatus.COMPLETED
+    ) {
+      await this.consumePresetTaskStockTx(tx, organizationId, actorId, task);
+      return;
+    }
+    if (
+      targetStatus === OperationalTaskStatus.TODO ||
+      targetStatus === OperationalTaskStatus.CANCELLED
+    ) {
+      await this.restorePresetTaskStockTx(tx, organizationId, actorId, task);
+    }
+  }
+
+  private async assertPresetStockDefinitionEditable(
+    organizationId: string,
+    task: PresetStockTask,
+    dto: UpdateOperationalTaskDto,
+  ) {
+    if (!task.operationalTaskPresetId || !task.technicalSheetId || task.productionBatchId) return;
+    const nextQuantity =
+      dto.quantity === undefined
+        ? task.quantity
+        : dto.quantity === null
+          ? null
+          : new Prisma.Decimal(dto.quantity);
+    const stockDefinitionChanged =
+      (dto.siteId !== undefined && dto.siteId !== task.siteId) ||
+      (dto.technicalSheetId !== undefined && dto.technicalSheetId !== task.technicalSheetId) ||
+      (dto.productionBatchId !== undefined && dto.productionBatchId !== task.productionBatchId) ||
+      !this.sameDecimal(nextQuantity, task.quantity);
+    if (!stockDefinitionChanged) return;
+
+    const movements = await this.prisma.stockMovement.findMany({
+      where: {
+        organizationId,
+        sourceEntityType: OPERATIONAL_TASK_STOCK_SOURCE,
+        sourceEntityId: task.id,
+        type: { in: [StockMovementType.CONSUMPTION, StockMovementType.RETURN] },
+      },
+      select: { id: true, type: true, idempotencyKey: true },
+    });
+    const returnedConsumptionIds = new Set(
+      movements
+        .filter((movement) => movement.type === StockMovementType.RETURN)
+        .map((movement) => this.returnedConsumptionId(movement.idempotencyKey))
+        .filter((movementId): movementId is string => Boolean(movementId)),
+    );
+    if (
+      movements.some(
+        (movement) =>
+          movement.type === StockMovementType.CONSUMPTION &&
+          !returnedConsumptionIds.has(movement.id),
+      )
+    ) {
+      throw new ConflictException(
+        'Annulez d’abord cette occurrence pour restituer son stock avant de modifier sa recette, sa quantité ou son site.',
+      );
+    }
+  }
+
+  private sameDecimal(left: Prisma.Decimal | null, right: Prisma.Decimal | null) {
+    if (left === null || right === null) return left === right;
+    return left.equals(right);
+  }
+
+  private async consumePresetTaskStockTx(
+    tx: TransactionClient,
+    organizationId: string,
+    actorId: string,
+    task: PresetStockTask,
+  ) {
+    const movements = await tx.stockMovement.findMany({
+      where: {
+        organizationId,
+        sourceEntityType: OPERATIONAL_TASK_STOCK_SOURCE,
+        sourceEntityId: task.id,
+        type: { in: [StockMovementType.CONSUMPTION, StockMovementType.RETURN] },
+      },
+      select: { id: true, type: true, idempotencyKey: true },
+    });
+    const returnedConsumptionIds = new Set(
+      movements
+        .filter((movement) => movement.type === StockMovementType.RETURN)
+        .map((movement) => this.returnedConsumptionId(movement.idempotencyKey))
+        .filter((movementId): movementId is string => Boolean(movementId)),
+    );
+    const activeConsumption = movements.some(
+      (movement) =>
+        movement.type === StockMovementType.CONSUMPTION && !returnedConsumptionIds.has(movement.id),
+    );
+    if (activeConsumption) return;
+
+    const siteId =
+      task.siteId ?? task.assignedEmployee?.mainSiteId ?? task.planningAssignment?.siteId ?? null;
+    if (!siteId) {
+      throw new BadRequestException(
+        'Le site d’exécution est obligatoire pour déstocker cette production.',
+      );
+    }
+    const sheet = await tx.technicalSheet.findFirst({
+      where: {
+        id: task.technicalSheetId!,
+        organizationId,
+        isArchived: false,
+      },
+      select: {
+        name: true,
+        referencePortions: true,
+        ingredients: {
+          select: {
+            productId: true,
+            unitId: true,
+            quantity: true,
+            product: {
+              select: {
+                name: true,
+                unitId: true,
+                unit: { select: { symbol: true } },
+              },
+            },
+          },
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+    if (!sheet) {
+      throw new BadRequestException('La fiche technique de cette production est introuvable.');
+    }
+    if (sheet.referencePortions.lte(0)) {
+      throw new BadRequestException(
+        `La fiche « ${sheet.name} » doit avoir un nombre de portions de référence supérieur à zéro.`,
+      );
+    }
+
+    const targetQuantity = task.quantity ?? sheet.referencePortions;
+    const factor = targetQuantity.div(sheet.referencePortions);
+    const requirements = new Map<
+      string,
+      {
+        productId: string;
+        productName: string;
+        unitId: string;
+        unitSymbol: string;
+        quantity: Prisma.Decimal;
+      }
+    >();
+    for (const ingredient of sheet.ingredients) {
+      const converted = await this.convertPresetQuantityTx(
+        tx,
+        organizationId,
+        ingredient.unitId,
+        ingredient.product.unitId,
+        ingredient.quantity.mul(factor),
+      );
+      if (!converted) {
+        throw new BadRequestException(
+          `Impossible de convertir « ${ingredient.product.name} » dans son unité de stock.`,
+        );
+      }
+      const quantity = converted.toDecimalPlaces(3);
+      if (quantity.lte(0)) continue;
+      const current = requirements.get(ingredient.productId);
+      if (current) {
+        current.quantity = current.quantity.add(quantity).toDecimalPlaces(3);
+      } else {
+        requirements.set(ingredient.productId, {
+          productId: ingredient.productId,
+          productName: ingredient.product.name,
+          unitId: ingredient.product.unitId,
+          unitSymbol: ingredient.product.unit.symbol,
+          quantity,
+        });
+      }
+    }
+
+    const stockPlans: Array<{
+      requirement: typeof requirements extends Map<string, infer T> ? T : never;
+      rows: Array<{
+        id: string;
+        lotId: string | null;
+        locationId: string | null;
+        quantity: Prisma.Decimal;
+        sourceState: ConservationState | null;
+      }>;
+    }> = [];
+    const now = new Date();
+    for (const requirement of requirements.values()) {
+      const stocks = await tx.stock.findMany({
+        where: {
+          organizationId,
+          siteId,
+          productId: requirement.productId,
+          variantId: null,
+          quantity: { gt: 0 },
+        },
+        include: {
+          lot: true,
+          reservations: { where: { status: StockReservationStatus.ACTIVE } },
+        },
+        orderBy: [{ lot: { expiresAt: 'asc' } }, { createdAt: 'asc' }],
+      });
+      let remaining = requirement.quantity;
+      const rows: (typeof stockPlans)[number]['rows'] = [];
+      for (const stock of stocks) {
+        if (remaining.lte(0)) break;
+        if (!this.usablePresetStockLot(stock.lot, now)) continue;
+        const reserved = stock.reservations.reduce(
+          (sum, reservation) => sum.add(reservation.quantity),
+          new Prisma.Decimal(0),
+        );
+        const free = Prisma.Decimal.max(0, stock.quantity.sub(reserved));
+        const take = Prisma.Decimal.min(free, remaining).toDecimalPlaces(3);
+        if (take.lte(0)) continue;
+        rows.push({
+          id: stock.id,
+          lotId: stock.lotId,
+          locationId: stock.locationId,
+          quantity: take,
+          sourceState: stock.lot?.conservationState ?? null,
+        });
+        remaining = remaining.sub(take);
+      }
+      if (remaining.gt(0)) {
+        throw new ConflictException(
+          `Stock insuffisant pour démarrer « ${task.title} » : il manque ${remaining.toFixed(3)} ${requirement.unitSymbol} de ${requirement.productName}.`,
+        );
+      }
+      stockPlans.push({ requirement, rows });
+    }
+
+    const cycle = this.nextPresetConsumptionCycle(movements);
+    for (const { requirement, rows } of stockPlans) {
+      for (const [index, row] of rows.entries()) {
+        const updated = await tx.stock.updateMany({
+          where: { id: row.id, quantity: { gte: row.quantity } },
+          data: { quantity: { decrement: row.quantity } },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            'Le stock a changé pendant le déstockage. Veuillez réessayer.',
+          );
+        }
+        await tx.stockMovement.create({
+          data: {
+            organizationId,
+            productId: requirement.productId,
+            lotId: row.lotId,
+            type: StockMovementType.CONSUMPTION,
+            quantity: row.quantity.neg(),
+            inputQuantity: row.quantity,
+            unitId: requirement.unitId,
+            unitSymbolSnapshot: requirement.unitSymbol,
+            reason: `Production planifiée · ${task.title}`,
+            sourceState: row.sourceState,
+            sourceEntityType: OPERATIONAL_TASK_STOCK_SOURCE,
+            sourceEntityId: task.id,
+            sourceSiteId: siteId,
+            sourceLocationId: row.locationId,
+            createdById: actorId,
+            idempotencyKey: `operational-task:${task.id}:consume:${cycle}:${requirement.productId}:${index}:${row.id}`,
+          },
+        });
+      }
+    }
+  }
+
+  private async restorePresetTaskStockTx(
+    tx: TransactionClient,
+    organizationId: string,
+    actorId: string,
+    task: PresetStockTask,
+  ) {
+    const movements = await tx.stockMovement.findMany({
+      where: {
+        organizationId,
+        sourceEntityType: OPERATIONAL_TASK_STOCK_SOURCE,
+        sourceEntityId: task.id,
+        type: { in: [StockMovementType.CONSUMPTION, StockMovementType.RETURN] },
+      },
+      select: {
+        id: true,
+        productId: true,
+        variantId: true,
+        lotId: true,
+        quantity: true,
+        unitId: true,
+        unitSymbolSnapshot: true,
+        sourceState: true,
+        sourceSiteId: true,
+        sourceLocationId: true,
+        type: true,
+        idempotencyKey: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const returnedConsumptionIds = new Set(
+      movements
+        .filter((movement) => movement.type === StockMovementType.RETURN)
+        .map((movement) => this.returnedConsumptionId(movement.idempotencyKey))
+        .filter((movementId): movementId is string => Boolean(movementId)),
+    );
+    const activeConsumptions = movements.filter(
+      (movement) =>
+        movement.type === StockMovementType.CONSUMPTION && !returnedConsumptionIds.has(movement.id),
+    );
+    for (const consumption of activeConsumptions) {
+      const quantity = consumption.quantity.abs();
+      const returnKey = `operational-task:${task.id}:return:${consumption.id}`;
+      await tx.stockMovement.create({
+        data: {
+          organizationId,
+          productId: consumption.productId,
+          variantId: consumption.variantId,
+          lotId: consumption.lotId,
+          type: StockMovementType.RETURN,
+          quantity,
+          inputQuantity: quantity,
+          unitId: consumption.unitId,
+          unitSymbolSnapshot: consumption.unitSymbolSnapshot,
+          reason: `Annulation de la production planifiée · ${task.title}`,
+          destinationState: consumption.sourceState,
+          sourceEntityType: OPERATIONAL_TASK_STOCK_SOURCE,
+          sourceEntityId: task.id,
+          destinationSiteId: consumption.sourceSiteId,
+          destinationLocationId: consumption.sourceLocationId,
+          createdById: actorId,
+          idempotencyKey: returnKey,
+        },
+      });
+      const stock = await tx.stock.findFirst({
+        where: {
+          organizationId,
+          productId: consumption.productId,
+          variantId: consumption.variantId,
+          lotId: consumption.lotId,
+          siteId: consumption.sourceSiteId,
+          locationId: consumption.sourceLocationId,
+        },
+        select: { id: true },
+      });
+      if (stock) {
+        await tx.stock.update({
+          where: { id: stock.id },
+          data: { quantity: { increment: quantity } },
+        });
+      } else {
+        await tx.stock.create({
+          data: {
+            organizationId,
+            productId: consumption.productId,
+            variantId: consumption.variantId,
+            lotId: consumption.lotId,
+            siteId: consumption.sourceSiteId,
+            locationId: consumption.sourceLocationId,
+            quantity,
+          },
+        });
+      }
+    }
+  }
+
+  private returnedConsumptionId(idempotencyKey: string | null) {
+    const marker = ':return:';
+    const markerIndex = idempotencyKey?.lastIndexOf(marker) ?? -1;
+    return markerIndex >= 0 ? idempotencyKey!.slice(markerIndex + marker.length) : null;
+  }
+
+  private nextPresetConsumptionCycle(
+    movements: Array<{ type: StockMovementType; idempotencyKey: string | null }>,
+  ) {
+    let highest = 0;
+    for (const movement of movements) {
+      if (movement.type !== StockMovementType.CONSUMPTION) continue;
+      const match = movement.idempotencyKey?.match(/:consume:(\d+):/);
+      highest = Math.max(highest, Number(match?.[1] ?? 0));
+    }
+    return highest + 1;
+  }
+
+  private async convertPresetQuantityTx(
+    tx: TransactionClient,
+    organizationId: string,
+    fromUnitId: string,
+    toUnitId: string,
+    quantity: Prisma.Decimal,
+  ) {
+    if (fromUnitId === toUnitId) return quantity;
+    const conversion = await tx.unitConversion.findFirst({
+      where: { organizationId, fromUnitId, toUnitId },
+      select: { factor: true },
+    });
+    return conversion ? quantity.mul(conversion.factor) : null;
+  }
+
+  private usablePresetStockLot(
+    lot: {
+      conservationState: ConservationState;
+      expiresAt: Date | null;
+      availableAt: Date | null;
+    } | null,
+    at: Date,
+  ) {
+    if (!lot) return true;
+    if (
+      (
+        [
+          ConservationState.BLOCKED,
+          ConservationState.EXPIRED,
+          ConservationState.DEPLETED,
+          ConservationState.COOLING,
+        ] as ConservationState[]
+      ).includes(lot.conservationState)
+    ) {
+      return false;
+    }
+    if (lot.expiresAt && lot.expiresAt < at) return false;
+    if (
+      ([ConservationState.FROZEN, ConservationState.THAWING] as ConservationState[]).includes(
+        lot.conservationState,
+      ) &&
+      (!lot.availableAt || lot.availableAt > at)
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private async validateReferences(

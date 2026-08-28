@@ -31,6 +31,14 @@ export class UpsertOperationalTaskPresetDto {
   @IsUUID() departmentId!: string;
   @IsOptional() @IsUUID() siteId?: string | null;
   @IsUUID() assignedEmployeeId!: string;
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true })
+  assignedEmployeeIds?: string[];
+  @IsOptional() @IsUUID() positionId?: string | null;
+  @IsOptional() @IsString() @MaxLength(80) positionTaskPresetId?: string | null;
   @IsOptional() @IsUUID() technicalSheetId?: string | null;
   @IsOptional() @IsUUID() technicalSheetStepId?: string | null;
 

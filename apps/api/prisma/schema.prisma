@@ -1207,6 +1207,7 @@ model Organization {
   productionAssignments                 ProductionAssignment[]
   operationalTaskAssignments            OperationalTaskAssignment[]
   operationalTaskPresets                OperationalTaskPreset[]
+  operationalTaskPresetAssignments      OperationalTaskPresetAssignment[]
   productionAlerts                      ProductionAlert[]
   productionAlertOverrides              ProductionAlertOverride[]
   productionHistory                     ProductionHistory[]
@@ -3289,14 +3290,15 @@ model HrPosition {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization        Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department          HrDepartment?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  employees           HrEmployee[]
-  secondaryEmployees  HrEmployeeSecondaryPosition[]
-  requiredSkills      HrPositionSkill[]
-  planningAssignments PlanningAssignment[]
-  planningNeeds       PlanningOperationalNeed[]
-  operationalTasks    OperationalTask[]
+  organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department             HrDepartment?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employees              HrEmployee[]
+  secondaryEmployees     HrEmployeeSecondaryPosition[]
+  requiredSkills         HrPositionSkill[]
+  planningAssignments    PlanningAssignment[]
+  planningNeeds          PlanningOperationalNeed[]
+  operationalTasks       OperationalTask[]
+  operationalTaskPresets OperationalTaskPreset[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -3349,45 +3351,46 @@ model HrEmployee {
   createdAt                 DateTime         @default(now())
   updatedAt                 DateTime         @updatedAt
 
-  organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department                    HrDepartment                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  position                      HrPosition                     @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  mainSite                      Site?                          @relation(fields: [mainSiteId], references: [id], onDelete: SetNull)
-  user                          User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  manager                       HrEmployee?                    @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports                       HrEmployee[]                   @relation("HrManager")
-  history                       HrEmployeeHistory[]
-  rotationAssignments           HrRotationAssignment[]
-  secondaryPositions            HrEmployeeSecondaryPosition[]
-  secondarySites                HrEmployeeSecondarySite[]
-  contracts                     HrEmploymentContract[]
-  compensations                 HrEmployeeCompensation[]
-  salaryReviews                 HrSalaryReview[]
-  documents                     HrDocument[]
-  skills                        HrEmployeeSkill[]
-  absences                      HrAbsence[]
-  planningAssignments           PlanningAssignment[]
-  replacedPlanningAssignments   PlanningReplacement[]          @relation("PlanningReplacementAbsentEmployee")
-  replacementAssignments        PlanningReplacement[]          @relation("PlanningReplacementEmployee")
-  planningNotifications         PlanningNotification[]         @relation("PlanningNotificationRecipientEmployee")
-  planningViewPreferences       PlanningViewPreference[]
-  planningExports               PlanningExport[]
-  planningDayStatuses           PlanningDayStatus[]
-  hrTimeAccounts                HrTimeAccount[]
-  hrTimeAccountTransactions     HrTimeAccountTransaction[]
-  planningAttendanceEntries     PlanningAttendanceEntry[]
-  hrEmployeeEntitlements        HrEmployeeEntitlement[]
-  legalProfiles                 EmployeeLegalProfile[]
-  legalRightCounters            LegalRightCounter[]
-  legalRightCounterTransactions LegalRightCounterTransaction[]
-  legalCalculationRuns          LegalCalculationRun[]
-  sensitiveData                 HrEmployeeSensitiveData?
-  assignedProductionOrders      ProductionOrder[]              @relation("ProductionOrderResponsible")
-  productionAssignments         ProductionAssignment[]
-  productionOperations          ProductionOperation[]
-  operationalTasks              OperationalTask[]
-  operationalTaskAssignments    OperationalTaskAssignment[]
-  operationalTaskPresets        OperationalTaskPreset[]
+  organization                     Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department                       HrDepartment                      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position                         HrPosition                        @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  mainSite                         Site?                             @relation(fields: [mainSiteId], references: [id], onDelete: SetNull)
+  user                             User?                             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  manager                          HrEmployee?                       @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports                          HrEmployee[]                      @relation("HrManager")
+  history                          HrEmployeeHistory[]
+  rotationAssignments              HrRotationAssignment[]
+  secondaryPositions               HrEmployeeSecondaryPosition[]
+  secondarySites                   HrEmployeeSecondarySite[]
+  contracts                        HrEmploymentContract[]
+  compensations                    HrEmployeeCompensation[]
+  salaryReviews                    HrSalaryReview[]
+  documents                        HrDocument[]
+  skills                           HrEmployeeSkill[]
+  absences                         HrAbsence[]
+  planningAssignments              PlanningAssignment[]
+  replacedPlanningAssignments      PlanningReplacement[]             @relation("PlanningReplacementAbsentEmployee")
+  replacementAssignments           PlanningReplacement[]             @relation("PlanningReplacementEmployee")
+  planningNotifications            PlanningNotification[]            @relation("PlanningNotificationRecipientEmployee")
+  planningViewPreferences          PlanningViewPreference[]
+  planningExports                  PlanningExport[]
+  planningDayStatuses              PlanningDayStatus[]
+  hrTimeAccounts                   HrTimeAccount[]
+  hrTimeAccountTransactions        HrTimeAccountTransaction[]
+  planningAttendanceEntries        PlanningAttendanceEntry[]
+  hrEmployeeEntitlements           HrEmployeeEntitlement[]
+  legalProfiles                    EmployeeLegalProfile[]
+  legalRightCounters               LegalRightCounter[]
+  legalRightCounterTransactions    LegalRightCounterTransaction[]
+  legalCalculationRuns             LegalCalculationRun[]
+  sensitiveData                    HrEmployeeSensitiveData?
+  assignedProductionOrders         ProductionOrder[]                 @relation("ProductionOrderResponsible")
+  productionAssignments            ProductionAssignment[]
+  productionOperations             ProductionOperation[]
+  operationalTasks                 OperationalTask[]
+  operationalTaskAssignments       OperationalTaskAssignment[]
+  operationalTaskPresets           OperationalTaskPreset[]
+  operationalTaskPresetAssignments OperationalTaskPresetAssignment[]
 
   @@unique([organizationId, email])
   @@unique([organizationId, employeeNumber])
@@ -5619,6 +5622,8 @@ model OperationalTaskPreset {
   departmentId         String                  @db.Uuid
   siteId               String?                 @db.Uuid
   assignedEmployeeId   String                  @db.Uuid
+  positionId           String?                 @db.Uuid
+  positionTaskPresetId String?
   technicalSheetId     String?                 @db.Uuid
   technicalSheetStepId String?                 @db.Uuid
   serviceWeekdays      Int[]                   @default([])
@@ -5637,21 +5642,43 @@ model OperationalTaskPreset {
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department         HrDepartment        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  site               Site?               @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  assignedEmployee   HrEmployee          @relation(fields: [assignedEmployeeId], references: [id], onDelete: Restrict)
-  technicalSheet     TechnicalSheet?     @relation(fields: [technicalSheetId], references: [id], onDelete: SetNull)
-  technicalSheetStep TechnicalSheetStep? @relation(fields: [technicalSheetStepId], references: [id], onDelete: SetNull)
-  createdBy          User?               @relation("OperationalTaskPresetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization       Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department         HrDepartment                      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  site               Site?                             @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  assignedEmployee   HrEmployee                        @relation(fields: [assignedEmployeeId], references: [id], onDelete: Restrict)
+  position           HrPosition?                       @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  technicalSheet     TechnicalSheet?                   @relation(fields: [technicalSheetId], references: [id], onDelete: SetNull)
+  technicalSheetStep TechnicalSheetStep?               @relation(fields: [technicalSheetStepId], references: [id], onDelete: SetNull)
+  createdBy          User?                             @relation("OperationalTaskPresetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   tasks              OperationalTask[]
+  assignments        OperationalTaskPresetAssignment[]
 
   @@index([organizationId, isActive, isArchived])
   @@index([departmentId])
   @@index([siteId])
   @@index([assignedEmployeeId])
+  @@index([positionId])
+  @@index([positionTaskPresetId])
   @@index([technicalSheetId])
   @@map("operational_task_presets")
+}
+
+model OperationalTaskPresetAssignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  presetId       String   @db.Uuid
+  employeeId     String   @db.Uuid
+  isLead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  preset       OperationalTaskPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  employee     HrEmployee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([presetId, employeeId])
+  @@index([organizationId])
+  @@index([employeeId])
+  @@map("operational_task_preset_assignments")
 }
 
 model OperationalTask {

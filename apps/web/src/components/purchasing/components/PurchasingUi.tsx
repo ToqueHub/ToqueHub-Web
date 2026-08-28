@@ -343,8 +343,7 @@ export function productOrderUnitLabel(product: Product) {
   const factorLabel = new Intl.NumberFormat(activeLocale(), {
     maximumFractionDigits: 3,
   }).format(factor);
-  const fallbackPackageLabel =
-    activeLanguage() === 'fi' ? 'Pakkaus' : activeLanguage() === 'en' ? 'Pack' : 'Colis';
+  const fallbackPackageLabel = activeLanguage() === 'en' ? 'Pack' : 'Colis';
   return `${packageLabel || fallbackPackageLabel} · ${factorLabel} ${unitSymbol}`;
 }
 

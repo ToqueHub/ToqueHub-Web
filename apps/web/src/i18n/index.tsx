@@ -15,7 +15,7 @@ const IGNORED_TEXT_TAGS = new Set([...IGNORED_TAGS, 'TEXTAREA']);
 
 type LanguageContextValue = {
   language: AppLanguage;
-  locale: 'fr-FR' | 'en-GB' | 'fi-FI';
+  locale: 'fr-FR' | 'en-GB';
   setLanguage: (language: AppLanguage) => void;
   toggleLanguage: () => void;
   t: (value: string) => string;
@@ -106,7 +106,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLanguage = useCallback(() => {
-    setLanguage(language === 'fr' ? 'en' : language === 'en' ? 'fi' : 'fr');
+    setLanguage(language === 'fr' ? 'en' : 'fr');
   }, [language, setLanguage]);
 
   useLayoutEffect(() => {
@@ -149,7 +149,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LanguageContextValue>(
     () => ({
       language,
-      locale: language === 'en' ? 'en-GB' : language === 'fi' ? 'fi-FI' : 'fr-FR',
+      locale: language === 'en' ? 'en-GB' : 'fr-FR',
       setLanguage,
       toggleLanguage,
       t: (source) => translateText(source, language),

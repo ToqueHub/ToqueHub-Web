@@ -146,7 +146,7 @@ export function OrderComposer({
   );
   const [saving, setSaving] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
-  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>(
+  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'deleting' | 'error'>(
     order ? 'saved' : 'dirty',
   );
   const versionRef = useRef(order?.version ?? 1);
@@ -194,6 +194,14 @@ export function OrderComposer({
   const formSignature = JSON.stringify(payload());
   const lastSavedSignature = useRef(formSignature);
   const autosavePromise = useRef<Promise<void> | null>(null);
+  const autosaveTimer = useRef<number | null>(null);
+  const closingRef = useRef(false);
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimer.current === null) return;
+    window.clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = null;
+  };
 
   useEffect(() => {
     if (step !== 'supplier') return;
@@ -291,7 +299,9 @@ export function OrderComposer({
   useEffect(() => {
     if (!order || step !== 'catalog' || formSignature === lastSavedSignature.current) return;
     setSaveState('dirty');
+    if (!lines.length || closingRef.current) return;
     const timer = window.setTimeout(() => {
+      autosaveTimer.current = null;
       setSaveState('saving');
       const request = api
         .updatePurchaseOrder(token, order.id, {
@@ -304,15 +314,21 @@ export function OrderComposer({
           setSaveState('saved');
         })
         .catch((error) => {
-          setSaveState('error');
-          flash('error', messageOf(error));
+          if (!closingRef.current) {
+            setSaveState('error');
+            flash('error', messageOf(error));
+          }
         })
         .finally(() => {
           if (autosavePromise.current === request) autosavePromise.current = null;
         });
       autosavePromise.current = request;
     }, 900);
-    return () => window.clearTimeout(timer);
+    autosaveTimer.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (autosaveTimer.current === timer) autosaveTimer.current = null;
+    };
     // La signature contient déjà toutes les valeurs métier autosauvegardées.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formSignature, order?.id, step, token]);
@@ -499,17 +515,39 @@ export function OrderComposer({
   const saveLabel = order
     ? saveState === 'saved'
       ? 'Fermer'
-      : saveState === 'saving'
-        ? 'Enregistrement automatique…'
-        : 'Enregistrer et fermer'
+      : saveState === 'deleting'
+        ? 'Suppression du brouillon…'
+        : saveState === 'saving'
+          ? 'Enregistrement automatique…'
+          : 'Enregistrer et fermer'
     : 'Enregistrer la commande';
 
   const closeComposer = async () => {
-    if (!order || step !== 'catalog') {
+    if (!order) {
       onClose();
       return;
     }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    clearAutosaveTimer();
+    setSaveState(lines.length ? 'saving' : 'deleting');
     if (autosavePromise.current) await autosavePromise.current;
+    if (!lines.length) {
+      try {
+        await api.deletePurchaseOrderDraft(token, order.id);
+        flash('success', 'Brouillon vide supprimé.');
+        onClose();
+      } catch (error) {
+        closingRef.current = false;
+        setSaveState('error');
+        flash('error', messageOf(error, 'Le brouillon vide n’a pas pu être supprimé.'));
+      }
+      return;
+    }
+    if (step !== 'catalog') {
+      onClose();
+      return;
+    }
     if (formSignature === lastSavedSignature.current) {
       onClose();
       return;
@@ -525,6 +563,7 @@ export function OrderComposer({
       setSaveState('saved');
       onClose();
     } catch (error) {
+      closingRef.current = false;
       setSaveState('error');
       flash('error', messageOf(error, 'Le brouillon n’a pas pu être enregistré.'));
     }
@@ -546,9 +585,11 @@ export function OrderComposer({
             ? 'Commande enregistrée'
             : saveState === 'saving'
               ? 'Enregistrement automatique…'
-              : saveState === 'error'
-                ? 'Conflit ou erreur d’enregistrement'
-                : 'Modifications en attente'}
+              : saveState === 'deleting'
+                ? 'Suppression du brouillon vide…'
+                : saveState === 'error'
+                  ? 'Conflit ou erreur d’enregistrement'
+                  : 'Modifications en attente'}
         </div>
       ) : (
         <div
@@ -690,7 +731,7 @@ export function OrderComposer({
             supplierMessage={supplierMessage}
             notes={notes}
             totals={totals}
-            saving={saving || saveState === 'saving'}
+            saving={saving || saveState === 'saving' || saveState === 'deleting'}
             suggesting={suggesting}
             saveLabel={saveLabel}
             canChangeSupplier={!order}
