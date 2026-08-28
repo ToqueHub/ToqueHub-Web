@@ -518,4 +518,49 @@ describe('Purchasing Stocks source of truth', () => {
     );
     expect(tx.purchaseOrderLine.deleteMany).not.toHaveBeenCalled();
   });
+
+  it('deletes an owned draft and refuses to delete a sent order', async () => {
+    const purchaseOrder = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'draft-1',
+        createdById: 'user-1',
+        status: 'DRAFT',
+      }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          purchasingInstalledAt: new Date(),
+        }),
+      },
+      purchaseOrder,
+    };
+    const actor = {
+      id: 'user-1',
+      email: 'user@example.com',
+      organizationId: 'org-1',
+      role: 'Utilisateur',
+      permissions: ['purchasing.draft'],
+    };
+
+    await expect(commandService(prisma).deleteDraft('org-1', actor, 'draft-1')).resolves.toEqual({
+      id: 'draft-1',
+      deleted: true,
+    });
+    expect(purchaseOrder.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'draft-1', organizationId: 'org-1', status: 'DRAFT' },
+    });
+
+    purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: 'sent-1',
+      createdById: 'user-1',
+      status: 'SENT',
+    });
+    await expect(commandService(prisma).deleteDraft('org-1', actor, 'sent-1')).rejects.toThrow(
+      'ne peut plus être modifiée',
+    );
+    expect(purchaseOrder.deleteMany).toHaveBeenCalledTimes(1);
+  });
 });

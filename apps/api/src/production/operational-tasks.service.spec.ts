@@ -1,5 +1,10 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  ConservationState,
+  OperationalTaskStatus,
+  Prisma,
+  StockMovementType,
+} from '@prisma/client';
 import { OperationalTasksService } from './operational-tasks.service';
 
 describe('OperationalTasksService', () => {
@@ -15,8 +20,17 @@ describe('OperationalTasksService', () => {
     productionProfile: { findFirst: jest.fn() },
     product: { findMany: jest.fn() },
     unit: { findMany: jest.fn() },
+    unitConversion: { findFirst: jest.fn() },
     location: { findMany: jest.fn() },
     site: { findFirst: jest.fn() },
+    stock: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+    },
+    stockMovement: { findMany: jest.fn(), create: jest.fn() },
     planningAssignment: { findMany: jest.fn(), findFirst: jest.fn() },
     menu: { findFirst: jest.fn() },
     operationalTask: {
@@ -43,6 +57,7 @@ describe('OperationalTasksService', () => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((callback) => callback(prisma));
     prisma.haccpProductionIngredientTraceability.findMany.mockResolvedValue([]);
+    prisma.stockMovement.findMany.mockResolvedValue([]);
   });
 
   it('returns only the RH services inside the manager hierarchy', async () => {
@@ -409,18 +424,11 @@ describe('OperationalTasksService', () => {
     prisma.planningAssignment.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.update(
-        'org-1',
-        { id: 'admin-user', role: 'ADMIN', permissions: [] },
-        'manual-task',
-        {
-          startsAt: '2026-07-20T05:00:00.000Z',
-          endsAt: '2026-07-20T06:00:00.000Z',
-        },
-      ),
-    ).rejects.toThrow(
-      'Une personne affectée ne travaille pas sur le nouveau créneau.',
-    );
+      service.update('org-1', { id: 'admin-user', role: 'ADMIN', permissions: [] }, 'manual-task', {
+        startsAt: '2026-07-20T05:00:00.000Z',
+        endsAt: '2026-07-20T06:00:00.000Z',
+      }),
+    ).rejects.toThrow('Une personne affectée ne travaille pas sur le nouveau créneau.');
   });
 
   it('creates one simple operational task per menu recipe', async () => {
@@ -474,6 +482,340 @@ describe('OperationalTasksService', () => {
       unitLabel: 'portions',
     });
     expect(String(result.created[0].quantity)).toBe('24');
+  });
+
+  it('consumes a preset recipe progressively from free FEFO stock when its occurrence starts', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'preset-task-1',
+      title: 'Velouté du lundi',
+      status: OperationalTaskStatus.TODO,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: null,
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(20),
+      assignedEmployee: null,
+      planningAssignment: null,
+    });
+    prisma.technicalSheet.findFirst.mockResolvedValue({
+      name: 'Velouté',
+      referencePortions: new Prisma.Decimal(10),
+      ingredients: [
+        {
+          productId: 'pumpkin',
+          unitId: 'kg',
+          quantity: new Prisma.Decimal('0.75'),
+          product: {
+            name: 'Potimarron',
+            unitId: 'kg',
+            unit: { symbol: 'kg' },
+          },
+        },
+      ],
+    });
+    prisma.stock.findMany.mockResolvedValue([
+      {
+        id: 'stock-oldest',
+        productId: 'pumpkin',
+        lotId: 'lot-oldest',
+        locationId: 'cold-room',
+        quantity: new Prisma.Decimal(2),
+        reservations: [{ quantity: new Prisma.Decimal(1) }],
+        lot: {
+          conservationState: ConservationState.CHILLED,
+          expiresAt: new Date('2026-08-30T00:00:00.000Z'),
+          availableAt: new Date('2026-08-20T00:00:00.000Z'),
+        },
+      },
+      {
+        id: 'stock-next',
+        productId: 'pumpkin',
+        lotId: 'lot-next',
+        locationId: 'cold-room',
+        quantity: new Prisma.Decimal(1),
+        reservations: [],
+        lot: {
+          conservationState: ConservationState.CHILLED,
+          expiresAt: new Date('2026-09-02T00:00:00.000Z'),
+          availableAt: new Date('2026-08-20T00:00:00.000Z'),
+        },
+      },
+    ]);
+    prisma.stock.updateMany.mockResolvedValue({ count: 1 });
+    prisma.stockMovement.create.mockImplementation(({ data }) =>
+      Promise.resolve({ id: `movement-${data.idempotencyKey}`, ...data }),
+    );
+    prisma.operationalTask.update.mockResolvedValue({
+      id: 'preset-task-1',
+      status: OperationalTaskStatus.IN_PROGRESS,
+    });
+
+    await service.updateStatus(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'preset-task-1',
+      { status: OperationalTaskStatus.IN_PROGRESS },
+    );
+
+    expect(prisma.stock.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: 'stock-oldest', quantity: { gte: new Prisma.Decimal(1) } },
+      data: { quantity: { decrement: new Prisma.Decimal(1) } },
+    });
+    expect(prisma.stock.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: 'stock-next', quantity: { gte: new Prisma.Decimal('0.5') } },
+      data: { quantity: { decrement: new Prisma.Decimal('0.5') } },
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledTimes(2);
+    expect(prisma.stockMovement.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: StockMovementType.CONSUMPTION,
+          quantity: new Prisma.Decimal(-1),
+          lotId: 'lot-oldest',
+          sourceEntityType: 'OperationalTask',
+          sourceEntityId: 'preset-task-1',
+        }),
+      }),
+    );
+  });
+
+  it('does not consume preset ingredients twice when the occurrence is completed after starting', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'preset-task-1',
+      title: 'Velouté du lundi',
+      status: OperationalTaskStatus.IN_PROGRESS,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: null,
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(10),
+      assignedEmployee: null,
+      planningAssignment: null,
+    });
+    prisma.stockMovement.findMany.mockResolvedValue([
+      {
+        id: 'consumption-1',
+        type: StockMovementType.CONSUMPTION,
+        idempotencyKey: 'operational-task:preset-task-1:consume:1:pumpkin:0:stock-1',
+      },
+    ]);
+    prisma.operationalTask.update.mockResolvedValue({
+      id: 'preset-task-1',
+      status: OperationalTaskStatus.COMPLETED,
+    });
+
+    await service.updateStatus(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'preset-task-1',
+      { status: OperationalTaskStatus.COMPLETED },
+    );
+
+    expect(prisma.technicalSheet.findFirst).not.toHaveBeenCalled();
+    expect(prisma.stock.updateMany).not.toHaveBeenCalled();
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('leaves batch-backed production tasks to the production execution stock flow', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'batch-task-1',
+      title: 'Production par lot',
+      status: OperationalTaskStatus.TODO,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: 'batch-1',
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(10),
+      assignedEmployee: null,
+      planningAssignment: null,
+    });
+    prisma.operationalTask.update.mockResolvedValue({
+      id: 'batch-task-1',
+      status: OperationalTaskStatus.IN_PROGRESS,
+    });
+
+    await service.updateStatus(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'batch-task-1',
+      { status: OperationalTaskStatus.IN_PROGRESS },
+    );
+
+    expect(prisma.stockMovement.findMany).not.toHaveBeenCalled();
+    expect(prisma.stock.updateMany).not.toHaveBeenCalled();
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('restores exactly the consumed lots once when a preset occurrence is removed', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    const task = {
+      id: 'preset-task-1',
+      title: 'Velouté du lundi',
+      status: OperationalTaskStatus.IN_PROGRESS,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: null,
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(10),
+      assignedEmployee: null,
+      planningAssignment: null,
+    };
+    prisma.operationalTask.findFirst.mockResolvedValue(task);
+    const consumption = {
+      id: 'consumption-1',
+      productId: 'pumpkin',
+      variantId: null,
+      lotId: 'lot-oldest',
+      quantity: new Prisma.Decimal('-1.25'),
+      unitId: 'kg',
+      unitSymbolSnapshot: 'kg',
+      sourceState: ConservationState.CHILLED,
+      sourceSiteId: 'site-1',
+      sourceLocationId: 'cold-room',
+      type: StockMovementType.CONSUMPTION,
+      idempotencyKey: 'operational-task:preset-task-1:consume:1:pumpkin:0:stock-1',
+    };
+    prisma.stockMovement.findMany.mockResolvedValueOnce([consumption]).mockResolvedValueOnce([
+      consumption,
+      {
+        ...consumption,
+        id: 'return-1',
+        quantity: new Prisma.Decimal('1.25'),
+        type: StockMovementType.RETURN,
+        idempotencyKey: 'operational-task:preset-task-1:return:consumption-1',
+      },
+    ]);
+    prisma.stock.findFirst.mockResolvedValue({ id: 'stock-1' });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'return-1' });
+    prisma.operationalTask.update.mockResolvedValue({
+      id: 'preset-task-1',
+      status: OperationalTaskStatus.CANCELLED,
+    });
+
+    await service.updateStatus(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'preset-task-1',
+      { status: OperationalTaskStatus.CANCELLED },
+    );
+    await service.updateStatus(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'preset-task-1',
+      { status: OperationalTaskStatus.CANCELLED },
+    );
+
+    expect(prisma.stock.update).toHaveBeenCalledTimes(1);
+    expect(prisma.stock.update).toHaveBeenCalledWith({
+      where: { id: 'stock-1' },
+      data: { quantity: { increment: new Prisma.Decimal('1.25') } },
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledTimes(1);
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: StockMovementType.RETURN,
+        quantity: new Prisma.Decimal('1.25'),
+        lotId: 'lot-oldest',
+        destinationSiteId: 'site-1',
+        destinationLocationId: 'cold-room',
+        idempotencyKey: 'operational-task:preset-task-1:return:consumption-1',
+      }),
+    });
+  });
+
+  it('requires cancellation before changing the recipe quantity after stock was consumed', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'preset-task-1',
+      title: 'Velouté du lundi',
+      status: OperationalTaskStatus.IN_PROGRESS,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: null,
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(10),
+      assignedEmployee: null,
+      planningAssignment: null,
+    });
+    prisma.stockMovement.findMany.mockResolvedValue([
+      {
+        id: 'consumption-1',
+        type: StockMovementType.CONSUMPTION,
+        idempotencyKey: 'operational-task:preset-task-1:consume:1:pumpkin:0:stock-1',
+      },
+    ]);
+
+    await expect(
+      service.update(
+        'org-1',
+        { id: 'admin-user', role: 'ADMIN', permissions: [] },
+        'preset-task-1',
+        { quantity: 20 },
+      ),
+    ).rejects.toThrow(
+      'Annulez d’abord cette occurrence pour restituer son stock avant de modifier sa recette, sa quantité ou son site.',
+    );
+
+    expect(prisma.operationalTask.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps the occurrence and all stocks unchanged when an ingredient is missing', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'preset-task-1',
+      title: 'Velouté du lundi',
+      status: OperationalTaskStatus.TODO,
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      productionBatchId: null,
+      operationalTaskPresetId: 'preset-1',
+      quantity: new Prisma.Decimal(10),
+      assignedEmployee: null,
+      planningAssignment: null,
+    });
+    prisma.technicalSheet.findFirst.mockResolvedValue({
+      name: 'Velouté',
+      referencePortions: new Prisma.Decimal(10),
+      ingredients: [
+        {
+          productId: 'pumpkin',
+          unitId: 'kg',
+          quantity: new Prisma.Decimal(2),
+          product: {
+            name: 'Potimarron',
+            unitId: 'kg',
+            unit: { symbol: 'kg' },
+          },
+        },
+      ],
+    });
+    prisma.stock.findMany.mockResolvedValue([
+      {
+        id: 'stock-1',
+        lotId: 'lot-1',
+        locationId: 'cold-room',
+        quantity: new Prisma.Decimal(1),
+        reservations: [],
+        lot: null,
+      },
+    ]);
+
+    await expect(
+      service.updateStatus(
+        'org-1',
+        { id: 'admin-user', role: 'ADMIN', permissions: [] },
+        'preset-task-1',
+        { status: OperationalTaskStatus.IN_PROGRESS },
+      ),
+    ).rejects.toThrow('Stock insuffisant pour démarrer « Velouté du lundi »');
+
+    expect(prisma.stock.updateMany).not.toHaveBeenCalled();
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(prisma.operationalTask.update).not.toHaveBeenCalled();
   });
 
   it('splits a complete production recipe into movable step tasks without touching stock', async () => {
@@ -576,11 +918,7 @@ describe('OperationalTasksService', () => {
       technicalSheetStepId: 'step-2',
     };
     prisma.operationalTask.findFirst.mockResolvedValue(sourceStep);
-    prisma.operationalTask.findMany.mockResolvedValue([
-      wholeTask,
-      sourceStep,
-      secondStep,
-    ]);
+    prisma.operationalTask.findMany.mockResolvedValue([wholeTask, sourceStep, secondStep]);
     prisma.operationalTask.findUniqueOrThrow.mockResolvedValue({
       ...wholeTask,
       status: 'TODO',

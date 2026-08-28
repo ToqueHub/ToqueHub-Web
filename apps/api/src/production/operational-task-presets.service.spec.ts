@@ -11,9 +11,11 @@ describe('OperationalTaskPresetsService', () => {
     operationalTaskPreset: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
+    operationalTaskPresetAssignment: { deleteMany: jest.fn(), createMany: jest.fn() },
     operationalTask: {
       findFirst: jest.fn(),
       create: jest.fn(),
@@ -39,6 +41,10 @@ describe('OperationalTaskPresetsService', () => {
     departmentId: '00000000-0000-4000-8000-000000000001',
     siteId: '00000000-0000-4000-8000-000000000002',
     assignedEmployeeId: '00000000-0000-4000-8000-000000000003',
+    assignedEmployeeIds: [
+      '00000000-0000-4000-8000-000000000003',
+      '00000000-0000-4000-8000-000000000005',
+    ],
     technicalSheetId: '00000000-0000-4000-8000-000000000004',
     technicalSheetStepId: null,
     serviceWeekdays: [6],
@@ -59,17 +65,23 @@ describe('OperationalTaskPresetsService', () => {
       work(prisma),
     );
     prisma.hrDepartment.findFirst.mockResolvedValue({ id: dto.departmentId });
-    prisma.hrEmployee.findFirst.mockResolvedValue({
-      id: dto.assignedEmployeeId,
-      departmentId: dto.departmentId,
-    });
+    prisma.hrEmployee.findMany.mockResolvedValue(
+      dto.assignedEmployeeIds.map((id) => ({ id, departmentId: dto.departmentId })),
+    );
     prisma.site.findFirst.mockResolvedValue({ id: dto.siteId });
     prisma.technicalSheet.findFirst.mockResolvedValue({ id: dto.technicalSheetId });
-    prisma.operationalTaskPreset.create.mockResolvedValue({
+    prisma.operationalTaskPreset.create.mockResolvedValue({ id: 'preset-1' });
+    prisma.operationalTaskPreset.findUniqueOrThrow.mockResolvedValue({
       id: 'preset-1',
       organizationId: 'org-1',
       ...dto,
+      assignments: dto.assignedEmployeeIds.map((employeeId, index) => ({
+        employeeId,
+        isLead: index === 0,
+      })),
     });
+    prisma.operationalTaskPresetAssignment.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.operationalTaskPresetAssignment.createMany.mockResolvedValue({ count: 2 });
     prisma.auditLog.create.mockResolvedValue({ id: 'audit-1' });
   });
 
@@ -88,12 +100,64 @@ describe('OperationalTaskPresetsService', () => {
         }),
       }),
     );
+    expect(prisma.operationalTaskPresetAssignment.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          employeeId: dto.assignedEmployeeIds[0],
+          isLead: true,
+        }),
+        expect.objectContaining({
+          employeeId: dto.assignedEmployeeIds[1],
+          isLead: false,
+        }),
+      ],
+    });
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           organizationId: 'org-1',
           action: 'OPERATIONAL_TASK_PRESET_CREATED',
         }),
+      }),
+    );
+  });
+
+  it('keeps the HR position task reference on the recurring preset', async () => {
+    const positionId = '00000000-0000-4000-8000-000000000006';
+    const positionTaskPresetId = 'mise-en-place';
+    prisma.hrEmployee.findMany.mockResolvedValue(
+      dto.assignedEmployeeIds.map((id) => ({
+        id,
+        departmentId: dto.departmentId,
+        position: {
+          id: positionId,
+          name: 'Chef de partie',
+          department: { name: 'Cuisine' },
+          taskPresets: [
+            {
+              id: positionTaskPresetId,
+              title: 'Préparer la mise en place',
+              category: 'KITCHEN',
+              defaultDurationMinutes: 45,
+            },
+          ],
+        },
+      })),
+    );
+
+    await service.create('org-1', manager, {
+      ...dto,
+      name: 'Préparer la mise en place',
+      positionId,
+      positionTaskPresetId,
+      technicalSheetId: null,
+      quantity: null,
+      unitLabel: null,
+    });
+
+    expect(prisma.operationalTaskPreset.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ positionId, positionTaskPresetId }),
       }),
     );
   });
@@ -157,7 +221,7 @@ describe('OperationalTaskPresetsService', () => {
     );
   });
 
-  it('materializes a Saturday service as a Friday task for the selected employee', async () => {
+  it('materializes a Saturday service as a Friday task for the selected team', async () => {
     prisma.operationalTaskPreset.findMany.mockResolvedValue([
       {
         id: 'preset-1',
@@ -168,6 +232,8 @@ describe('OperationalTaskPresetsService', () => {
         departmentId: dto.departmentId,
         siteId: dto.siteId,
         assignedEmployeeId: dto.assignedEmployeeId,
+        positionId: 'position-1',
+        positionTaskPresetId: 'prepare-croissants',
         technicalSheetId: dto.technicalSheetId,
         technicalSheetStepId: null,
         serviceWeekdays: [6],
@@ -180,11 +246,25 @@ describe('OperationalTaskPresetsService', () => {
         startsOn: new Date('2026-08-01T00:00:00.000Z'),
         endsOn: null,
         createdById: 'user-1',
-        assignedEmployee: { positionId: 'position-1' },
+        assignedEmployee: { id: dto.assignedEmployeeId, positionId: 'position-1' },
+        assignments: [
+          {
+            employee: { id: dto.assignedEmployeeIds[0], positionId: 'position-1' },
+            isLead: true,
+          },
+          {
+            employee: { id: dto.assignedEmployeeIds[1], positionId: 'position-1' },
+            isLead: false,
+          },
+        ],
       },
     ]);
     prisma.operationalTask.findFirst.mockResolvedValue(null);
-    prisma.planningAssignment.findFirst.mockResolvedValue({ id: 'shift-1' });
+    prisma.planningAssignment.findFirst.mockImplementation(({ where }) =>
+      Promise.resolve({
+        id: where.employeeId === dto.assignedEmployeeIds[0] ? 'shift-1' : 'shift-2',
+      }),
+    );
     prisma.operationalTask.create.mockResolvedValue({ id: 'task-1' });
     prisma.operationalTaskAssignment.deleteMany.mockResolvedValue({ count: 0 });
     prisma.operationalTaskAssignment.create.mockResolvedValue({ id: 'assignment-1' });
@@ -200,14 +280,28 @@ describe('OperationalTaskPresetsService', () => {
         sourceKey: 'OPERATIONAL_PRESET:preset-1:2026-08-29',
         assignedEmployeeId: dto.assignedEmployeeId,
         operationalTaskPresetId: 'preset-1',
+        positionId: 'position-1',
+        positionTaskPresetId: 'prepare-croissants',
         startsAt: new Date('2026-08-28T03:00:00.000Z'),
         endsAt: new Date('2026-08-28T07:00:00.000Z'),
         quantity: 80,
         unitLabel: 'portions',
       }),
     });
-    expect(prisma.operationalTaskAssignment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ employeeId: dto.assignedEmployeeId, isLead: true }),
+    expect(prisma.operationalTaskAssignment.create).toHaveBeenCalledTimes(2);
+    expect(prisma.operationalTaskAssignment.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        employeeId: dto.assignedEmployeeIds[0],
+        planningAssignmentId: 'shift-1',
+        isLead: true,
+      }),
+    });
+    expect(prisma.operationalTaskAssignment.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        employeeId: dto.assignedEmployeeIds[1],
+        planningAssignmentId: 'shift-2',
+        isLead: false,
+      }),
     });
   });
 

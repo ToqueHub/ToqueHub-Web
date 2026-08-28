@@ -1162,6 +1162,13 @@ export const api = {
       token,
     );
   },
+  deletePurchaseOrderDraft(token: string, id: string) {
+    return request<{ id: string; deleted: boolean }>(
+      `/purchasing/orders/${id}`,
+      { method: 'DELETE' },
+      token,
+    );
+  },
   duplicatePurchaseOrder(token: string, id: string) {
     return request<PurchaseOrder>(`/purchasing/orders/${id}/duplicate`, { method: 'POST' }, token);
   },

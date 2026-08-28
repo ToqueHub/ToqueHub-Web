@@ -13,6 +13,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  defaultTaskPresets,
+  positionSupportsTechnicalSheets,
+  type HrPositionTaskPreset,
+} from '../hr/hr-task-presets';
+import {
   OperationalTaskPresetQueryDto,
   UpsertOperationalTaskPresetDto,
 } from './dto/operational-task-preset.dto';
@@ -26,14 +31,24 @@ type PresetActor = {
 
 const PRESET_INCLUDE = {
   department: true,
+  position: true,
   site: true,
   assignedEmployee: { include: { department: true, position: true, mainSite: true } },
+  assignments: {
+    include: {
+      employee: { include: { department: true, position: true, mainSite: true } },
+    },
+    orderBy: [{ isLead: 'desc' as const }, { createdAt: 'asc' as const }],
+  },
   technicalSheet: { select: { id: true, name: true, referencePortions: true } },
   technicalSheetStep: { select: { id: true, order: true, title: true } },
 } satisfies Prisma.OperationalTaskPresetInclude;
 
 type MaterializedPreset = Prisma.OperationalTaskPresetGetPayload<{
-  include: { assignedEmployee: { select: { positionId: true } } };
+  include: {
+    assignedEmployee: { select: { id: true; positionId: true } };
+    assignments: { include: { employee: { select: { id: true; positionId: true } } } };
+  };
 }>;
 
 @Injectable()
@@ -53,7 +68,12 @@ export class OperationalTaskPresetsService {
       }),
       this.prisma.hrEmployee.findMany({
         where: { organizationId, status: HrEmployeeStatus.ACTIVE, isArchived: false },
-        include: { department: true, position: true, mainSite: true },
+        include: {
+          department: true,
+          position: true,
+          mainSite: true,
+          secondarySites: { include: { site: true } },
+        },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       }),
       this.prisma.technicalSheet.findMany({
@@ -72,7 +92,39 @@ export class OperationalTaskPresetsService {
         take: 500,
       }),
     ]);
-    return { canManage, departments, sites, employees, technicalSheets };
+    const positions = new Map<
+      string,
+      (typeof employees)[number]['position'] & { departmentName?: string | null }
+    >();
+    for (const employee of employees) {
+      if (!positions.has(employee.position.id)) {
+        positions.set(employee.position.id, {
+          ...employee.position,
+          departmentName: employee.department?.name,
+        });
+      }
+    }
+    const positionTaskPresets = [...positions.values()].flatMap((position) =>
+      this.positionTaskPresets(position.taskPresets, position.name, position.departmentName)
+        .filter(
+          (task) =>
+            !task.requiresTechnicalSheet ||
+            positionSupportsTechnicalSheets(position.name, position.departmentName),
+        )
+        .map((task) => ({
+          ...task,
+          positionId: position.id,
+          positionName: position.name,
+        })),
+    );
+    return {
+      canManage,
+      departments,
+      sites,
+      employees,
+      positionTaskPresets,
+      technicalSheets,
+    };
   }
 
   async list(organizationId: string, actor: PresetActor, query: OperationalTaskPresetQueryDto) {
@@ -82,9 +134,29 @@ export class OperationalTaskPresetsService {
         organizationId,
         isArchived: false,
         departmentId: query.departmentId,
-        assignedEmployeeId: query.employeeId,
         siteId: query.siteId,
-        ...(!canManage && actor.employeeId ? { assignedEmployeeId: actor.employeeId } : {}),
+        AND: [
+          ...(query.employeeId
+            ? [
+                {
+                  OR: [
+                    { assignedEmployeeId: query.employeeId },
+                    { assignments: { some: { employeeId: query.employeeId } } },
+                  ],
+                },
+              ]
+            : []),
+          ...(!canManage && actor.employeeId
+            ? [
+                {
+                  OR: [
+                    { assignedEmployeeId: actor.employeeId },
+                    { assignments: { some: { employeeId: actor.employeeId } } },
+                  ],
+                },
+              ]
+            : []),
+        ],
         ...(!canManage && !actor.employeeId ? { createdById: actor.id } : {}),
       },
       include: PRESET_INCLUDE,
@@ -94,10 +166,20 @@ export class OperationalTaskPresetsService {
 
   async create(organizationId: string, actor: PresetActor, dto: UpsertOperationalTaskPresetDto) {
     this.assertCanManage(actor);
-    const data = await this.validatedData(organizationId, dto);
+    const { data, employeeIds } = await this.validatedData(organizationId, dto);
     return this.prisma.$transaction(async (tx) => {
-      const preset = await tx.operationalTaskPreset.create({
+      const created = await tx.operationalTaskPreset.create({
         data: { ...data, createdById: actor.id },
+      });
+      await this.syncPresetAssignmentsTx(
+        tx,
+        organizationId,
+        created.id,
+        data.assignedEmployeeId,
+        employeeIds,
+      );
+      const preset = await tx.operationalTaskPreset.findUniqueOrThrow({
+        where: { id: created.id },
         include: PRESET_INCLUDE,
       });
       await tx.auditLog.create({
@@ -111,6 +193,7 @@ export class OperationalTaskPresetsService {
           details: {
             departmentId: preset.departmentId,
             assignedEmployeeId: preset.assignedEmployeeId,
+            assignedEmployeeIds: employeeIds,
           },
         },
       });
@@ -126,7 +209,7 @@ export class OperationalTaskPresetsService {
   ) {
     this.assertCanManage(actor);
     const current = await this.preset(organizationId, id);
-    const data = await this.validatedData(organizationId, dto);
+    const { data, employeeIds } = await this.validatedData(organizationId, dto);
     return this.prisma.$transaction(async (tx) => {
       await tx.operationalTask.deleteMany({
         where: {
@@ -136,9 +219,19 @@ export class OperationalTaskPresetsService {
           startsAt: { gt: new Date() },
         },
       });
-      const preset = await tx.operationalTaskPreset.update({
+      await tx.operationalTaskPreset.update({
         where: { id: current.id },
         data,
+      });
+      await this.syncPresetAssignmentsTx(
+        tx,
+        organizationId,
+        current.id,
+        data.assignedEmployeeId,
+        employeeIds,
+      );
+      const preset = await tx.operationalTaskPreset.findUniqueOrThrow({
+        where: { id: current.id },
         include: PRESET_INCLUDE,
       });
       await tx.auditLog.create({
@@ -152,6 +245,7 @@ export class OperationalTaskPresetsService {
           details: {
             departmentId: preset.departmentId,
             assignedEmployeeId: preset.assignedEmployeeId,
+            assignedEmployeeIds: employeeIds,
           },
         },
       });
@@ -193,7 +287,10 @@ export class OperationalTaskPresetsService {
   async materialize(organizationId: string, start: Date, end: Date) {
     const presets = await this.prisma.operationalTaskPreset.findMany({
       where: { organizationId, isActive: true, isArchived: false },
-      include: { assignedEmployee: { select: { positionId: true } } },
+      include: {
+        assignedEmployee: { select: { id: true, positionId: true } },
+        assignments: { include: { employee: { select: { id: true, positionId: true } } } },
+      },
     });
     for (const preset of presets) {
       const firstDay = this.localDate(start, preset.timezone);
@@ -227,17 +324,27 @@ export class OperationalTaskPresetsService {
       select: { id: true, status: true },
     });
     if (existing && existing.status !== OperationalTaskStatus.TODO) return;
-    const planningAssignment = await this.prisma.planningAssignment.findFirst({
-      where: {
-        organizationId,
-        employeeId: preset.assignedEmployeeId,
-        status: { not: PlanningAssignmentStatus.CANCELLED },
-        startTime: { lte: startsAt },
-        endTime: { gte: endsAt },
-      },
-      select: { id: true },
-      orderBy: { startTime: 'asc' },
-    });
+    const employees = preset.assignments?.length
+      ? preset.assignments.map((assignment) => assignment.employee)
+      : [preset.assignedEmployee];
+    const employeeIds = [...new Set(employees.map((employee) => employee.id))];
+    const planningAssignments = new Map<string, string | null>();
+    for (const employeeId of employeeIds) {
+      const planningAssignment = await this.prisma.planningAssignment.findFirst({
+        where: {
+          organizationId,
+          employeeId,
+          status: { not: PlanningAssignmentStatus.CANCELLED },
+          startTime: { lte: startsAt },
+          endTime: { gte: endsAt },
+        },
+        select: { id: true },
+        orderBy: { startTime: 'asc' },
+      });
+      planningAssignments.set(employeeId, planningAssignment?.id ?? null);
+    }
+    const leadEmployee =
+      employees.find((employee) => employee.id === preset.assignedEmployeeId) ?? employees[0];
     const data: Prisma.OperationalTaskUncheckedCreateInput = {
       organizationId,
       sourceKey,
@@ -246,12 +353,14 @@ export class OperationalTaskPresetsService {
       category: preset.category,
       source: preset.technicalSheetId ? 'TECHNICAL_SHEET' : 'MANUAL',
       departmentId: preset.departmentId,
-      positionId: preset.assignedEmployee.positionId,
+      positionId:
+        preset.positionId ?? leadEmployee?.positionId ?? preset.assignedEmployee.positionId,
       siteId: preset.siteId,
       assignedEmployeeId: preset.assignedEmployeeId,
-      planningAssignmentId: planningAssignment?.id ?? null,
+      planningAssignmentId: planningAssignments.get(preset.assignedEmployeeId) ?? null,
       technicalSheetId: preset.technicalSheetId,
       technicalSheetStepId: preset.technicalSheetStepId,
+      positionTaskPresetId: preset.positionTaskPresetId,
       operationalTaskPresetId: preset.id,
       startsAt,
       endsAt,
@@ -266,16 +375,18 @@ export class OperationalTaskPresetsService {
           ? await tx.operationalTask.update({ where: { id: existing.id }, data })
           : await tx.operationalTask.create({ data });
         await tx.operationalTaskAssignment.deleteMany({ where: { taskId: task.id } });
-        await tx.operationalTaskAssignment.create({
-          data: {
-            organizationId,
-            taskId: task.id,
-            employeeId: preset.assignedEmployeeId,
-            planningAssignmentId: planningAssignment?.id ?? null,
-            isLead: true,
-            plannedMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
-          },
-        });
+        for (const employeeId of employeeIds) {
+          await tx.operationalTaskAssignment.create({
+            data: {
+              organizationId,
+              taskId: task.id,
+              employeeId,
+              planningAssignmentId: planningAssignments.get(employeeId) ?? null,
+              isLead: employeeId === preset.assignedEmployeeId,
+              plannedMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
+            },
+          });
+        }
       });
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
@@ -287,23 +398,45 @@ export class OperationalTaskPresetsService {
   private async validatedData(
     organizationId: string,
     dto: UpsertOperationalTaskPresetDto,
-  ): Promise<Prisma.OperationalTaskPresetUncheckedCreateInput> {
+  ): Promise<{
+    data: Prisma.OperationalTaskPresetUncheckedCreateInput;
+    employeeIds: string[];
+  }> {
     if (!dto.name.trim()) throw new BadRequestException('Le nom du preset est obligatoire.');
     if (dto.endTime <= dto.startTime) {
       throw new BadRequestException("L'heure de fin doit être postérieure à l'heure de début.");
     }
     const timezone = dto.timezone?.trim() || 'Europe/Helsinki';
     this.assertTimezone(timezone);
-    const [department, employee, site, technicalSheet, technicalSheetStep] = await Promise.all([
+    const employeeIds = [
+      ...new Set(
+        dto.assignedEmployeeIds?.length
+          ? [dto.assignedEmployeeId, ...dto.assignedEmployeeIds]
+          : [dto.assignedEmployeeId],
+      ),
+    ];
+    const [department, employees, site, technicalSheet, technicalSheetStep] = await Promise.all([
       this.prisma.hrDepartment.findFirst({
         where: { id: dto.departmentId, organizationId, isArchived: false },
       }),
-      this.prisma.hrEmployee.findFirst({
+      this.prisma.hrEmployee.findMany({
         where: {
-          id: dto.assignedEmployeeId,
+          id: { in: employeeIds },
           organizationId,
           status: HrEmployeeStatus.ACTIVE,
           isArchived: false,
+        },
+        select: {
+          id: true,
+          departmentId: true,
+          position: {
+            select: {
+              id: true,
+              name: true,
+              taskPresets: true,
+              department: { select: { name: true } },
+            },
+          },
         },
       }),
       dto.siteId
@@ -332,8 +465,13 @@ export class OperationalTaskPresetsService {
         : null,
     ]);
     if (!department) throw new BadRequestException('Service RH introuvable.');
-    if (!employee || employee.departmentId !== department.id) {
-      throw new BadRequestException('Le collaborateur doit être actif et appartenir au service.');
+    if (
+      employees.length !== employeeIds.length ||
+      employees.some((employee) => employee.departmentId !== department.id)
+    ) {
+      throw new BadRequestException(
+        'Tous les collaborateurs doivent être actifs et appartenir au même service.',
+      );
     }
     if (dto.siteId && !site) throw new BadRequestException('Site introuvable.');
     if (dto.technicalSheetId && !technicalSheet) {
@@ -342,34 +480,80 @@ export class OperationalTaskPresetsService {
     if (dto.technicalSheetStepId && !technicalSheetStep) {
       throw new BadRequestException("L'étape ne correspond pas à la fiche technique sélectionnée.");
     }
+    if (dto.positionTaskPresetId) {
+      if (!dto.positionId) {
+        throw new BadRequestException('La tâche type doit être reliée à un poste RH.');
+      }
+      const matchingEmployee = employees.find(
+        (employee) => employee.position.id === dto.positionId,
+      );
+      const positionTask = matchingEmployee
+        ? this.positionTaskPresets(
+            matchingEmployee.position.taskPresets,
+            matchingEmployee.position.name,
+            matchingEmployee.position.department?.name,
+          ).find((task) => task.id === dto.positionTaskPresetId)
+        : undefined;
+      if (!positionTask) {
+        throw new BadRequestException(
+          'Cette tâche type ne correspond pas au poste des collaborateurs sélectionnés.',
+        );
+      }
+      if (positionTask.requiresTechnicalSheet && !technicalSheet) {
+        throw new BadRequestException('Cette tâche type nécessite une fiche technique.');
+      }
+    }
     const startsOn = dto.startsOn ? this.dateOnly(dto.startsOn) : null;
     const endsOn = dto.endsOn ? this.dateOnly(dto.endsOn) : null;
     if (startsOn && endsOn && startsOn > endsOn) {
       throw new BadRequestException('La date de fin doit être postérieure à la date de début.');
     }
     return {
-      organizationId,
-      name: dto.name.trim(),
-      description: dto.description?.trim() || null,
-      category: dto.category,
-      departmentId: dto.departmentId,
-      siteId: dto.siteId || null,
-      assignedEmployeeId: dto.assignedEmployeeId,
-      technicalSheetId: dto.technicalSheetId || null,
-      technicalSheetStepId: dto.technicalSheetStepId || null,
-      serviceWeekdays: [...dto.serviceWeekdays].sort((a, b) => a - b),
-      leadDays: dto.leadDays,
-      startTime: dto.startTime,
-      endTime: dto.endTime,
-      timezone,
-      quantity: dto.quantity == null ? null : new Prisma.Decimal(dto.quantity),
-      unitLabel: dto.unitLabel?.trim() || null,
-      startsOn,
-      endsOn,
-      isActive: dto.isActive ?? true,
-      isArchived: false,
-      archivedAt: null,
+      data: {
+        organizationId,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        category: dto.category,
+        departmentId: dto.departmentId,
+        siteId: dto.siteId || null,
+        assignedEmployeeId: dto.assignedEmployeeId,
+        positionId: dto.positionId || null,
+        positionTaskPresetId: dto.positionTaskPresetId || null,
+        technicalSheetId: dto.technicalSheetId || null,
+        technicalSheetStepId: dto.technicalSheetStepId || null,
+        serviceWeekdays: [...dto.serviceWeekdays].sort((a, b) => a - b),
+        leadDays: dto.leadDays,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        timezone,
+        quantity: dto.quantity == null ? null : new Prisma.Decimal(dto.quantity),
+        unitLabel: dto.unitLabel?.trim() || null,
+        startsOn,
+        endsOn,
+        isActive: dto.isActive ?? true,
+        isArchived: false,
+        archivedAt: null,
+      },
+      employeeIds,
     };
+  }
+
+  private async syncPresetAssignmentsTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    presetId: string,
+    leadEmployeeId: string,
+    employeeIds: string[],
+  ) {
+    await tx.operationalTaskPresetAssignment.deleteMany({ where: { presetId } });
+    await tx.operationalTaskPresetAssignment.createMany({
+      data: employeeIds.map((employeeId) => ({
+        organizationId,
+        presetId,
+        employeeId,
+        isLead: employeeId === leadEmployeeId,
+      })),
+    });
   }
 
   private async preset(organizationId: string, id: string) {
@@ -406,6 +590,16 @@ export class OperationalTaskPresetsService {
     } catch {
       throw new BadRequestException('Fuseau horaire invalide.');
     }
+  }
+
+  private positionTaskPresets(
+    value: Prisma.JsonValue | null,
+    positionName: string,
+    departmentName?: string | null,
+  ) {
+    return (Array.isArray(value)
+      ? value
+      : defaultTaskPresets(positionName, departmentName)) as unknown as HrPositionTaskPreset[];
   }
 
   private dateOnly(value: string) {

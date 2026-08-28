@@ -7,10 +7,12 @@ import {
   Clock3,
   FileText,
   FilePenLine,
+  Loader2,
   MailCheck,
   PackageCheck,
   ShoppingCart,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
 import { api } from '../../api/client';
@@ -30,6 +32,7 @@ import { OrdersView } from './pages/PurchaseOrders';
 import { OrderComposer, OrderComposerButton } from './orders/OrderComposer';
 import { PurchasingOnboarding } from './onboarding/PurchasingOnboarding';
 import { ReceiptsView } from './receipts/ReceiptWorkspace';
+import { Modal } from '../ui/Modal';
 
 export type PurchasingTab = 'dashboard' | 'orders' | 'receipts';
 
@@ -443,6 +446,9 @@ function PurchasingDraftsBar({
   onChanged: () => void;
 }) {
   const [opening, setOpening] = useState<string>();
+  const [deleting, setDeleting] = useState<string>();
+  const [selectedDraft, setSelectedDraft] = useState<PurchaseOrder>();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [composerOrder, setComposerOrder] = useState<PurchaseOrder>();
   const visibleDrafts = drafts.filter(
     (draft, index, list) =>
@@ -453,11 +459,32 @@ function PurchasingDraftsBar({
     setOpening(draft.id);
     try {
       setComposerOrder(await api.purchasingOrder(token, draft.id));
+      setSelectedDraft(undefined);
+      setConfirmingDelete(false);
     } catch (error) {
       flash('error', messageOf(error, 'Impossible d’ouvrir ce brouillon.'));
     } finally {
       setOpening(undefined);
     }
+  };
+  const deleteDraft = async (draft: PurchaseOrder) => {
+    setDeleting(draft.id);
+    try {
+      await api.deletePurchaseOrderDraft(token, draft.id);
+      setSelectedDraft(undefined);
+      setConfirmingDelete(false);
+      flash('success', `Brouillon ${draft.number} supprimé.`);
+      onChanged();
+    } catch (error) {
+      flash('error', messageOf(error, 'Impossible de supprimer ce brouillon.'));
+    } finally {
+      setDeleting(undefined);
+    }
+  };
+  const closeDraftActions = () => {
+    if (opening || deleting) return;
+    setSelectedDraft(undefined);
+    setConfirmingDelete(false);
   };
   const closeComposer = () => {
     setComposerOrder(undefined);
@@ -485,7 +512,11 @@ function PurchasingDraftsBar({
               className="purchasing-draft-card"
               key={draft.id}
               disabled={opening === draft.id}
-              onClick={() => void openDraft(draft)}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setSelectedDraft(draft);
+                setConfirmingDelete(false);
+              }}
             >
               <span className="purchasing-draft-main">
                 <strong>{draft.supplierNameSnapshot}</strong>
@@ -509,6 +540,85 @@ function PurchasingDraftsBar({
         <p className="purchasing-drafts-empty">
           {loading ? 'Chargement des brouillons…' : 'Aucun brouillon en cours.'}
         </p>
+      )}
+      {selectedDraft && (
+        <Modal
+          isOpen
+          size="sm"
+          title={`Brouillon ${selectedDraft.number}`}
+          onClose={closeDraftActions}
+          bodyClassName="purchasing-draft-actions-modal"
+          overlayClassName="purchasing-draft-actions-overlay"
+        >
+          <div className="purchasing-draft-dialog-summary">
+            <span className="purchasing-draft-dialog-icon">
+              <FilePenLine size={20} />
+            </span>
+            <div>
+              <strong>{selectedDraft.supplierNameSnapshot}</strong>
+              <span>
+                {selectedDraft.lineCount ?? 0} article
+                {(selectedDraft.lineCount ?? 0) > 1 ? 's' : ''} ·{' '}
+                {selectedDraft.site?.name ?? 'Site non renseigné'}
+              </span>
+            </div>
+          </div>
+          {confirmingDelete ? (
+            <div className="purchasing-draft-delete-confirmation">
+              <div>
+                <Trash2 size={18} />
+                <p>
+                  <strong>Supprimer ce brouillon ?</strong>
+                  <span>Cette action est définitive et supprimera les articles enregistrés.</span>
+                </p>
+              </div>
+              <div className="purchasing-draft-dialog-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={Boolean(deleting)}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="btn purchasing-draft-delete-button"
+                  disabled={Boolean(deleting)}
+                  onClick={() => void deleteDraft(selectedDraft)}
+                >
+                  {deleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                  Supprimer définitivement
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="purchasing-draft-dialog-copy">
+                Reprenez la saisie de cette commande ou supprimez le brouillon.
+              </p>
+              <div className="purchasing-draft-dialog-actions is-stacked">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={Boolean(opening)}
+                  onClick={() => void openDraft(selectedDraft)}
+                >
+                  {opening ? <Loader2 size={16} className="spin" /> : <FilePenLine size={16} />}
+                  Compléter le brouillon
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary purchasing-draft-delete-trigger"
+                  disabled={Boolean(opening)}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  <Trash2 size={16} /> Supprimer le brouillon
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
       {composerOrder && (
         <OrderComposer
