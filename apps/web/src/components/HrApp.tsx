@@ -205,7 +205,7 @@ export function HrApp({
           <h1 className="welcome-title">Ressources Humaines</h1>
           <p className="welcome-desc">Pilotez vos équipes en un seul endroit : collaborateurs, services, postes et responsabilités, avec une organisation claire et toujours à jour.</p>
         </div>
-        <div className="hr-hero-actions">
+        <div className="hr-hero-actions toquehub-hero-actions">
           {canWrite ? (
             <button className="btn btn-secondary btn-outline hr-hero-guide" type="button" onClick={() => setWizardOpen(true)}>
               <Sparkles size={16} /> Guide de configuration

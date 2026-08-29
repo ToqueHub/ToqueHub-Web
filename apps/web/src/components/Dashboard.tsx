@@ -12724,7 +12724,7 @@ function StocksModuleHero({
           catalogue produit reste indépendant des quantités.
         </p>
       </div>
-      <div className="stocks-dashboard-hero-actions">
+      <div className="stocks-dashboard-hero-actions toquehub-hero-actions">
         <button type="button" className="btn btn-secondary btn-outline" onClick={onStartOnboarding}>
           <Sparkles size={16} /> Guide de configuration
         </button>
@@ -12962,7 +12962,7 @@ function ArticlesPage({
           ) : null}
           <div className="stocks-products-actions">
             <button className="btn btn-secondary" onClick={onInventory}>
-              <ClipboardList size={15} /> Inventaire
+              <ClipboardList size={15} /> Importer
             </button>
             <button className="btn btn-secondary" onClick={() => onMovement()}>
               <ArrowRight size={15} /> Mouvement

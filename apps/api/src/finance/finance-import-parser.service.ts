@@ -818,19 +818,27 @@ export class FinanceImportParserService {
 
   private flatpayOrders(sheet: ExcelJS.Worksheet, fileName: string) {
     const headers = this.headers(sheet, 1);
+    const cell = (row: ExcelJS.Row, name: string) => {
+      const index = headers.get(name);
+      return index ? value(row.getCell(index)) : undefined;
+    };
     const rows: ParsedSale[] = [];
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
-      const saleDate = date(value(row.getCell(headers.get('date of sale') ?? 0)));
-      const order = value(row.getCell(headers.get('order no.') ?? 0));
-      const status = normalized(value(row.getCell(headers.get('status') ?? 0)));
+      const saleDate = date(cell(row, 'date of sale'));
+      const order = cell(row, 'order no.');
+      const status = normalized(cell(row, 'status'));
       if (!saleDate || !order) return;
-      const gross = amount(value(row.getCell(headers.get('gross amount (eur)') ?? 0)));
-      const net = amount(value(row.getCell(headers.get('net amount (eur)') ?? 0)));
-      const vat = amount(value(row.getCell(headers.get('vat amount (eur)') ?? 0)));
-      const discount = amount(value(row.getCell(headers.get('discount (eur)') ?? 0)));
+      const gross = amount(cell(row, 'gross amount (eur)'));
+      const net = amount(cell(row, 'net amount (eur)'));
+      const vat = amount(cell(row, 'vat amount (eur)'));
+      const discount = amount(cell(row, 'discount (eur)'));
       const complete = !status || status === 'complete' || status === 'completed';
       const refunded = status.includes('refund') || status.includes('return');
+      // Un export Orders sans commande contient malgré tout une ligne de
+      // période composée de deux dates. Elle ne doit pas devenir un faux
+      // ticket à 0 € dans l'historique Finance.
+      if (complete && gross === 0 && net === 0 && vat === 0 && discount === 0) return;
       rows.push({
         externalKey: `flatpay-order:${order}`,
         saleDate,
@@ -839,14 +847,14 @@ export class FinanceImportParserService {
         vatAmount: new Prisma.Decimal(vat),
         refundAmount: new Prisma.Decimal(gross < 0 || refunded ? Math.abs(gross) : 0),
         transactionCount: complete && gross !== 0 ? 1 : 0,
-        paymentMethod: String(value(row.getCell(headers.get('payment type') ?? 0)) ?? ''),
+        paymentMethod: String(cell(row, 'payment type') ?? ''),
         isRevenueRecord: complete,
         metadata: {
           orderNumber: String(order),
           status: status || 'complete',
-          staff: String(value(row.getCell(headers.get('staff') ?? 0)) ?? '').trim() || null,
+          staff: String(cell(row, 'staff') ?? '').trim() || null,
           discount,
-          vatRate: amount(value(row.getCell(headers.get('vat rate (%)') ?? 0))),
+          vatRate: amount(cell(row, 'vat rate (%)')),
           recordType: 'transaction',
         },
       });

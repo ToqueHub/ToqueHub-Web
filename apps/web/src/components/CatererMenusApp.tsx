@@ -740,6 +740,10 @@ export function CatererMenusApp({
 export function ClientsApp({ token, canManage }: { token: string; canManage: boolean }) {
   const [clients, setClients] = useState<CatererClient[]>([]);
   const [clientSearch, setClientSearch] = useState('');
+  const [clientDirectoryTab, setClientDirectoryTab] = useState<'individuals' | 'businesses'>(
+    'businesses',
+  );
+  const [dueOnly, setDueOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -769,11 +773,39 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
     void refreshClients();
   }, [token]);
 
+  const clientTypeCounts = useMemo(
+    () => ({
+      individuals: clients.filter((client) => client.accountTypeId === 2).length,
+      businesses: clients.filter((client) => client.accountTypeId !== 2).length,
+      dueBusinesses: clients.filter(
+        (client) => client.accountTypeId !== 2 && (client.invoiceSummary?.totalDue ?? 0) > 0.005,
+      ).length,
+    }),
+    [clients],
+  );
+
+  const clientsInSelectedTab = useMemo(
+    () =>
+      clients.filter((client) =>
+        clientDirectoryTab === 'individuals'
+          ? client.accountTypeId === 2
+          : client.accountTypeId !== 2,
+      ),
+    [clientDirectoryTab, clients],
+  );
+
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLocaleLowerCase(activeLocale());
-    if (!query) return clients;
-    return clients.filter((client) =>
-      [
+    return clientsInSelectedTab.filter((client) => {
+      if (
+        clientDirectoryTab === 'businesses' &&
+        dueOnly &&
+        (client.invoiceSummary?.totalDue ?? 0) <= 0.005
+      ) {
+        return false;
+      }
+      if (!query) return true;
+      return [
         client.name,
         client.name2,
         client.firstName,
@@ -788,13 +820,16 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
         client.businessId,
       ]
         .filter(Boolean)
-        .some((value) => String(value).toLocaleLowerCase(activeLocale()).includes(query)),
-    );
-  }, [clientSearch, clients]);
+        .some((value) => String(value).toLocaleLowerCase(activeLocale()).includes(query));
+    });
+  }, [clientDirectoryTab, clientSearch, clientsInSelectedTab, dueOnly]);
 
   const startCreateClient = () => {
     setEditingClient(null);
-    setClientForm(emptyClient());
+    setClientForm({
+      ...emptyClient(),
+      accountTypeId: clientDirectoryTab === 'individuals' ? 2 : 1,
+    });
     setClientModalOpen(true);
   };
 
@@ -937,7 +972,7 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
             encours de tous vos clients dans un répertoire unique.
           </p>
         </div>
-        <div className="hr-hero-actions">
+        <div className="hr-hero-actions toquehub-hero-actions">
           <button
             type="button"
             className="btn btn-secondary"
@@ -989,6 +1024,48 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
               <UserRound size={20} color="#10b981" /> Répertoire clients
             </span>
             <p className="muted">Fiches clients centralisées, avec factures et encours.</p>
+          </div>
+          <div className="caterer-client-directory-controls">
+            <div
+              className="hr-tabs caterer-client-type-tabs"
+              role="tablist"
+              aria-label="Type de clients"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={clientDirectoryTab === 'individuals'}
+                className={clientDirectoryTab === 'individuals' ? 'active' : undefined}
+                onClick={() => {
+                  setClientDirectoryTab('individuals');
+                  setDueOnly(false);
+                }}
+              >
+                <UserRound size={15} /> Particuliers
+                <span className="caterer-client-tab-count">{clientTypeCounts.individuals}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={clientDirectoryTab === 'businesses'}
+                className={clientDirectoryTab === 'businesses' ? 'active' : undefined}
+                onClick={() => setClientDirectoryTab('businesses')}
+              >
+                <Building2 size={15} /> Entreprises
+                <span className="caterer-client-tab-count">{clientTypeCounts.businesses}</span>
+              </button>
+            </div>
+            {clientDirectoryTab === 'businesses' ? (
+              <button
+                type="button"
+                className={`caterer-client-due-filter${dueOnly ? ' active' : ''}`}
+                aria-pressed={dueOnly}
+                onClick={() => setDueOnly((current) => !current)}
+              >
+                <BadgeEuro size={16} /> À encaisser
+                <span>{clientTypeCounts.dueBusinesses}</span>
+              </button>
+            ) : null}
           </div>
           <div className="stocks-filter-bar caterer-client-search-bar">
             <div className="search-input-wrapper">
@@ -1073,10 +1150,24 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
               text="Ajoutez votre premier client ou synchronisez votre logiciel comptable."
             />
           ) : null}
-          {!loading && clients.length > 0 && !filteredClients.length ? (
+          {!loading && clients.length > 0 && !clientsInSelectedTab.length ? (
             <Empty
-              title="Aucun client trouvé"
-              text="Essayez un autre nom, numéro de téléphone ou adresse e-mail."
+              title={clientDirectoryTab === 'individuals' ? 'Aucun client particulier' : 'Aucune entreprise'}
+              text={
+                clientDirectoryTab === 'individuals'
+                  ? 'Les clients définis comme particuliers apparaîtront dans cet onglet.'
+                  : 'Les clients définis comme entreprises apparaîtront dans cet onglet.'
+              }
+            />
+          ) : null}
+          {!loading && clientsInSelectedTab.length > 0 && !filteredClients.length ? (
+            <Empty
+              title={dueOnly ? 'Aucune entreprise à encaisser' : 'Aucun client trouvé'}
+              text={
+                dueOnly
+                  ? 'Toutes les entreprises affichées ont un encours soldé.'
+                  : 'Essayez un autre nom, numéro de téléphone ou adresse e-mail.'
+              }
             />
           ) : null}
         </div>

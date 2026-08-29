@@ -1,7 +1,9 @@
 import {
   applyFlatpayHistoryObservations,
+  capFlatpayHistoryRangeCount,
   completeFlatpayHistoryAtPortalBoundary,
   createFlatpayHistoryDiscovery,
+  discardUnconfirmedFlatpayOrderKeys,
   planFlatpayHistoryRanges,
 } from './flatpay-history';
 
@@ -22,6 +24,26 @@ describe('FlatPay automatic history discovery', () => {
       { from: '2026-08-08', to: '2026-08-14' },
       { from: '2026-08-01', to: '2026-08-07' },
     ]);
+  });
+
+  it('limits one scan to the remaining 62-day empty-activity horizon', () => {
+    const discovery = createFlatpayHistoryDiscovery([], '2026-08-21');
+    expect(capFlatpayHistoryRangeCount(discovery, 100)).toBe(9);
+    expect(capFlatpayHistoryRangeCount({ ...discovery, consecutiveEmptyDays: 20 }, 100)).toBe(6);
+  });
+
+  it('forgets generated Orders ranges that were never downloaded and observed', () => {
+    expect(
+      discardUnconfirmedFlatpayOrderKeys(
+        [
+          'orders:2026-03-03:2026-03-09',
+          'orders:2026-02-24:2026-03-02',
+          'orders:2026-02-17:2026-02-23',
+          'sales-overview:2026-02-24:2026-03-02',
+        ],
+        '2026-03-02',
+      ),
+    ).toEqual(['orders:2026-03-03:2026-03-09', 'sales-overview:2026-02-24:2026-03-02']);
   });
 
   it('resets the empty counter when either Orders or Sales Overview contains activity', () => {

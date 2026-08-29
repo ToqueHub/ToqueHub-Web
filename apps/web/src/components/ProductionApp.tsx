@@ -1618,7 +1618,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
               réel en vous appuyant directement sur la structure RH.
             </p>
           </div>
-          <div className="production-hero-actions">
+          <div className="production-hero-actions toquehub-hero-actions">
             {departmentFilter && view === 'day' && (
               <button
                 type="button"
@@ -3162,7 +3162,7 @@ function ProductionFabricationHero({
             fiches techniques. Les équipes RH restent facultatives.
           </p>
         </div>
-        <div className="production-hero-actions">
+        <div className="production-hero-actions toquehub-hero-actions">
           <button
             type="button"
             className="production-btn-glass"
