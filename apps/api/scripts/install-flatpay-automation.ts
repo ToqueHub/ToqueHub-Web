@@ -45,9 +45,10 @@ async function main() {
     const historyStart =
       optionValue(args, '--from') ||
       process.env.FLATPAY_HISTORY_START ||
-      connection.historyStart?.toISOString().slice(0, 10);
-    if (!historyStart || !/^20\d{2}-\d{2}-\d{2}$/.test(historyStart)) {
-      throw new Error('Indiquez le premier jour FlatPay avec --from YYYY-MM-DD.');
+      connection.historyStart?.toISOString().slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
+    if (!/^20\d{2}-\d{2}-\d{2}$/.test(historyStart)) {
+      throw new Error('--from doit utiliser le format YYYY-MM-DD.');
     }
     const schedule = [
       ...new Set(
@@ -96,7 +97,7 @@ async function main() {
       },
     });
     console.log(
-      `Agent local FlatPay activé sur ${process.platform} à ${schedule.join(', ')}. Orders et Sales Overview sont obligatoires.`,
+      `Agent local FlatPay activé sur ${process.platform} à ${schedule.join(', ')}. L’historique Orders et Sales Overview sera découvert automatiquement.`,
     );
   } finally {
     await prisma.$disconnect();

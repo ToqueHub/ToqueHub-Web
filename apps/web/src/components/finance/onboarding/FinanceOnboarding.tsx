@@ -189,7 +189,7 @@ export function FinanceOnboarding({
     username: flatpayExisting?.username ?? '',
     password: '',
     portalUrl: flatpayExisting?.portalUrl ?? 'https://portal.flatpay.com',
-    historyStart: flatpayExisting?.historyStart?.slice(0, 10) ?? defaultHistoryStart,
+    historyStart: flatpayExisting?.historyStart?.slice(0, 10) ?? '',
     schedule: flatpayExisting?.automationSchedule?.length
       ? [...flatpayExisting.automationSchedule].sort()
       : DEFAULT_SCHEDULE,
@@ -344,7 +344,7 @@ export function FinanceOnboarding({
         });
         await api.installFlatpayAutomation(token, {
           siteId: flatpay.siteId,
-          historyStart: flatpay.historyStart,
+          ...(flatpay.historyStart ? { historyStart: flatpay.historyStart } : {}),
           schedule: flatpay.schedule,
         });
         setSuccess('Connexion FlatPay et synchronisations enregistrées.');
@@ -801,6 +801,7 @@ export function FinanceOnboarding({
                 onSiteId={(siteId) => setFlatpay({ ...flatpay, siteId })}
                 historyStart={flatpay.historyStart}
                 onHistoryStart={(historyStart) => setFlatpay({ ...flatpay, historyStart })}
+                automaticHistory
                 schedule={flatpay.schedule}
                 onToggleSchedule={(time) =>
                   toggleSchedule(time, flatpay.schedule, (schedule) =>
@@ -938,6 +939,7 @@ function ServiceFields({
   onSiteId,
   historyStart,
   onHistoryStart,
+  automaticHistory = false,
   schedule,
   onToggleSchedule,
   children,
@@ -947,6 +949,7 @@ function ServiceFields({
   onSiteId: (siteId: string) => void;
   historyStart: string;
   onHistoryStart: (value: string) => void;
+  automaticHistory?: boolean;
   schedule: string[];
   onToggleSchedule: (time: string) => void;
   children: ReactNode;
@@ -970,13 +973,23 @@ function ServiceFields({
         </label>
         {children}
         <label className="wide">
-          <span>Récupérer l’historique depuis</span>
+          <span>
+            {automaticHistory
+              ? 'Date de départ indicative (facultative)'
+              : 'Récupérer l’historique depuis'}
+          </span>
           <input
             type="date"
             value={historyStart}
             onChange={(event) => onHistoryStart(event.target.value)}
           />
         </label>
+        {automaticHistory ? (
+          <small className="wide">
+            ToqueHub remonte automatiquement semaine par semaine et s’arrête lorsque FlatPay ne
+            propose plus de période ou après 62 jours consécutifs sans activité.
+          </small>
+        ) : null}
       </div>
       <div className="finance-onboarding-schedule">
         <span>Horaires de synchronisation</span>

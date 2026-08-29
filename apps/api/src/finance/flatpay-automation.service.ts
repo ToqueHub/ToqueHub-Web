@@ -111,10 +111,7 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
     const effectiveSchedule = schedule.length ? schedule : DEFAULT_SCHEDULE;
     const historyStart = dto.historyStart
       ? new Date(`${dto.historyStart.slice(0, 10)}T00:00:00.000Z`)
-      : connection.historyStart;
-    if (!historyStart) {
-      throw new BadRequestException('Indiquez le premier jour à récupérer depuis FlatPay.');
-    }
+      : (connection.historyStart ?? new Date());
     await mkdir(inbox, { recursive: true });
     try {
       await this.prisma.financeFlatpayConnection.update({
@@ -138,7 +135,7 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
         browserExecutable,
         requiredReports: ['orders', 'sales-overview'],
         message:
-          'Automatisation locale activée. Orders et Sales Overview seront récupérés sans ouvrir de fenêtre tant que FlatPay n’exige pas une validation supplémentaire.',
+          'Automatisation locale activée. Orders et Sales Overview remonteront automatiquement l’historique jusqu’à la première période disponible.',
       };
     } catch (error) {
       throw new ServiceUnavailableException(

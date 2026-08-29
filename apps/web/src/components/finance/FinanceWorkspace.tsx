@@ -3827,7 +3827,7 @@ function FlatpaySettingsModal({
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
   const [historyStart, setHistoryStart] = useState(
-    selectedConfiguration?.historyStart?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    selectedConfiguration?.historyStart?.slice(0, 10) ?? '',
   );
   const [schedule, setSchedule] = useState<string[]>(
     selectedConfiguration?.automationSchedule?.length
@@ -3857,7 +3857,7 @@ function FlatpaySettingsModal({
     setUsername(next?.username ?? '');
     setPassword('');
     setPortalUrl(next?.portalUrl ?? 'https://portal.flatpay.com');
-    setHistoryStart(next?.historyStart?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
+    setHistoryStart(next?.historyStart?.slice(0, 10) ?? '');
     setSchedule(
       next?.automationSchedule?.length
         ? [...next.automationSchedule].sort()
@@ -3894,7 +3894,7 @@ function FlatpaySettingsModal({
       });
       await api.installFlatpayAutomation(token, {
         siteId,
-        historyStart,
+        ...(historyStart ? { historyStart } : {}),
         schedule,
       });
       setPassword('');
@@ -3924,7 +3924,7 @@ function FlatpaySettingsModal({
       });
       await api.installFlatpayAutomation(token, {
         siteId,
-        historyStart,
+        ...(historyStart ? { historyStart } : {}),
         schedule,
       });
       const result = await api.reconnectFlatpayAutomation(token, siteId);
@@ -4022,15 +4022,15 @@ function FlatpaySettingsModal({
             <div className="finance-settings-block-heading">
               <RefreshCw size={18} />
               <div>
-                <strong>Synchronisations automatiques</strong>
+                <strong>Synchronisations et historique automatiques</strong>
                 <span>
-                  Orders et Sales Overview sont récupérés ensemble, en arrière-plan, lorsque
-                  l’instance locale ToqueHub est active.
+                  Orders et Sales Overview sont récupérés ensemble. Au premier lancement, ToqueHub
+                  remonte semaine par semaine jusqu’au début disponible dans FlatPay.
                 </span>
               </div>
             </div>
             <label className="finance-history-start">
-              <span>Début de l’historique FlatPay</span>
+              <span>Date de départ indicative (facultative)</span>
               <input
                 type="date"
                 value={historyStart}
@@ -4132,7 +4132,6 @@ function FlatpaySettingsModal({
                   busy ||
                   !siteId ||
                   !username.trim() ||
-                  !historyStart ||
                   schedule.length === 0 ||
                   (!selectedConfiguration?.configured && !password)
                 }
@@ -4156,7 +4155,6 @@ function FlatpaySettingsModal({
               busy ||
               !siteId ||
               !username.trim() ||
-              !historyStart ||
               schedule.length === 0 ||
               (!selectedConfiguration?.configured && !password)
             }

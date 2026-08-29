@@ -210,11 +210,16 @@ export function normalizeZettlePurchases(
     );
     const refund = Boolean(purchase.refund) || text(purchase.type).toUpperCase() === 'RETURN';
     const gross = signed(minor(purchase.amount), refund);
-    const groupedVat = object(purchase.groupedVatAmounts);
-    const vat = signed(
-      Object.values(groupedVat).reduce<number>((sum, value) => sum + minor(value), 0),
-      refund,
-    );
+    // groupedVatAmounts contient les montants TTC regroupés par taux (par
+    // exemple { "14.0": 1300 }), et non le montant de TVA. Zettle fournit la
+    // vraie TVA dans vatAmount/taxAmount ; la confondre avec le regroupement
+    // TTC ramenait presque tout le chiffre d'affaires net à zéro.
+    const explicitVat = purchase.vatAmount ?? purchase.taxAmount;
+    const productVat = productRows.reduce((sum, line) => {
+      const quantity = Math.abs(number(line.quantity) || 1);
+      return sum + Math.max(0, minor(line.unitPrice) * quantity - minor(line.rowTaxableAmount));
+    }, 0);
+    const vat = signed(explicitVat == null ? productVat : minor(explicitVat), refund);
     const discounts = array(purchase.discounts).reduce<number>(
       (sum, entry) => sum + minor(object(entry).amount),
       0,

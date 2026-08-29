@@ -22,7 +22,7 @@ import { PosApiCredentialsService, type PosApiProvider } from './pos-api-credent
 const DAY = 86_400_000;
 const MAX_LOYVERSE_WINDOW_DAYS = 14;
 const DEFAULT_HISTORY_DAYS = 31;
-const ZETTLE_HISTORY_DAYS = 3 * 366;
+const ZETTLE_HISTORY_YEARS = 3;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 type JsonObject = Record<string, unknown>;
@@ -54,6 +54,29 @@ function startOfDay(value: Date) {
 function endOfDay(value: Date) {
   return new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999),
+  );
+}
+
+export function resolvePosSyncEnd(provider: FinanceProvider, requested: Date, now: Date) {
+  const requestedEnd = endOfDay(requested);
+  // Zettle considère endDate comme une borne exclusive et refuse une borne
+  // située plus tard que l'instant présent. Une synchronisation lancée dans la
+  // journée ne doit donc jamais envoyer 23:59:59 dans le futur.
+  return provider === FinanceProvider.PAYPAL_POS && requestedEnd > now ? now : requestedEnd;
+}
+
+export function earliestZettlePurchaseDate(now: Date) {
+  // L'API annonce trois années glissantes, pas 3 × 366 jours. Ajouter un jour
+  // entier évite qu'une borne à 00:00 soit rejetée quelques heures avant
+  // l'anniversaire exact par le service.
+  return startOfDay(
+    new Date(
+      Date.UTC(
+        now.getUTCFullYear() - ZETTLE_HISTORY_YEARS,
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+      ),
+    ),
   );
 }
 
@@ -147,9 +170,9 @@ export class PosApiSyncService implements OnModuleInit, OnModuleDestroy {
         ? new Date(credentials.lastSyncedAt.getTime() - 2 * DAY)
         : (credentials.historyStart ?? new Date(now.getTime() - DEFAULT_HISTORY_DAYS * DAY));
       let from = startOfDay(date(dto.from, fallbackFrom));
-      const to = endOfDay(date(dto.to, now));
+      const to = resolvePosSyncEnd(provider, date(dto.to, now), now);
       if (provider === FinanceProvider.PAYPAL_POS) {
-        const earliest = startOfDay(new Date(now.getTime() - ZETTLE_HISTORY_DAYS * DAY));
+        const earliest = earliestZettlePurchaseDate(now);
         if (from < earliest) from = earliest;
       }
       if (from > to)
