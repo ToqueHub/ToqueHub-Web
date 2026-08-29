@@ -22,8 +22,10 @@ import { FlatpayCredentialsService } from '../src/finance/flatpay-credentials.se
 import { FinancePolicy } from '../src/finance/finance.policy';
 import {
   applyFlatpayHistoryObservations,
+  capFlatpayHistoryRangeCount,
   completeFlatpayHistoryAtPortalBoundary,
   createFlatpayHistoryDiscovery,
+  discardUnconfirmedFlatpayOrderKeys,
   FLATPAY_HISTORY_DISCOVERY_VERSION,
   planFlatpayHistoryRanges,
   type FlatpayHistoryDiscovery,
@@ -93,6 +95,7 @@ type AutomationState = {
   historyStart?: string;
   historyDiscovery?: FlatpayHistoryDiscovery;
   productDailyBackfillVersion?: number;
+  historyQueueVersion?: number;
   lastGeneratedTo?: string;
   updatedAt?: string;
 };
@@ -853,10 +856,34 @@ async function observeHistoricalRanges(
       };
       const [revenueRows, productRows] = await Promise.all([
         prisma.financeDailySales.count({
-          where: { organizationId, sourceId: { in: sourceIds }, saleDate, isRevenueRecord: true },
+          where: {
+            organizationId,
+            sourceId: { in: sourceIds },
+            saleDate,
+            isRevenueRecord: true,
+            OR: [
+              { transactionCount: { gt: 0 } },
+              { grossAmount: { not: 0 } },
+              { netAmount: { not: 0 } },
+              { vatAmount: { not: 0 } },
+              { refundAmount: { not: 0 } },
+            ],
+          },
         }),
         prisma.financeDailySales.count({
-          where: { organizationId, sourceId: { in: sourceIds }, saleDate, isRevenueRecord: false },
+          where: {
+            organizationId,
+            sourceId: { in: sourceIds },
+            saleDate,
+            isRevenueRecord: false,
+            OR: [
+              { transactionCount: { gt: 0 } },
+              { grossAmount: { not: 0 } },
+              { netAmount: { not: 0 } },
+              { vatAmount: { not: 0 } },
+              { refundAmount: { not: 0 } },
+            ],
+          },
         }),
       ]);
       return { range, revenueRows, productRows };
@@ -995,7 +1022,7 @@ async function main() {
       await saveState(options.statePath, state);
     }
 
-    const generated = new Set(state.generatedKeys);
+    let generated = new Set(state.generatedKeys);
     const results: Array<Record<string, unknown>> = [];
     let generationCount = 0;
     const today = localIsoDate();
@@ -1039,15 +1066,27 @@ async function main() {
       state.historyDiscovery = createFlatpayHistoryDiscovery([...generated], options.to);
       await saveState(options.statePath, state);
     }
+    if (state.historyQueueVersion !== 1 && !state.historyDiscovery.complete) {
+      state.generatedKeys = discardUnconfirmedFlatpayOrderKeys(
+        state.generatedKeys,
+        state.historyDiscovery.nextTo,
+      );
+      state.historyQueueVersion = 1;
+      await saveState(options.statePath, state);
+    }
+    generated = new Set(state.generatedKeys);
     const historyTypes = options.reportTypes.filter(isHistoryReportType);
     // Orders est la source transactionnelle nécessaire aux ventes et à
     // l'affluence. Sales overview n'est qu'un enrichissement produit : sa
     // limite de calendrier ne doit jamais interrompre la reprise des tickets.
     const discoveryHistoryTypes = historyTypes.filter((type) => type === 'orders');
     const availableHistoryGenerations = Math.max(0, options.maxGenerationsPerRun - generationCount);
+    const requestedHistoryRangeCount = discoveryHistoryTypes.length
+      ? Math.floor(availableHistoryGenerations / discoveryHistoryTypes.length)
+      : 0;
     const historyRanges = planFlatpayHistoryRanges(
       state.historyDiscovery,
-      historyTypes.length ? Math.floor(availableHistoryGenerations / historyTypes.length) : 0,
+      capFlatpayHistoryRangeCount(state.historyDiscovery, requestedHistoryRangeCount, 7),
       7,
     );
     const pending = new Map<ReportType, DateRange[]>();
@@ -1079,10 +1118,7 @@ async function main() {
             state.generatedKeys = [...generated].slice(-5000);
             results.push({ type, ...range, generated: true });
           } catch (error) {
-            if (
-              error instanceof FlatpayHistoryBoundaryError &&
-              type === 'sales-overview'
-            ) {
+            if (error instanceof FlatpayHistoryBoundaryError && type === 'sales-overview') {
               pending.set(type, []);
               results.push({
                 type,

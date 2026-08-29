@@ -50,6 +50,24 @@ function earliestGeneratedOrderStart(generatedKeys: string[]) {
     .sort()[0];
 }
 
+export function discardUnconfirmedFlatpayOrderKeys(generatedKeys: string[], nextTo: string) {
+  return generatedKeys.filter((key) => {
+    const match = /^orders:20\d{2}-\d{2}-\d{2}:(20\d{2}-\d{2}-\d{2})$/.exec(key);
+    return !match || match[1] > nextTo;
+  });
+}
+
+export function capFlatpayHistoryRangeCount(
+  discovery: FlatpayHistoryDiscovery,
+  requestedCount: number,
+  chunkDays = 7,
+  emptyStopDays = DEFAULT_FLATPAY_EMPTY_STOP_DAYS,
+) {
+  if (requestedCount < 1 || discovery.complete) return 0;
+  const remainingEmptyDays = Math.max(1, emptyStopDays - discovery.consecutiveEmptyDays);
+  return Math.min(requestedCount, Math.ceil(remainingEmptyDays / chunkDays));
+}
+
 export function createFlatpayHistoryDiscovery(generatedKeys: string[], anchor: string) {
   const earliestGenerated = earliestGeneratedOrderStart(generatedKeys);
   return {

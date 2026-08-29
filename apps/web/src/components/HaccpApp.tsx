@@ -1443,7 +1443,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             <h1 className="welcome-title">{activeHeader.title}</h1>
             <p className="welcome-desc">{activeHeader.subtitle}</p>
           </div>
-          <div className="haccp-hero-actions">
+          <div className="haccp-hero-actions toquehub-hero-actions">
             <button className="btn btn-secondary btn-outline haccp-hero-guide" type="button" onClick={() => setShowModuleGuide(true)}>
               <ClipboardList size={16} /> Comprendre le module
             </button>

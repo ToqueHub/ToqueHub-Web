@@ -771,6 +771,7 @@ function ProductSelect({
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -1481,7 +1482,7 @@ export function TechnicalSheetsApp({
             ingrédients, unités et prix d'achat directement synchronisés avec vos Stocks.
           </p>
         </div>
-        <div className="technical-sheets-dashboard-hero-actions">
+        <div className="technical-sheets-dashboard-hero-actions toquehub-hero-actions">
           <button
             type="button"
             className="btn btn-secondary btn-outline"
@@ -3804,7 +3805,6 @@ function RecipesTab(props: {
           </button>
         </div>
       )}
-
     </div>
   );
 }

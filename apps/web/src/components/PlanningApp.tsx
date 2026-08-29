@@ -624,7 +624,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           <h1>Planning</h1>
           <p>Organisez les équipes, répartissez les affectations et anticipez les besoins de chaque établissement depuis un calendrier partagé.</p>
         </div>
-        <div className="planning-hero-actions">
+        <div className="planning-hero-actions toquehub-hero-actions">
           <button className="btn btn-secondary btn-outline planning-hero-guide" type="button" onClick={() => openInitialSetup('services')}>
             <Sparkles size={16} /> Guide de configuration
           </button>

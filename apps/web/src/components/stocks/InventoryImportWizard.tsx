@@ -277,9 +277,10 @@ export function InventoryImportWizard({
       subtitle="Rapprochez les produits, contrôlez les écarts, puis créez un brouillon sans modifier le stock."
       size="full"
       bodyClassName="inventory-import-modal-body"
+      overlayClassName="product-import-overlay inventory-import-overlay"
       hideHeader={Boolean(preview)}
     >
-      <div className="inventory-import-wizard">
+      <div className="inventory-import-wizard product-import-main">
         {error && !preview ? (
           <div className="alert-modern error inventory-import-alert">
             <AlertCircle size={17} /> {error}
@@ -416,25 +417,35 @@ export function InventoryImportWizard({
                     placeholder="Rechercher un produit, une feuille ou une catégorie…"
                   />
                 </label>
-                <div className="inventory-import-page-actions">
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={page <= 1}
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
-                    aria-label="Page précédente"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    disabled={page >= pageCount}
-                    onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-                    aria-label="Page suivante"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
+                <div className="inventory-import-page-controls">
+                  <div className="inventory-import-page-actions">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      disabled={page <= 1}
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      aria-label="Page précédente"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      disabled={page >= pageCount}
+                      onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                      aria-label="Page suivante"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                  <span className="inventory-import-page-indicator" aria-live="polite">
+                    <strong>
+                      {page} / {pageCount}
+                    </strong>
+                    <small>
+                      Page {page} sur {pageCount}
+                    </small>
+                  </span>
                 </div>
               </div>
 
