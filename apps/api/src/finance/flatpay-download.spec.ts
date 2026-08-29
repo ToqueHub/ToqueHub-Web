@@ -1,5 +1,8 @@
 import { classifyFinanceFile } from './finance.service';
-import { resolveFlatpayDownloadFileName } from './flatpay-download';
+import {
+  resolveFlatpayDownloadedReportKey,
+  resolveFlatpayDownloadFileName,
+} from './flatpay-download';
 import { flatpayProductPeriodFromFileName } from './finance-import-parser.service';
 
 describe('FlatPay report download names', () => {
@@ -33,5 +36,17 @@ describe('FlatPay report download names', () => {
     expect(
       resolveFlatpayDownloadFileName('download-2.xlsx', 'Sales Overview Report - August'),
     ).toBe('Sales_Overview_Report_August.xlsx');
+  });
+
+  it('reconciles an existing Orders download with its covered business day', () => {
+    expect(resolveFlatpayDownloadedReportKey('Orders Report - 2026-08-27 to 2026-08-28')).toBe(
+      'orders:2026-08-28:2026-08-28',
+    );
+  });
+
+  it('reconciles an existing Sales Overview download with its covered period', () => {
+    expect(
+      resolveFlatpayDownloadedReportKey('Sales Overview Report - 2026-07-31 to 2026-08-28'),
+    ).toBe('sales-overview:2026-08-01:2026-08-28');
   });
 });

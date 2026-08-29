@@ -13,7 +13,10 @@ import {
   type Page,
 } from 'playwright-core';
 import { FennoaSecretService } from '../src/finance/fennoa-secret.service';
-import { resolveFlatpayDownloadFileName } from '../src/finance/flatpay-download';
+import {
+  resolveFlatpayDownloadedReportKey,
+  resolveFlatpayDownloadFileName,
+} from '../src/finance/flatpay-download';
 import { FlatpayCredentialsService } from '../src/finance/flatpay-credentials.service';
 import { FinancePolicy } from '../src/finance/finance.policy';
 import {
@@ -887,6 +890,16 @@ async function main() {
     const readyBefore = await downloadReadyReports(page, options, state, [], credentials);
     if (!state.historyStart && !Object.keys(state.generatedThrough).length) {
       throw new Error('Premier lancement : indiquez la date historique avec --from YYYY-MM-DD.');
+    }
+
+    const reconciledKeys = new Set(state.generatedKeys);
+    for (const reportName of state.downloadedReportKeys) {
+      const key = resolveFlatpayDownloadedReportKey(reportName);
+      if (key) reconciledKeys.add(key);
+    }
+    if (reconciledKeys.size !== state.generatedKeys.length) {
+      state.generatedKeys = [...reconciledKeys].slice(-5000);
+      await saveState(options.statePath, state);
     }
 
     const generated = new Set(state.generatedKeys);

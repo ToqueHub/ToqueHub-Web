@@ -36,3 +36,20 @@ export function resolveFlatpayDownloadFileName(suggestedName: string, reportName
     reportStemWithPeriod(reportName) || safeReportStem(suggested) || 'FlatPay_Report';
   return `${reportStem}${hasSupportedExtension ? suggestedExtension : '.xlsx'}`;
 }
+
+/**
+ * Le centre de téléchargements affiche une borne de début exclusive. Un
+ * rapport « 27 to 28 » couvre donc la journée du 28. Réconcilier ces titres
+ * avec l'état évite de redemander un export déjà téléchargé et importé.
+ */
+export function resolveFlatpayDownloadedReportKey(reportName: string) {
+  const match = reportName.match(
+    /^(Orders|Sales Overview) Report\s*-\s*(20\d{2}-\d{2}-\d{2})\s+to\s+(20\d{2}-\d{2}-\d{2})$/i,
+  );
+  if (!match) return null;
+  const start = new Date(`${match[2]}T00:00:00.000Z`);
+  start.setUTCDate(start.getUTCDate() + 1);
+  const from = start.toISOString().slice(0, 10);
+  const type = match[1].toLowerCase().startsWith('orders') ? 'orders' : 'sales-overview';
+  return `${type}:${from}:${match[3]}`;
+}
