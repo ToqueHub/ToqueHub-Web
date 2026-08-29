@@ -54,7 +54,8 @@ describe('POS API normalizers', () => {
           purchaseUUID1: 'purchase-1',
           timestamp: '2026-08-04T12:00:00.000Z',
           amount: 1450,
-          groupedVatAmounts: { '14': 178 },
+          vatAmount: 178,
+          groupedVatAmounts: { '14': 1450 },
           payments: [{ type: 'CARD' }],
           products: [
             {
@@ -81,6 +82,32 @@ describe('POS API normalizers', () => {
       paymentMethod: 'CARD',
     });
     expect(locations[0].rows[1].productCategory).toBe('Viennoiseries');
+  });
+
+  it('ne confond pas les montants TTC groupés par taux avec la TVA Zettle', () => {
+    const [location] = normalizeZettlePurchases([
+      {
+        purchaseUUID1: 'purchase-vat',
+        timestamp: '2026-08-04T12:00:00.000Z',
+        amount: 1300,
+        vatAmount: 159,
+        groupedVatAmounts: { '14.0': 1300 },
+        products: [
+          {
+            name: 'Déjeuner',
+            quantity: 1,
+            unitPrice: 1300,
+            rowTaxableAmount: 1141,
+          },
+        ],
+      },
+    ]);
+
+    expect(location.rows[0]).toMatchObject({
+      grossAmount: 13,
+      vatAmount: 1.59,
+      netAmount: 11.41,
+    });
   });
 
   it('conserve la TVA de ligne et inverse les signes lors d’un remboursement Loyverse', () => {

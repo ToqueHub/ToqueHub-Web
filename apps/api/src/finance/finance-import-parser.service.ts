@@ -548,7 +548,7 @@ export class FinanceImportParserService {
     const sheet = workbook.worksheets[0];
     if (!sheet) return summary([], { parser: 'xlsx-empty', parserVersion: 1 }, ['Classeur vide.']);
     if (provider === FinanceProvider.FLATPAY && reportKind === FinanceReportKind.SALES_ORDERS)
-      return this.flatpayOrders(sheet);
+      return this.flatpayOrders(sheet, fileName);
     if (provider === FinanceProvider.FLATPAY && reportKind === FinanceReportKind.PRODUCT_SALES)
       return this.flatpayProducts(sheet, fileName);
     if (provider === FinanceProvider.PAYPAL_POS) return this.paypalPos(sheet);
@@ -816,7 +816,7 @@ export class FinanceImportParserService {
     };
   }
 
-  private flatpayOrders(sheet: ExcelJS.Worksheet) {
+  private flatpayOrders(sheet: ExcelJS.Worksheet, fileName: string) {
     const headers = this.headers(sheet, 1);
     const rows: ParsedSale[] = [];
     sheet.eachRow((row, rowNumber) => {
@@ -851,7 +851,19 @@ export class FinanceImportParserService {
         },
       });
     });
-    return summary(rows, { parser: 'flatpay-orders', parserVersion: 2 });
+    const period = flatpayProductPeriodFromFileName(fileName);
+    const parsed = summary(rows, {
+      parser: 'flatpay-orders',
+      parserVersion: 3,
+      filePeriodStart: period?.startDate.toISOString() ?? null,
+      filePeriodEnd: period?.endDate.toISOString() ?? null,
+    });
+    return {
+      ...parsed,
+      ready: rows.length > 0 || Boolean(period),
+      periodStart: period?.startDate ?? parsed.periodStart,
+      periodEnd: period?.endDate ?? parsed.periodEnd,
+    };
   }
 
   private flatpayProducts(sheet: ExcelJS.Worksheet, fileName: string) {

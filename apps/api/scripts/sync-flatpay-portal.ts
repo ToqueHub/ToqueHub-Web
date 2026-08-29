@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { promisify } from 'node:util';
 import { ConfigService } from '@nestjs/config';
+import { FinanceProvider } from '@prisma/client';
 import {
   chromium,
   type BrowserContext,
@@ -19,6 +20,14 @@ import {
 } from '../src/finance/flatpay-download';
 import { FlatpayCredentialsService } from '../src/finance/flatpay-credentials.service';
 import { FinancePolicy } from '../src/finance/finance.policy';
+import {
+  applyFlatpayHistoryObservations,
+  completeFlatpayHistoryAtPortalBoundary,
+  createFlatpayHistoryDiscovery,
+  planFlatpayHistoryRanges,
+  type FlatpayHistoryDiscovery,
+  type FlatpayHistoryRange,
+} from '../src/finance/flatpay-history';
 import {
   flatpayRuntimeDirectory,
   resolveFlatpayBrowserExecutable,
@@ -53,6 +62,7 @@ const REPORTS = {
 } as const;
 
 type ReportType = keyof typeof REPORTS;
+type HistoryReportType = Extract<ReportType, 'orders' | 'sales-overview'>;
 type DateRange = { from: string; to: string };
 type Options = {
   command: 'setup' | 'run' | 'diagnose';
@@ -80,10 +90,21 @@ type AutomationState = {
   downloadedReportKeys: string[];
   generatedThrough: Partial<Record<ReportType, string>>;
   historyStart?: string;
+  historyDiscovery?: FlatpayHistoryDiscovery;
   productDailyBackfillVersion?: number;
   lastGeneratedTo?: string;
   updatedAt?: string;
 };
+
+class FlatpayHistoryBoundaryError extends Error {
+  constructor(readonly boundary: string) {
+    super(`La date ${boundary} précède l’historique disponible dans FlatPay.`);
+  }
+}
+
+function isHistoryReportType(type: ReportType): type is HistoryReportType {
+  return type === 'orders' || type === 'sales-overview';
+}
 
 function optionValue(args: string[], name: string) {
   const index = args.indexOf(name);
@@ -512,6 +533,7 @@ async function clickCalendarDate(page: Page, value: string) {
   });
   const visible = await firstVisible([dateButton]);
   if (!visible) throw new Error(`Date Flatpay introuvable : ${value}.`);
+  if (!(await visible.isEnabled())) throw new FlatpayHistoryBoundaryError(value);
   await visible.click();
 }
 
@@ -649,6 +671,16 @@ async function generateCurrentOrdersReport(page: Page, options: Options, range: 
   await submitDialog(dialog, REPORTS.orders.submit);
 }
 
+async function generateSelectedReport(
+  page: Page,
+  options: Options,
+  type: ReportType,
+  range: DateRange,
+) {
+  if (type === 'orders') return generateCurrentOrdersReport(page, options, range);
+  return generateReport(page, options, type, range);
+}
+
 async function saveDownload(download: Download, inbox: string, reportName: string) {
   const fileName = resolveFlatpayDownloadFileName(download.suggestedFilename(), reportName);
   const extension = extname(fileName);
@@ -768,6 +800,39 @@ async function importDownloadedReports(inbox: string, organizationId: string, si
   if (result.stderr.trim()) console.error(result.stderr.trim());
 }
 
+async function observeHistoricalRanges(
+  prisma: PrismaService,
+  organizationId: string,
+  siteId: string,
+  ranges: FlatpayHistoryRange[],
+) {
+  const sources = await prisma.financeDataSource.findMany({
+    where: { organizationId, siteId, provider: FinanceProvider.FLATPAY },
+    select: { id: true },
+  });
+  const sourceIds = sources.map(({ id }) => id);
+  if (!sourceIds.length) {
+    return ranges.map((range) => ({ range, revenueRows: 0, productRows: 0 }));
+  }
+  return Promise.all(
+    ranges.map(async (range) => {
+      const saleDate = {
+        gte: new Date(`${range.from}T00:00:00.000Z`),
+        lt: new Date(`${addDays(range.to, 1)}T00:00:00.000Z`),
+      };
+      const [revenueRows, productRows] = await Promise.all([
+        prisma.financeDailySales.count({
+          where: { organizationId, sourceId: { in: sourceIds }, saleDate, isRevenueRecord: true },
+        }),
+        prisma.financeDailySales.count({
+          where: { organizationId, sourceId: { in: sourceIds }, saleDate, isRevenueRecord: false },
+        }),
+      ]);
+      return { range, revenueRows, productRows };
+    }),
+  );
+}
+
 function isFlatpayLoginFlow(page: Page) {
   return /\/(?:login|auth|verify|challenge|mfa|consent)(?:\/|\?|$)/i.test(page.url());
 }
@@ -883,14 +948,11 @@ async function main() {
       state.productDailyBackfillVersion = 1;
       await saveState(options.statePath, state);
     }
-    if (options.from && !state.historyStart) {
-      state.historyStart = options.from;
+    if (!state.historyStart) {
+      state.historyStart = options.from ?? options.to;
       await saveState(options.statePath, state);
     }
     const readyBefore = await downloadReadyReports(page, options, state, [], credentials);
-    if (!state.historyStart && !Object.keys(state.generatedThrough).length) {
-      throw new Error('Premier lancement : indiquez la date historique avec --from YYYY-MM-DD.');
-    }
 
     const reconciledKeys = new Set(state.generatedKeys);
     for (const reportName of state.downloadedReportKeys) {
@@ -918,8 +980,7 @@ async function main() {
         if (!options.reportTypes.includes(type) || generationCount >= options.maxGenerationsPerRun)
           continue;
         try {
-          if (type === 'orders') await generateCurrentOrdersReport(page, options, range);
-          else await generateReport(page, options, type, range);
+          await generateSelectedReport(page, options, type, range);
           generationCount += 1;
           const key = `${type}:${range.from}:${range.to}`;
           generated.add(key);
@@ -940,22 +1001,30 @@ async function main() {
       }
     }
 
+    if (!state.historyDiscovery || state.historyDiscovery.version !== 1) {
+      state.historyDiscovery = createFlatpayHistoryDiscovery([...generated], options.to);
+      await saveState(options.statePath, state);
+    }
+    const historyTypes = options.reportTypes.filter(isHistoryReportType);
+    const availableHistoryGenerations = Math.max(0, options.maxGenerationsPerRun - generationCount);
+    const historyRanges = planFlatpayHistoryRanges(
+      state.historyDiscovery,
+      historyTypes.length ? Math.floor(availableHistoryGenerations / historyTypes.length) : 0,
+      7,
+    );
     const pending = new Map<ReportType, DateRange[]>();
+    for (const type of historyTypes) pending.set(type, [...historyRanges]);
+    const historyDownloadAliases = new Map<string, string>();
     for (const type of options.reportTypes) {
-      if (type === 'sales-overview') {
-        if (!state.historyStart || state.historyStart > options.to) continue;
-        const recentFirst = rangesForReport(type, state.historyStart, options.to, options)
-          .reverse()
-          .filter((range) => !generated.has(`${type}:${range.from}:${range.to}`));
-        pending.set(type, recentFirst);
-        continue;
-      }
+      if (isHistoryReportType(type)) continue;
       const firstDate = state.generatedThrough[type]
         ? addDays(state.generatedThrough[type]!, 1)
         : state.historyStart;
       if (!firstDate || firstDate > options.to) continue;
       pending.set(type, rangesForReport(type, firstDate, options.to, options));
     }
+    let historyBoundary: string | undefined;
+    let historyBoundaryRange: DateRange | undefined;
     while (generationCount < options.maxGenerationsPerRun) {
       let madeProgress = false;
       for (const type of options.reportTypes) {
@@ -966,23 +1035,72 @@ async function main() {
         const key = `${type}:${range.from}:${range.to}`;
         if (!generated.has(key)) {
           try {
-            await generateReport(page, options, type, range);
+            await generateSelectedReport(page, options, type, range);
             generationCount += 1;
             generated.add(key);
             state.generatedKeys = [...generated].slice(-5000);
             results.push({ type, ...range, generated: true });
           } catch (error) {
-            pending.set(type, []);
-            results.push({
-              type,
-              ...range,
-              generated: false,
-              error: error instanceof Error ? error.message : String(error),
-            });
+            if (error instanceof FlatpayHistoryBoundaryError && isHistoryReportType(type)) {
+              historyBoundary = error.boundary;
+              historyBoundaryRange = range;
+              // Une semaine peut chevaucher le début réel du compte FlatPay.
+              // Chercher le premier jour activé dans cette même semaine permet
+              // d'importer les derniers jours disponibles avant de clore le
+              // rattrapage, au lieu de perdre toute la période partielle.
+              let partialFrom = addDays(error.boundary, 1);
+              let partialRange: DateRange | undefined;
+              while (partialFrom <= range.to) {
+                const candidate = { from: partialFrom, to: range.to };
+                try {
+                  for (const historyType of historyTypes) {
+                    await generateSelectedReport(page, options, historyType, candidate);
+                  }
+                  partialRange = candidate;
+                  break;
+                } catch (partialError) {
+                  if (!(partialError instanceof FlatpayHistoryBoundaryError)) throw partialError;
+                  historyBoundary = partialError.boundary;
+                  partialFrom = addDays(partialError.boundary, 1);
+                }
+              }
+              if (partialRange) {
+                generationCount += historyTypes.length;
+                for (const historyType of historyTypes) {
+                  const actualKey = `${historyType}:${partialRange.from}:${partialRange.to}`;
+                  generated.add(actualKey);
+                  historyDownloadAliases.set(`${historyType}:${range.from}:${range.to}`, actualKey);
+                  results.push({
+                    type: historyType,
+                    ...partialRange,
+                    plannedFrom: range.from,
+                    generated: true,
+                    partialHistoryBoundary: true,
+                  });
+                }
+                state.generatedKeys = [...generated].slice(-5000);
+              }
+              for (const historyType of historyTypes) pending.set(historyType, []);
+              results.push({
+                type,
+                ...range,
+                generated: false,
+                historyComplete: true,
+                portalBoundary: error.boundary,
+              });
+            } else {
+              pending.set(type, []);
+              results.push({
+                type,
+                ...range,
+                generated: false,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           }
         }
         if (generated.has(key)) {
-          if (type !== 'sales-overview') state.generatedThrough[type] = range.to;
+          if (!isHistoryReportType(type)) state.generatedThrough[type] = range.to;
           state.lastGeneratedTo = range.to;
         }
         await saveState(options.statePath, state);
@@ -1013,8 +1131,79 @@ async function main() {
       refreshedPrefixes,
       credentials,
     );
+    const expectedHistoryDownloads = historyRanges.flatMap((range) =>
+      historyTypes
+        .map((type) => {
+          const plannedKey = `${type}:${range.from}:${range.to}`;
+          return historyDownloadAliases.get(plannedKey) ?? plannedKey;
+        })
+        .filter((key) => generated.has(key)),
+    );
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const downloadedKeys = new Set(
+        state.downloadedReportKeys
+          .map(resolveFlatpayDownloadedReportKey)
+          .filter((key): key is string => Boolean(key)),
+      );
+      if (expectedHistoryDownloads.every((key) => downloadedKeys.has(key))) break;
+      await page.waitForTimeout(5_000);
+      readyAfter.push(...(await downloadReadyReports(page, options, state, [], credentials)));
+    }
     await importDownloadedReports(options.inbox, organization.id, credentials.defaultSiteId);
-    const failed = results.filter(({ generated: ok }) => ok === false);
+    const downloadedHistoryKeys = new Set(
+      state.downloadedReportKeys
+        .map(resolveFlatpayDownloadedReportKey)
+        .filter((key): key is string => Boolean(key)),
+    );
+    const completedHistoryRanges: DateRange[] = [];
+    for (const range of historyRanges) {
+      if (
+        historyTypes.every((type) => {
+          const plannedKey = `${type}:${range.from}:${range.to}`;
+          return downloadedHistoryKeys.has(historyDownloadAliases.get(plannedKey) ?? plannedKey);
+        })
+      ) {
+        completedHistoryRanges.push(range);
+      } else break;
+    }
+    if (completedHistoryRanges.length) {
+      const observations = await observeHistoricalRanges(
+        prisma,
+        organization.id,
+        credentials.defaultSiteId,
+        completedHistoryRanges,
+      );
+      state.historyDiscovery = applyFlatpayHistoryObservations(
+        state.historyDiscovery,
+        observations,
+      );
+      const earliest =
+        state.historyDiscovery.earliestActivity ?? state.historyDiscovery.earliestScanned;
+      if (earliest && (!state.historyStart || earliest < state.historyStart))
+        state.historyStart = earliest;
+    }
+    const boundaryRangeCompleted =
+      !historyBoundaryRange ||
+      completedHistoryRanges.some(
+        (range) =>
+          range.from === historyBoundaryRange?.from && range.to === historyBoundaryRange?.to,
+      );
+    if (historyBoundary && boundaryRangeCompleted) {
+      state.historyDiscovery = completeFlatpayHistoryAtPortalBoundary(
+        state.historyDiscovery,
+        historyBoundary,
+      );
+    }
+    await saveState(options.statePath, state);
+    if (state.historyStart) {
+      await prisma.financeFlatpayConnection.update({
+        where: { id: credentials.id },
+        data: { historyStart: new Date(`${state.historyStart}T00:00:00.000Z`) },
+      });
+    }
+    const failed = results.filter(
+      ({ generated: ok, historyComplete }) => ok === false && historyComplete !== true,
+    );
     console.log(
       JSON.stringify(
         {
@@ -1023,6 +1212,7 @@ async function main() {
           reportTypes: options.reportTypes,
           maxGenerationsPerRun: options.maxGenerationsPerRun,
           generatedThrough: state.generatedThrough,
+          historyDiscovery: state.historyDiscovery,
           downloadedBefore: readyBefore,
           downloadedAfter: readyAfter,
           generated: results,

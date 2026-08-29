@@ -1,14 +1,11 @@
 export const englishOverrides: Readonly<Record<string, string>> = {
-  'Afficher la création de l’environnement en français':
-    'Display environment setup in French',
+  'Afficher la création de l’environnement en français': 'Display environment setup in French',
   'Langue de création de l’environnement': 'Environment setup language',
-  'Choisir la langue de création de l’environnement':
-    'Choose the environment setup language',
+  'Choisir la langue de création de l’environnement': 'Choose the environment setup language',
   'Premier Démarrage': 'First-time setup',
   'Créer le compte pilote': 'Create the administrator account',
   'Votre Cuisine Connectée': 'Your connected kitchen',
-  'ex: Bistrot des Cocottes, Resto Scolaire...':
-    'e.g. Bistro des Cocottes, School Restaurant...',
+  'ex: Bistrot des Cocottes, Resto Scolaire...': 'e.g. Bistro des Cocottes, School Restaurant...',
   créneaux: 'time slots',
   'Document opérationnel': 'Operational document',
   'Émargement mensuel': 'Monthly attendance sheet',
@@ -368,6 +365,12 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Autorisez la lecture comptable': 'Allow accounting read access',
   'Copiez les deux valeurs': 'Copy both values',
   'Horaires de synchronisation': 'Synchronisation schedule',
+  'Synchronisations et historique automatiques': 'Automatic synchronisation and history',
+  'Date de départ indicative (facultative)': 'Indicative start date (optional)',
+  'Orders et Sales Overview sont récupérés ensemble. Au premier lancement, ToqueHub remonte semaine par semaine jusqu’au début disponible dans FlatPay.':
+    'Orders and Sales Overview are retrieved together. On the first run, ToqueHub goes back week by week to the earliest period available in FlatPay.',
+  'ToqueHub remonte automatiquement semaine par semaine et s’arrête lorsque FlatPay ne propose plus de période ou après 62 jours consécutifs sans activité.':
+    'ToqueHub automatically goes back week by week and stops when FlatPay no longer offers an earlier period or after 62 consecutive days without activity.',
   'Configurez Loyverse': 'Set up Loyverse',
   'Configurez PayPal / Zettle': 'Set up PayPal / Zettle',
   'Configurez FlatPay': 'Set up FlatPay',

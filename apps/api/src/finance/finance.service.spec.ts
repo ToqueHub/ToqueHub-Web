@@ -516,6 +516,31 @@ describe('périodes des rapports Flatpay', () => {
     expect(parsed.periodEnd?.toISOString()).toBe('2026-08-23T23:59:59.999Z');
   });
 
+  it('valide un rapport Orders vide et conserve toute la période demandée', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Orders');
+    sheet.addRow([
+      'Date of Sale',
+      'Order No.',
+      'Status',
+      'Gross Amount (EUR)',
+      'Net Amount (EUR)',
+      'VAT Amount (EUR)',
+    ]);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const parsed = await new FinanceImportParserService().parse(
+      'OrdersReport_2026-08-08-2026-08-15.xlsx',
+      buffer,
+      FinanceProvider.FLATPAY,
+      FinanceReportKind.SALES_ORDERS,
+    );
+
+    expect(parsed.ready).toBe(true);
+    expect(parsed.rows).toHaveLength(0);
+    expect(parsed.periodStart?.toISOString()).toBe('2026-08-09T00:00:00.000Z');
+    expect(parsed.periodEnd?.toISOString()).toBe('2026-08-15T23:59:59.999Z');
+  });
+
   it('reconnaît un rapport Flatpay selon ses colonnes même si son nom est générique', async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Export');
