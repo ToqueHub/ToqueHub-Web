@@ -1,7 +1,7 @@
 export type FlatpayHistoryRange = { from: string; to: string };
 
 export type FlatpayHistoryDiscovery = {
-  version: 1;
+  version: 2;
   nextTo: string;
   consecutiveEmptyDays: number;
   complete: boolean;
@@ -18,7 +18,10 @@ export type FlatpayHistoryObservation = {
   productRows: number;
 };
 
-export const FLATPAY_HISTORY_DISCOVERY_VERSION = 1;
+// v2 reprend les historiques précédemment arrêtés par la limite visuelle de
+// trois mois du calendrier Orders. Les commandes plus anciennes restent
+// accessibles lorsque la période est transmise par l'URL de la page.
+export const FLATPAY_HISTORY_DISCOVERY_VERSION = 2;
 export const DEFAULT_FLATPAY_EMPTY_STOP_DAYS = 62;
 
 const ISO_DATE = /^20\d{2}-\d{2}-\d{2}$/;

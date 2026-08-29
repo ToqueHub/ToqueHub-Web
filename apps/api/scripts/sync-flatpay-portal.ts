@@ -24,6 +24,7 @@ import {
   applyFlatpayHistoryObservations,
   completeFlatpayHistoryAtPortalBoundary,
   createFlatpayHistoryDiscovery,
+  FLATPAY_HISTORY_DISCOVERY_VERSION,
   planFlatpayHistoryRanges,
   type FlatpayHistoryDiscovery,
   type FlatpayHistoryRange,
@@ -652,9 +653,39 @@ async function generateReport(page: Page, options: Options, type: ReportType, ra
 }
 
 async function generateCurrentOrdersReport(page: Page, options: Options, range: DateRange) {
-  await page.goto(portalUrl(options, '/pos/orders'), { waitUntil: 'domcontentloaded' });
+  // Le calendrier de la page Orders ne permet de sélectionner que les trois
+  // derniers mois, alors que l'API de la page conserve des commandes plus
+  // anciennes. Les filtres de l'URL ne sont pas soumis à cette restriction :
+  // ils sont normalisés par le portail dans le fuseau local puis réutilisés
+  // par l'export. Cela permet de reprendre tout l'historique sans fabriquer
+  // un appel privé ni contourner l'authentification du portail.
+  const ordersUrl = new URL(portalUrl(options, '/pos/orders'));
+  ordersUrl.searchParams.set('pageIndex', '0');
+  ordersUrl.searchParams.set('status', 'all');
+  ordersUrl.searchParams.set('fromDate', `${range.from}T00:00:00.000Z`);
+  ordersUrl.searchParams.set('toDate', `${range.to}T23:59:59.000Z`);
+  ordersUrl.searchParams.set('sorting', 'orderId-desc');
+  await page.goto(ordersUrl.toString(), { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Orders', exact: true, level: 1 }).waitFor();
-  await selectDateRange(page, page.locator('body'), range);
+
+  let appliedRange = false;
+  const rangeDeadline = Date.now() + 10_000;
+  while (!appliedRange && Date.now() < rangeDeadline) {
+    const buttons = page.locator('button');
+    for (let index = 0; index < (await buttons.count()); index += 1) {
+      const candidate = buttons.nth(index);
+      if (!(await candidate.isVisible())) continue;
+      const label = (await candidate.innerText()).replace(/\s+/g, ' ').trim();
+      if (label.length <= 160 && DATE_RANGE_PATTERN.test(label)) {
+        appliedRange = await triggerMatchesRange(candidate, range);
+        if (appliedRange) break;
+      }
+    }
+    if (!appliedRange) await page.waitForTimeout(100);
+  }
+  if (!appliedRange) {
+    throw new Error(`Flatpay n'a pas appliqué la période Orders ${range.from} → ${range.to}.`);
+  }
 
   const exportButton = page.getByRole('button', { name: 'Export', exact: true });
   if ((await exportButton.count()) !== 1) {
@@ -1001,11 +1032,18 @@ async function main() {
       }
     }
 
-    if (!state.historyDiscovery || state.historyDiscovery.version !== 1) {
+    if (
+      !state.historyDiscovery ||
+      state.historyDiscovery.version !== FLATPAY_HISTORY_DISCOVERY_VERSION
+    ) {
       state.historyDiscovery = createFlatpayHistoryDiscovery([...generated], options.to);
       await saveState(options.statePath, state);
     }
     const historyTypes = options.reportTypes.filter(isHistoryReportType);
+    // Orders est la source transactionnelle nécessaire aux ventes et à
+    // l'affluence. Sales overview n'est qu'un enrichissement produit : sa
+    // limite de calendrier ne doit jamais interrompre la reprise des tickets.
+    const discoveryHistoryTypes = historyTypes.filter((type) => type === 'orders');
     const availableHistoryGenerations = Math.max(0, options.maxGenerationsPerRun - generationCount);
     const historyRanges = planFlatpayHistoryRanges(
       state.historyDiscovery,
@@ -1041,7 +1079,20 @@ async function main() {
             state.generatedKeys = [...generated].slice(-5000);
             results.push({ type, ...range, generated: true });
           } catch (error) {
-            if (error instanceof FlatpayHistoryBoundaryError && isHistoryReportType(type)) {
+            if (
+              error instanceof FlatpayHistoryBoundaryError &&
+              type === 'sales-overview'
+            ) {
+              pending.set(type, []);
+              results.push({
+                type,
+                ...range,
+                generated: false,
+                historyComplete: true,
+                enrichmentUnavailable: true,
+                portalBoundary: error.boundary,
+              });
+            } else if (error instanceof FlatpayHistoryBoundaryError && type === 'orders') {
               historyBoundary = error.boundary;
               historyBoundaryRange = range;
               // Une semaine peut chevaucher le début réel du compte FlatPay.
@@ -1053,7 +1104,7 @@ async function main() {
               while (partialFrom <= range.to) {
                 const candidate = { from: partialFrom, to: range.to };
                 try {
-                  for (const historyType of historyTypes) {
+                  for (const historyType of discoveryHistoryTypes) {
                     await generateSelectedReport(page, options, historyType, candidate);
                   }
                   partialRange = candidate;
@@ -1065,8 +1116,8 @@ async function main() {
                 }
               }
               if (partialRange) {
-                generationCount += historyTypes.length;
-                for (const historyType of historyTypes) {
+                generationCount += discoveryHistoryTypes.length;
+                for (const historyType of discoveryHistoryTypes) {
                   const actualKey = `${historyType}:${partialRange.from}:${partialRange.to}`;
                   generated.add(actualKey);
                   historyDownloadAliases.set(`${historyType}:${range.from}:${range.to}`, actualKey);
@@ -1080,7 +1131,7 @@ async function main() {
                 }
                 state.generatedKeys = [...generated].slice(-5000);
               }
-              for (const historyType of historyTypes) pending.set(historyType, []);
+              for (const historyType of discoveryHistoryTypes) pending.set(historyType, []);
               results.push({
                 type,
                 ...range,
@@ -1132,7 +1183,7 @@ async function main() {
       credentials,
     );
     const expectedHistoryDownloads = historyRanges.flatMap((range) =>
-      historyTypes
+      discoveryHistoryTypes
         .map((type) => {
           const plannedKey = `${type}:${range.from}:${range.to}`;
           return historyDownloadAliases.get(plannedKey) ?? plannedKey;
@@ -1158,7 +1209,7 @@ async function main() {
     const completedHistoryRanges: DateRange[] = [];
     for (const range of historyRanges) {
       if (
-        historyTypes.every((type) => {
+        discoveryHistoryTypes.every((type) => {
           const plannedKey = `${type}:${range.from}:${range.to}`;
           return downloadedHistoryKeys.has(historyDownloadAliases.get(plannedKey) ?? plannedKey);
         })
