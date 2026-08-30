@@ -1,5 +1,6 @@
 import { FinanceAccountCategory } from '@prisma/client';
 import {
+  aggregateFinancePayroll,
   alignFinanceAccountingPeriods,
   allocateMonthlyBudgetPerCalendarDay,
   buildFinanceMonthlyComparisonRanges,
@@ -173,6 +174,70 @@ describe('Finance monthly comparison periods', () => {
       from: partialFrom,
       to: partialTo,
     });
+  });
+
+  it('aggregates full-month payroll without recomputing unrelated finance metrics', () => {
+    const categories = new Map([
+      ['6000', FinanceAccountCategory.MATERIAL_PURCHASES],
+      ['6400', FinanceAccountCategory.PAYROLL],
+    ]);
+    const ledger = [
+      {
+        entryDate: new Date('2025-07-10T00:00:00.000Z'),
+        accountCode: '6000',
+        debit: 4_000,
+        credit: 0,
+      },
+      {
+        entryDate: new Date('2025-08-05T00:00:00.000Z'),
+        accountCode: '6400',
+        debit: 12_000,
+        credit: 0,
+      },
+      {
+        entryDate: new Date('2025-08-25T00:00:00.000Z'),
+        accountCode: '6400',
+        debit: 8_000,
+        credit: 500,
+      },
+      {
+        entryDate: new Date('2025-08-10T00:00:00.000Z'),
+        accountCode: '6000',
+        debit: 6_000,
+        credit: 0,
+      },
+      {
+        entryDate: new Date('2025-09-01T00:00:00.000Z'),
+        accountCode: '6400',
+        debit: 99_000,
+        credit: 0,
+      },
+    ];
+
+    expect(
+      aggregateFinancePayroll(
+        ledger,
+        categories,
+        new Date('2025-08-01T00:00:00.000Z'),
+        new Date('2025-08-31T23:59:59.999Z'),
+      ),
+    ).toEqual({ payroll: 19_500, source: 'accounting' });
+    expect(
+      aggregateFinancePayroll(
+        ledger,
+        categories,
+        new Date('2025-07-01T00:00:00.000Z'),
+        new Date('2025-07-31T23:59:59.999Z'),
+      ),
+    ).toEqual({ payroll: 0, source: 'accounting' });
+    expect(
+      aggregateFinancePayroll(
+        ledger,
+        categories,
+        new Date('2024-08-01T00:00:00.000Z'),
+        new Date('2024-08-31T23:59:59.999Z'),
+      ),
+    ).toEqual({ payroll: null, source: 'unavailable' });
   });
 });
 

@@ -142,7 +142,6 @@ export function FirstStartLanding({
   const [usernameError, setUsernameError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [completedCreationSteps, setCompletedCreationSteps] = useState(0);
-  const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreInspection, setRestoreInspection] = useState<BackupInspection | null>(null);
   const [restorePhrase, setRestorePhrase] = useState('');
@@ -432,15 +431,6 @@ export function FirstStartLanding({
             <div className="spinner" style={{ width: '36px', height: '36px', borderWidth: '3px' }}></div>
             <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Lecture du statut système...</span>
           </div>
-        ) : !allowCreate && !showOnboardingPreview ? (
-          <AlreadyInitialized
-            onLoginRequested={onLoginRequested}
-            onShowOnboarding={() => {
-              changeStep(0);
-              setFormError(undefined);
-              setShowOnboardingPreview(true);
-            }}
-          />
         ) : restoreOpen ? (
           <BootstrapRestorePanel
             inspection={restoreInspection}
@@ -460,6 +450,11 @@ export function FirstStartLanding({
               setRestorePhrase('');
             }}
             onLoginRequested={onLoginRequested}
+          />
+        ) : !allowCreate ? (
+          <AlreadyInitialized
+            onLoginRequested={onLoginRequested}
+            onRestore={() => setRestoreOpen(true)}
           />
         ) : (
           <div
@@ -2429,7 +2424,13 @@ function OnboardingAside({ step, organization }: { step: OnboardingStep; organiz
 }
 
 // 6. Already Initialized Safeguard View
-function AlreadyInitialized({ onLoginRequested, onShowOnboarding }: { onLoginRequested: () => void; onShowOnboarding: () => void }) {
+function AlreadyInitialized({
+  onLoginRequested,
+  onRestore,
+}: {
+  onLoginRequested: () => void;
+  onRestore: () => void;
+}) {
   return (
     <div className="card-modern" style={{ maxWidth: '680px', margin: '0 auto', textAlign: 'center', padding: '4rem 2rem' }}>
       <CheckCircle2 size={56} color="var(--primary)" style={{ margin: '0 auto 1.5rem' }} />
@@ -2443,8 +2444,8 @@ function AlreadyInitialized({ onLoginRequested, onShowOnboarding }: { onLoginReq
         <button className="btn btn-primary" onClick={onLoginRequested}>
           Accéder à la connexion
         </button>
-        <button className="btn btn-secondary" onClick={onShowOnboarding}>
-          Voir la création d’environnement
+        <button className="btn btn-secondary" onClick={onRestore}>
+          <UploadCloud size={16} /> Restaurer une sauvegarde
         </button>
       </div>
     </div>

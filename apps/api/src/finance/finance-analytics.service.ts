@@ -667,6 +667,27 @@ export function resolveHistoricalPayrollRange(
   return { from: startOfMonth(from), to: endOfMonth(from) };
 }
 
+export function aggregateFinancePayroll(
+  ledger: FinanceLedgerRevenueRow[],
+  categories: Map<string, FinanceAccountCategory>,
+  from: Date,
+  to: Date,
+): { payroll: number | null; source: RevenueBasis } {
+  let hasLedger = false;
+  let payroll = 0;
+
+  for (const entry of ledger) {
+    if (entry.entryDate < from || entry.entryDate > to) continue;
+    hasLedger = true;
+    if (categories.get(entry.accountCode) !== FinanceAccountCategory.PAYROLL) continue;
+    payroll += numeric(entry.debit) - numeric(entry.credit);
+  }
+
+  return hasLedger
+    ? { payroll: round(payroll), source: 'accounting' }
+    : { payroll: null, source: 'unavailable' };
+}
+
 function shiftDays(value: Date, offset: number) {
   return new Date(value.getTime() + offset * 86_400_000);
 }
@@ -2458,15 +2479,15 @@ export class FinanceAnalyticsService {
         const payrollActual =
           payrollRange.from.getTime() === range.from.getTime() &&
           payrollRange.to.getTime() === range.to.getTime()
-            ? actual
-            : this.aggregate(
+            ? {
+                payroll: actual.payroll,
+                source: actual.metricSources.payroll,
+              }
+            : aggregateFinancePayroll(
                 ledger,
-                sales,
                 categories,
                 payrollRange.from,
                 payrollRange.to,
-                accountingLockedThrough,
-                options,
               );
         return {
           ...range,
@@ -2483,7 +2504,7 @@ export class FinanceAnalyticsService {
           },
           sources: {
             ...actual.metricSources,
-            payroll: payrollActual.metricSources.payroll,
+            payroll: payrollActual.source,
           },
         };
       }),
