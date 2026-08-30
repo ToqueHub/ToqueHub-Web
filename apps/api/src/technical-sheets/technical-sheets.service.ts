@@ -55,6 +55,7 @@ type ImportedRecipeStep = {
 };
 type PreparedImportedIngredient = {
   productId?: string;
+  sourceTechnicalSheetId?: string;
   productName?: string;
   productSku?: string;
   productGtin?: string;
@@ -823,7 +824,9 @@ export class TechnicalSheetsService {
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.productionProfile.deleteMany({ where: { organizationId, technicalSheetId: id } });
-      await tx.technicalSheetVersion.deleteMany({ where: { organizationId, technicalSheetId: id } });
+      await tx.technicalSheetVersion.deleteMany({
+        where: { organizationId, technicalSheetId: id },
+      });
       await tx.technicalSheet.delete({ where: { id, organizationId } });
     });
     return { id, deleted: true };
@@ -1305,7 +1308,7 @@ export class TechnicalSheetsService {
 
   private async analyzeRecipeFile(organizationId: string, file: UploadedRecipePdf) {
     this.validateRecipeFile(file);
-    const [products, units, categories] = await Promise.all([
+    const [products, units, categories, sourceTechnicalSheets] = await Promise.all([
       this.prisma.product.findMany({
         where: {
           organizationId,
@@ -1321,6 +1324,18 @@ export class TechnicalSheetsService {
       }),
       this.prisma.technicalSheetCategory.findMany({
         where: { organizationId, isArchived: false },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.technicalSheet.findMany({
+        where: {
+          organizationId,
+          isArchived: false,
+          mode: TechnicalSheetMode.PRODUCTION,
+          status: { in: [TechnicalSheetStatus.ACTIVE, TechnicalSheetStatus.VALIDATED] },
+          outputProductId: { not: null },
+          yieldUnitId: { not: null },
+        },
+        include: { outputProduct: { include: { unit: true } }, yieldUnit: true },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -1341,7 +1356,9 @@ export class TechnicalSheetsService {
     const categoryId =
       this.matchCategory(imported.categoryName, categories)?.id ?? categories[0]?.id ?? '';
     let matchedIngredientsCount = 0;
-    let newProductsCount = 0;
+    let matchedSubRecipesCount = 0;
+    const newProductsCount = 0;
+    let unresolvedIngredientsCount = 0;
     const preparedIngredients = (imported.ingredients ?? [])
       .map(
         (
@@ -1352,14 +1369,16 @@ export class TechnicalSheetsService {
             warnings.push(`Ingrédient sans nom ignoré à la ligne ${index + 1}.`);
             return null;
           }
-          const product = this.matchProduct(
-            ingredient.name ?? '',
-            products,
-            ingredient.sku,
-            ingredient.gtin,
-          );
+          const sourceTechnicalSheet =
+            !ingredient.sku && !ingredient.gtin
+              ? this.matchSourceTechnicalSheet(ingredient.name ?? '', sourceTechnicalSheets)
+              : null;
+          const product = sourceTechnicalSheet
+            ? sourceTechnicalSheet.outputProduct
+            : this.matchProduct(ingredient.name ?? '', products, ingredient.sku, ingredient.gtin);
           const unit =
             this.matchUnit(ingredient.unit, units) ??
+            sourceTechnicalSheet?.yieldUnit ??
             (product ? (units.find((item) => item.id === product.unitId) ?? product.unit) : null) ??
             units[0];
           const common = {
@@ -1368,17 +1387,28 @@ export class TechnicalSheetsService {
             comment: ingredient.comment || undefined,
             order: index,
           };
+          if (sourceTechnicalSheet) {
+            matchedSubRecipesCount += 1;
+            return {
+              ...common,
+              sourceTechnicalSheetId: sourceTechnicalSheet.id,
+              productId: sourceTechnicalSheet.outputProductId,
+            };
+          }
           if (product) {
             matchedIngredientsCount += 1;
             return { ...common, productId: product.id };
           }
-          newProductsCount += 1;
+          unresolvedIngredientsCount += 1;
+          warnings.push(
+            `« ${ingredient.name.trim()} » doit être rapproché d’un produit Stocks, d’une sous-recette ou créé explicitement.`,
+          );
           return {
             ...common,
             productName: ingredient.name.trim().slice(0, 180),
             productSku: ingredient.sku?.trim() || undefined,
             productGtin: ingredient.gtin?.trim() || undefined,
-            createProduct: true,
+            createProduct: false,
           };
         },
       )
@@ -1390,7 +1420,9 @@ export class TechnicalSheetsService {
       filename: file.originalname,
       pageCount: ocr.pageCount,
       matchedIngredientsCount,
+      matchedSubRecipesCount,
       newProductsCount,
+      unresolvedIngredientsCount,
       skippedIngredientsCount: Math.max(
         (imported.ingredients ?? []).length - preparedIngredients.length,
         0,
@@ -1400,7 +1432,8 @@ export class TechnicalSheetsService {
         name: imported.name || this.nameFromFilename(file.originalname),
         description: imported.description || undefined,
         categoryId,
-        mode: TechnicalSheetMode.PRODUCTION,
+        mode:
+          matchedSubRecipesCount > 0 ? TechnicalSheetMode.ASSEMBLY : TechnicalSheetMode.PRODUCTION,
         stockPolicy: TechnicalSheetStockPolicy.MAKE_TO_STOCK,
         yieldMode: TechnicalSheetYieldMode.PORTIONS,
         referencePortions: Math.max(Number(imported.referencePortions ?? 1) || 1, 0.001),
@@ -2307,9 +2340,12 @@ export class TechnicalSheetsService {
     const quantity = new Prisma.Decimal(line.quantity);
     const source = line.sourceTechnicalSheet;
     if (source) {
+      const lineMassFactor = this.massFactorToGrams(line.unit.symbol);
+      if (line.unit.type === UnitType.MASS && lineMassFactor != null) {
+        return quantity.mul(lineMassFactor);
+      }
       if (source.yieldMode === TechnicalSheetYieldMode.MASS) {
-        const factor = this.massFactorToGrams(line.unit.symbol);
-        return factor == null ? null : quantity.mul(factor);
+        return null;
       }
       if (
         source.totalMassGrams == null ||
@@ -2421,13 +2457,23 @@ export class TechnicalSheetsService {
           where: { organizationId, fromUnitId: line.unitId, toUnitId: source.yieldUnitId },
         });
         if (!conversion) {
-          return {
-            isCalculable: false,
-            cost: null,
-            reason: 'Conversion vers la sous-recette indisponible',
-          };
+          const massFactor = this.massFactorToGrams(line.unit?.symbol);
+          const totalMassGrams = new Prisma.Decimal(source.totalMassGrams ?? 0);
+          if (massFactor == null || totalMassGrams.lte(0) || source.referencePortions.lte(0)) {
+            return {
+              isCalculable: false,
+              cost: null,
+              reason: 'Conversion vers la sous-recette indisponible',
+            };
+          }
+          const requiredMassGrams = qty.mul(massFactor);
+          qty =
+            source.yieldMode === TechnicalSheetYieldMode.MASS
+              ? requiredMassGrams
+              : requiredMassGrams.mul(source.referencePortions).div(totalMassGrams);
+        } else {
+          qty = qty.mul(conversion.factor);
         }
-        qty = qty.mul(conversion.factor);
       }
       return {
         isCalculable: true,
@@ -2541,8 +2587,7 @@ export class TechnicalSheetsService {
         .fontSize(7.5)
         .font('Helvetica-Bold')
         .text('FICHE TECHNIQUE', 42, 50, { characterSpacing: 0.6 });
-      const recipeTitleSize =
-        recipe.name.length > 58 ? 20 : recipe.name.length > 36 ? 24 : 28;
+      const recipeTitleSize = recipe.name.length > 58 ? 20 : recipe.name.length > 36 ? 24 : 28;
       doc
         .fillColor('#ffffff')
         .fontSize(recipeTitleSize)
@@ -2568,7 +2613,11 @@ export class TechnicalSheetsService {
       summary.forEach(([label, value], index) => {
         const x = 42 + index * (cardWidth + 10);
         doc.roundedRect(x, y, cardWidth, 62, 8).fillAndStroke('#f8fafc', '#dbe7e5');
-        doc.fillColor('#64748b').fontSize(7.5).font('Helvetica-Bold').text(label, x + 11, y + 11);
+        doc
+          .fillColor('#64748b')
+          .fontSize(7.5)
+          .font('Helvetica-Bold')
+          .text(label, x + 11, y + 11);
         doc
           .fillColor('#0f172a')
           .fontSize(11)
@@ -2601,7 +2650,11 @@ export class TechnicalSheetsService {
       };
       y = drawIngredientHeader(y);
       if (!ingredients.length) {
-        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text('Aucun ingrédient renseigné.', 50, y);
+        doc
+          .fillColor('#64748b')
+          .fontSize(9)
+          .font('Helvetica')
+          .text('Aucun ingrédient renseigné.', 50, y);
         y += 28;
       } else {
         ingredients.forEach((line: any) => {
@@ -2624,7 +2677,11 @@ export class TechnicalSheetsService {
             width: 95,
             align: 'right',
           });
-          doc.moveTo(42, y + 21).lineTo(pageWidth - 42, y + 21).strokeColor('#e2e8f0').stroke();
+          doc
+            .moveTo(42, y + 21)
+            .lineTo(pageWidth - 42, y + 21)
+            .strokeColor('#e2e8f0')
+            .stroke();
           y += 28;
         });
       }
@@ -2644,14 +2701,25 @@ export class TechnicalSheetsService {
       }
 
       y = ensureSpace(y + 8, 62);
-      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text('Étapes de préparation', 42, y);
+      doc
+        .fillColor('#0f172a')
+        .fontSize(13)
+        .font('Helvetica-Bold')
+        .text('Étapes de préparation', 42, y);
       y += 24;
       if (!steps.length) {
-        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text('Aucune étape renseignée.', 42, y);
+        doc
+          .fillColor('#64748b')
+          .fontSize(9)
+          .font('Helvetica')
+          .text('Aucune étape renseignée.', 42, y);
       } else {
         steps.forEach((step: any, index: number) => {
           const description = String(step.description ?? '');
-          const blockHeight = Math.max(48, doc.heightOfString(description, { width: contentWidth - 48 }) + 31);
+          const blockHeight = Math.max(
+            48,
+            doc.heightOfString(description, { width: contentWidth - 48 }) + 31,
+          );
           y = ensureSpace(y, Math.min(blockHeight, 180));
           doc.circle(55, y + 12, 12).fill('#10b981');
           doc
@@ -2685,10 +2753,15 @@ export class TechnicalSheetsService {
         .fillColor('#94a3b8')
         .fontSize(7.5)
         .font('Helvetica')
-        .text(`Généré par ToqueHub le ${new Date().toLocaleDateString('fr-FR')}`, 42, doc.page.height - 38, {
-          width: contentWidth,
-          align: 'center',
-        });
+        .text(
+          `Généré par ToqueHub le ${new Date().toLocaleDateString('fr-FR')}`,
+          42,
+          doc.page.height - 38,
+          {
+            width: contentWidth,
+            align: 'center',
+          },
+        );
       doc.end();
     });
   }
@@ -3128,6 +3201,33 @@ export class TechnicalSheetsService {
       if (!best || score > best.score) best = { product, score };
     }
     return best && best.score >= 0.58 ? best.product : null;
+  }
+
+  private matchSourceTechnicalSheet(name: string, technicalSheets: any[]) {
+    const target = this.subRecipeMatchName(name);
+    if (!target) return null;
+    const scored = technicalSheets
+      .map((technicalSheet) => ({
+        technicalSheet,
+        score: this.textScore(target, this.subRecipeMatchName(technicalSheet.name)),
+      }))
+      .filter(({ score }) => score >= 0.9)
+      .sort((left, right) => right.score - left.score);
+    if (!scored.length) return null;
+    if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+    return scored[0].technicalSheet;
+  }
+
+  private subRecipeMatchName(value: string) {
+    return this.norm(
+      String(value ?? '')
+        .replace(/\s*\((?:ingr[eé]dient|ingredient)\s+kespro\)\s*$/i, '')
+        .replace(/\s*\([^)]*\)\s*$/i, '')
+        .replace(
+          /\s+\d+(?:[.,]\d+)?\s*(?:mg|g|gr|kg|ml|cl|dl|l|kpl|pc|pcs|portion|portions)\s*$/i,
+          '',
+        ),
+    );
   }
 
   private matchUnit(unit: string | null | undefined, units: any[]) {

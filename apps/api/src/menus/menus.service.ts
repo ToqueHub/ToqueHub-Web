@@ -1,6 +1,24 @@
 // @ts-nocheck
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, MenuActivity, MenuExportFormat, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuStatus, MenuUsageProfile, Prisma, ProductionMaterialStatus, ProductionPriority } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  AuditAction,
+  MenuActivity,
+  MenuExportFormat,
+  MenuHistoryAction,
+  MenuKind,
+  MenuProductionGenerationMode,
+  MenuStatus,
+  MenuUsageProfile,
+  Prisma,
+  ProductionMaterialStatus,
+  ProductionPriority,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductionExecutionService } from '../production/production-execution.service';
 import { ProductionPlanningService } from '../production/production-planning.service';
@@ -9,24 +27,91 @@ import PDFDocument from 'pdfkit';
 import {
   calculateProductComposition,
   calculateSheetComposition,
+  menuSheetReferenceYield,
+  menuSubRecipeRequiredYield,
 } from './menu-composition';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second'];
 const MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
-const DEFAULT_DIETS = ['Standard', 'Sans porc', 'Mixé', 'Haché', 'Diabétique', 'Sans sel', 'Végétarien', 'Végétalien', 'Texture modifiée', 'Autre'];
+const DEFAULT_DIETS = [
+  'Standard',
+  'Sans porc',
+  'Mixé',
+  'Haché',
+  'Diabétique',
+  'Sans sel',
+  'Végétarien',
+  'Végétalien',
+  'Texture modifiée',
+  'Autre',
+];
 const DEFAULT_GUEST_GROUPS = [
-  ['Résidents', 'RESIDENTS'], ['Patients', 'PATIENTS'], ['Élèves', 'STUDENTS'], ['Clients', 'CLIENTS'], ['Personnel', 'STAFF'], ['Invités', 'GUESTS'], ['Autre', 'OTHER'],
+  ['Résidents', 'RESIDENTS'],
+  ['Patients', 'PATIENTS'],
+  ['Élèves', 'STUDENTS'],
+  ['Clients', 'CLIENTS'],
+  ['Personnel', 'STAFF'],
+  ['Invités', 'GUESTS'],
+  ['Autre', 'OTHER'],
 ];
 const MENU_PROFILE_DEFAULTS = {
-  RESTAURANT_CAFE: { catalogEnabled: true, scheduledMenusEnabled: false, eventsEnabled: false, cyclesEnabled: false, dietsEnabled: false, guestForecastsEnabled: false, targetStockEnabled: true },
-  CATERER: { catalogEnabled: true, scheduledMenusEnabled: true, eventsEnabled: true, cyclesEnabled: false, dietsEnabled: true, guestForecastsEnabled: true, targetStockEnabled: false },
-  CENTRAL_KITCHEN: { catalogEnabled: false, scheduledMenusEnabled: true, eventsEnabled: false, cyclesEnabled: true, dietsEnabled: true, guestForecastsEnabled: true, targetStockEnabled: false },
-  CUSTOM: { catalogEnabled: true, scheduledMenusEnabled: true, eventsEnabled: true, cyclesEnabled: true, dietsEnabled: true, guestForecastsEnabled: true, targetStockEnabled: true },
+  RESTAURANT_CAFE: {
+    catalogEnabled: true,
+    scheduledMenusEnabled: false,
+    eventsEnabled: false,
+    cyclesEnabled: false,
+    dietsEnabled: false,
+    guestForecastsEnabled: false,
+    targetStockEnabled: true,
+  },
+  CATERER: {
+    catalogEnabled: true,
+    scheduledMenusEnabled: true,
+    eventsEnabled: true,
+    cyclesEnabled: false,
+    dietsEnabled: true,
+    guestForecastsEnabled: true,
+    targetStockEnabled: false,
+  },
+  CENTRAL_KITCHEN: {
+    catalogEnabled: false,
+    scheduledMenusEnabled: true,
+    eventsEnabled: false,
+    cyclesEnabled: true,
+    dietsEnabled: true,
+    guestForecastsEnabled: true,
+    targetStockEnabled: false,
+  },
+  CUSTOM: {
+    catalogEnabled: true,
+    scheduledMenusEnabled: true,
+    eventsEnabled: true,
+    cyclesEnabled: true,
+    dietsEnabled: true,
+    guestForecastsEnabled: true,
+    targetStockEnabled: true,
+  },
 };
 const MENU_PROFILE_CATEGORIES = {
-  RESTAURANT_CAFE: [['Salé', '#0f766e', 'sandwich'], ['Sucré', '#b45309', 'cake'], ['Boissons', '#2563eb', 'coffee'], ['Suggestions', '#7c3aed', 'sparkles']],
-  CATERER: [['Cocktail', '#7c3aed', 'glass'], ['Entrées', '#0f766e', 'starter'], ['Plats', '#dc2626', 'dish'], ['Desserts', '#b45309', 'cake'], ['Boissons', '#2563eb', 'glass']],
-  CENTRAL_KITCHEN: [['Entrées', '#0f766e', 'starter'], ['Plats', '#dc2626', 'dish'], ['Accompagnements', '#65a30d', 'side'], ['Desserts', '#b45309', 'cake']],
+  RESTAURANT_CAFE: [
+    ['Salé', '#0f766e', 'sandwich'],
+    ['Sucré', '#b45309', 'cake'],
+    ['Boissons', '#2563eb', 'coffee'],
+    ['Suggestions', '#7c3aed', 'sparkles'],
+  ],
+  CATERER: [
+    ['Cocktail', '#7c3aed', 'glass'],
+    ['Entrées', '#0f766e', 'starter'],
+    ['Plats', '#dc2626', 'dish'],
+    ['Desserts', '#b45309', 'cake'],
+    ['Boissons', '#2563eb', 'glass'],
+  ],
+  CENTRAL_KITCHEN: [
+    ['Entrées', '#0f766e', 'starter'],
+    ['Plats', '#dc2626', 'dish'],
+    ['Accompagnements', '#65a30d', 'side'],
+    ['Desserts', '#b45309', 'cake'],
+  ],
   CUSTOM: [['Produits', '#475569', 'list']],
 };
 type Actor = { id: string; role: string };
@@ -40,22 +125,68 @@ export class MenusService {
     private readonly technicalSheets?: TechnicalSheetsService,
   ) {}
 
-  private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Droits Menus insuffisants'); }
-  private assertManager(actor: Actor) { if (!MANAGER_ROLES.includes(actor.role)) throw new ForbiddenException('Action réservée aux managers Menus'); }
-  private page(q: any = {}) { const take = Math.min(q.pageSize ?? 50, 200); return { take, skip: ((q.page ?? 1) - 1) * take }; }
-  private dayRange(date = new Date()) { const start = new Date(date); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1); return { start, end }; }
-  private dateRange(q: any = {}) { return q.date ? this.dayRange(new Date(q.date)) : { start: q.startDate ? new Date(q.startDate) : undefined, end: q.endDate ? new Date(q.endDate) : undefined }; }
+  private assertWrite(actor: Actor) {
+    if (!WRITE_ROLES.includes(actor.role))
+      throw new ForbiddenException('Droits Menus insuffisants');
+  }
+  private assertManager(actor: Actor) {
+    if (!MANAGER_ROLES.includes(actor.role))
+      throw new ForbiddenException('Action réservée aux managers Menus');
+  }
+  private page(q: any = {}) {
+    const take = Math.min(q.pageSize ?? 50, 200);
+    return { take, skip: ((q.page ?? 1) - 1) * take };
+  }
+  private dayRange(date = new Date()) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+  private dateRange(q: any = {}) {
+    return q.date
+      ? this.dayRange(new Date(q.date))
+      : {
+          start: q.startDate ? new Date(q.startDate) : undefined,
+          end: q.endDate ? new Date(q.endDate) : undefined,
+        };
+  }
 
   private async assertInstalled(organizationId: string) {
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { technicalSheetsInstalledAt: true, productionInstalledAt: true, menusInstalledAt: true } });
-    if (!org?.technicalSheetsInstalledAt) throw new BadRequestException('Le module Fiches Techniques doit être installé avant Menus.');
-    if (!org.productionInstalledAt) throw new BadRequestException('Le module Production doit être installé avant Menus.');
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        technicalSheetsInstalledAt: true,
+        productionInstalledAt: true,
+        menusInstalledAt: true,
+      },
+    });
+    if (!org?.technicalSheetsInstalledAt)
+      throw new BadRequestException('Le module Fiches Techniques doit être installé avant Menus.');
+    if (!org.productionInstalledAt)
+      throw new BadRequestException('Le module Production doit être installé avant Menus.');
     if (!org.menusInstalledAt) throw new BadRequestException('Le module Menus n’est pas installé.');
   }
 
   async install(organizationId: string, actor: Actor) {
     this.assertManager(actor);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, menusInstalledAt: true, clientsInstalledAt: true, haccpInstalledAt: true, purchasingInstalledAt: true, financeInstalledAt: true } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        stocksInstalledAt: true,
+        rnmPricesInstalledAt: true,
+        hrInstalledAt: true,
+        planningInstalledAt: true,
+        technicalSheetsInstalledAt: true,
+        productionInstalledAt: true,
+        menusInstalledAt: true,
+        clientsInstalledAt: true,
+        haccpInstalledAt: true,
+        purchasingInstalledAt: true,
+        financeInstalledAt: true,
+      },
+    });
     if (!org) throw new NotFoundException('Organisation introuvable.');
     const installedAt = new Date();
     const installStocks = !org.stocksInstalledAt;
@@ -73,26 +204,94 @@ export class MenusService {
           menusInstalledAt: org.menusInstalledAt ?? installedAt,
         },
       });
-      if (installStocks) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_STOCKS_INSTALLED, entityType: 'Module', entityId: 'stocks', entityName: 'Stocks', details: { source: 'menus-install' } } });
-      if (installTechnicalSheets) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_TECHNICAL_SHEETS_INSTALLED, entityType: 'Module', entityId: 'technical-sheets', entityName: 'Fiches Techniques', details: { source: 'menus-install' } } });
-      if (installProduction) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_PRODUCTION_INSTALLED, entityType: 'Module', entityId: 'production', entityName: 'Production', details: { source: 'menus-install' } } });
+      if (installStocks)
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: actor.id,
+            action: AuditAction.MODULE_STOCKS_INSTALLED,
+            entityType: 'Module',
+            entityId: 'stocks',
+            entityName: 'Stocks',
+            details: { source: 'menus-install' },
+          },
+        });
+      if (installTechnicalSheets)
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: actor.id,
+            action: AuditAction.MODULE_TECHNICAL_SHEETS_INSTALLED,
+            entityType: 'Module',
+            entityId: 'technical-sheets',
+            entityName: 'Fiches Techniques',
+            details: { source: 'menus-install' },
+          },
+        });
+      if (installProduction)
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: actor.id,
+            action: AuditAction.MODULE_PRODUCTION_INSTALLED,
+            entityType: 'Module',
+            entityId: 'production',
+            entityName: 'Production',
+            details: { source: 'menus-install' },
+          },
+        });
       await tx.menuSettings.upsert({
         where: { organizationId },
         update: {},
-        create: { organizationId, usageProfile: MenuUsageProfile.RESTAURANT_CAFE, ...MENU_PROFILE_DEFAULTS.RESTAURANT_CAFE },
+        create: {
+          organizationId,
+          usageProfile: MenuUsageProfile.RESTAURANT_CAFE,
+          ...MENU_PROFILE_DEFAULTS.RESTAURANT_CAFE,
+        },
       });
-      for (const [position, [name, color, icon]] of MENU_PROFILE_CATEGORIES.RESTAURANT_CAFE.entries()) {
+      for (const [
+        position,
+        [name, color, icon],
+      ] of MENU_PROFILE_CATEGORIES.RESTAURANT_CAFE.entries()) {
         await tx.menuCategory.upsert({
           where: { organizationId_name: { organizationId, name } },
           update: {},
           create: { organizationId, name, color, icon, position },
         });
       }
-      for (const name of DEFAULT_DIETS) await tx.menuDiet.upsert({ where: { organizationId_name: { organizationId, name } }, update: {}, create: { organizationId, name } });
-      for (const [name, type] of DEFAULT_GUEST_GROUPS) await tx.menuGuestGroup.upsert({ where: { organizationId_name: { organizationId, name } }, update: {}, create: { organizationId, name, type } });
-      await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_MENUS_INSTALLED, entityType: 'Module', entityId: 'menus', entityName: 'Menus' } });
+      for (const name of DEFAULT_DIETS)
+        await tx.menuDiet.upsert({
+          where: { organizationId_name: { organizationId, name } },
+          update: {},
+          create: { organizationId, name },
+        });
+      for (const [name, type] of DEFAULT_GUEST_GROUPS)
+        await tx.menuGuestGroup.upsert({
+          where: { organizationId_name: { organizationId, name } },
+          update: {},
+          create: { organizationId, name, type },
+        });
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: actor.id,
+          action: AuditAction.MODULE_MENUS_INSTALLED,
+          entityType: 'Module',
+          entityId: 'menus',
+          entityName: 'Menus',
+        },
+      });
     });
-    return { installed: true, installedApplications: this.installedApps({ ...org, stocksInstalledAt: org.stocksInstalledAt ?? installedAt, technicalSheetsInstalledAt: org.technicalSheetsInstalledAt ?? installedAt, productionInstalledAt: org.productionInstalledAt ?? installedAt, menusInstalledAt: org.menusInstalledAt ?? installedAt }) };
+    return {
+      installed: true,
+      installedApplications: this.installedApps({
+        ...org,
+        stocksInstalledAt: org.stocksInstalledAt ?? installedAt,
+        technicalSheetsInstalledAt: org.technicalSheetsInstalledAt ?? installedAt,
+        productionInstalledAt: org.productionInstalledAt ?? installedAt,
+        menusInstalledAt: org.menusInstalledAt ?? installedAt,
+      }),
+    };
   }
 
   async settings(organizationId: string) {
@@ -126,7 +325,16 @@ export class MenusService {
           create: { organizationId, name, position, color, icon },
         });
       }
-      await this.history(tx, organizationId, null, null, actor.id, MenuHistoryAction.SETTINGS_UPDATED, 'Configuration du parcours Menus', { usageProfile: profile });
+      await this.history(
+        tx,
+        organizationId,
+        null,
+        null,
+        actor.id,
+        MenuHistoryAction.SETTINGS_UPDATED,
+        'Configuration du parcours Menus',
+        { usageProfile: profile },
+      );
       return saved;
     });
     return { ...settings, categories: await this.categories(organizationId) };
@@ -146,7 +354,11 @@ export class MenusService {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Le nom de la rubrique est obligatoire.');
     const duplicate = await this.prisma.menuCategory.findFirst({
-      where: { organizationId, name: { equals: name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) },
+      where: {
+        organizationId,
+        name: { equals: name, mode: 'insensitive' },
+        ...(id ? { id: { not: id } } : {}),
+      },
     });
     if (duplicate) throw new BadRequestException('Cette rubrique existe déjà.');
     if (id) {
@@ -159,12 +371,41 @@ export class MenusService {
 
   async uninstall(organizationId: string, actor: Actor) {
     this.assertManager(actor);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, clientsInstalledAt: true, haccpInstalledAt: true, purchasingInstalledAt: true, financeInstalledAt: true } });
-    await this.prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: organizationId }, data: { menusInstalledAt: null } });
-      await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_MENUS_UNINSTALLED, entityType: 'Module', entityId: 'menus', entityName: 'Menus' } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        stocksInstalledAt: true,
+        rnmPricesInstalledAt: true,
+        hrInstalledAt: true,
+        planningInstalledAt: true,
+        technicalSheetsInstalledAt: true,
+        productionInstalledAt: true,
+        clientsInstalledAt: true,
+        haccpInstalledAt: true,
+        purchasingInstalledAt: true,
+        financeInstalledAt: true,
+      },
     });
-    return { installed: false, installedApplications: this.installedApps({ ...org, menusInstalledAt: null }) };
+    await this.prisma.$transaction(async (tx) => {
+      await tx.organization.update({
+        where: { id: organizationId },
+        data: { menusInstalledAt: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: actor.id,
+          action: AuditAction.MODULE_MENUS_UNINSTALLED,
+          entityType: 'Module',
+          entityId: 'menus',
+          entityName: 'Menus',
+        },
+      });
+    });
+    return {
+      installed: false,
+      installedApplications: this.installedApps({ ...org, menusInstalledAt: null }),
+    };
   }
 
   async installClients(organizationId: string, actor: Actor) {
@@ -173,11 +414,29 @@ export class MenusService {
     if (!org) throw new NotFoundException('Organisation introuvable.');
     if (!org.clientsInstalledAt) {
       await this.prisma.$transaction(async (tx) => {
-        await tx.organization.update({ where: { id: organizationId }, data: { clientsInstalledAt: new Date() } });
-        await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_CLIENTS_INSTALLED, entityType: 'Module', entityId: 'clients', entityName: 'Clients' } });
+        await tx.organization.update({
+          where: { id: organizationId },
+          data: { clientsInstalledAt: new Date() },
+        });
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: actor.id,
+            action: AuditAction.MODULE_CLIENTS_INSTALLED,
+            entityType: 'Module',
+            entityId: 'clients',
+            entityName: 'Clients',
+          },
+        });
       });
     }
-    return { installed: true, installedApplications: this.installedApps({ ...org, clientsInstalledAt: org.clientsInstalledAt ?? new Date() }) };
+    return {
+      installed: true,
+      installedApplications: this.installedApps({
+        ...org,
+        clientsInstalledAt: org.clientsInstalledAt ?? new Date(),
+      }),
+    };
   }
 
   async uninstallClients(organizationId: string, actor: Actor) {
@@ -185,55 +444,166 @@ export class MenusService {
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
     if (!org) throw new NotFoundException('Organisation introuvable.');
     await this.prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: organizationId }, data: { clientsInstalledAt: null } });
-      await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_CLIENTS_UNINSTALLED, entityType: 'Module', entityId: 'clients', entityName: 'Clients' } });
+      await tx.organization.update({
+        where: { id: organizationId },
+        data: { clientsInstalledAt: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: actor.id,
+          action: AuditAction.MODULE_CLIENTS_UNINSTALLED,
+          entityType: 'Module',
+          entityId: 'clients',
+          entityName: 'Clients',
+        },
+      });
     });
-    return { installed: false, installedApplications: this.installedApps({ ...org, clientsInstalledAt: null }) };
+    return {
+      installed: false,
+      installedApplications: this.installedApps({ ...org, clientsInstalledAt: null }),
+    };
   }
 
   async dashboard(organizationId: string, activity?: string) {
-    await this.assertInstalled(organizationId); const today = this.dayRange(); const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); weekStart.setHours(0,0,0,0); const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
+    await this.assertInstalled(organizationId);
+    const today = this.dayRange();
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
     const [activeMenus, weekMenus, cycles, todayMenus] = await Promise.all([
-      this.prisma.menu.count({ where: { organizationId, activity: activity as any, status: { in: ['DRAFT','VALIDATED','PUBLISHED'] } } }),
-      this.prisma.menu.findMany({ where: { organizationId, activity: activity as any, date: { gte: weekStart, lt: weekEnd } }, include: this.menuInclude() }),
-      activity ? Promise.resolve(0) : this.prisma.menuCycle.count({ where: { organizationId, status: 'ACTIVE' } }),
-      this.prisma.menu.findMany({ where: { organizationId, activity: activity as any, date: { gte: today.start, lt: today.end } }, include: this.menuInclude() }),
+      this.prisma.menu.count({
+        where: {
+          organizationId,
+          activity: activity as any,
+          status: { in: ['DRAFT', 'VALIDATED', 'PUBLISHED'] },
+        },
+      }),
+      this.prisma.menu.findMany({
+        where: { organizationId, activity: activity as any, date: { gte: weekStart, lt: weekEnd } },
+        include: this.menuInclude(),
+      }),
+      activity
+        ? Promise.resolve(0)
+        : this.prisma.menuCycle.count({ where: { organizationId, status: 'ACTIVE' } }),
+      this.prisma.menu.findMany({
+        where: {
+          organizationId,
+          activity: activity as any,
+          date: { gte: today.start, lt: today.end },
+        },
+        include: this.menuInclude(),
+      }),
     ]);
     const enriched = weekMenus.map((m) => this.serializeMenu(m));
     const todayEnriched = todayMenus.map((m) => this.serializeMenu(m));
-    return { stats: { activeMenus, weekMenus: weekMenus.length, activeCycles: cycles, guestsToday: todayEnriched.reduce((s,m)=>s+m.totalGuests,0), averageCostPerMeal: this.avg(enriched.map(m=>m.costPerGuest)) }, alerts: enriched.flatMap((m) => m.alerts.map((a) => ({ ...a, menuId: m.id, menuName: m.name }))).slice(0, 20), week: enriched, today: todayEnriched };
+    return {
+      stats: {
+        activeMenus,
+        weekMenus: weekMenus.length,
+        activeCycles: cycles,
+        guestsToday: todayEnriched.reduce((s, m) => s + m.totalGuests, 0),
+        averageCostPerMeal: this.avg(enriched.map((m) => m.costPerGuest)),
+      },
+      alerts: enriched
+        .flatMap((m) => m.alerts.map((a) => ({ ...a, menuId: m.id, menuName: m.name })))
+        .slice(0, 20),
+      week: enriched,
+      today: todayEnriched,
+    };
   }
 
-  async listMenus(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); const { start, end } = this.dateRange(q); const where: any = { organizationId, status: q.status, service: q.service, kind: q.kind, activity: q.activity, siteId: q.siteId, date: start || end ? { gte: start, lt: end } : undefined, OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { description: { contains: q.search, mode: 'insensitive' } }] : undefined }; const [items,total] = await Promise.all([this.prisma.menu.findMany({ where, include: this.menuInclude(), orderBy: [{ isPrimary: 'desc' }, { date: 'asc' }, { service: 'asc' }], ...this.page(q) }), this.prisma.menu.count({ where })]); return { items: items.map((m)=>this.serializeMenu(m)), total, page: q.page ?? 1, pageSize: Math.min(q.pageSize ?? 50, 200) }; }
-  async getMenu(organizationId: string, id: string) { await this.assertInstalled(organizationId); const m = await this.prisma.menu.findFirst({ where: { id, organizationId }, include: this.menuInclude(true) }); if (!m) throw new NotFoundException('Menu introuvable'); return this.serializeMenu(m); }
-  calendar(organizationId: string, q: any = {}) { return this.listMenus(organizationId, q); }
+  async listMenus(organizationId: string, q: any = {}) {
+    await this.assertInstalled(organizationId);
+    const { start, end } = this.dateRange(q);
+    const where: any = {
+      organizationId,
+      status: q.status,
+      service: q.service,
+      kind: q.kind,
+      activity: q.activity,
+      siteId: q.siteId,
+      date: start || end ? { gte: start, lt: end } : undefined,
+      OR: q.search
+        ? [
+            { name: { contains: q.search, mode: 'insensitive' } },
+            { description: { contains: q.search, mode: 'insensitive' } },
+          ]
+        : undefined,
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.menu.findMany({
+        where,
+        include: this.menuInclude(),
+        orderBy: [{ isPrimary: 'desc' }, { date: 'asc' }, { service: 'asc' }],
+        ...this.page(q),
+      }),
+      this.prisma.menu.count({ where }),
+    ]);
+    return {
+      items: items.map((m) => this.serializeMenu(m)),
+      total,
+      page: q.page ?? 1,
+      pageSize: Math.min(q.pageSize ?? 50, 200),
+    };
+  }
+  async getMenu(organizationId: string, id: string) {
+    await this.assertInstalled(organizationId);
+    const m = await this.prisma.menu.findFirst({
+      where: { id, organizationId },
+      include: this.menuInclude(true),
+    });
+    if (!m) throw new NotFoundException('Menu introuvable');
+    return this.serializeMenu(m);
+  }
+  calendar(organizationId: string, q: any = {}) {
+    return this.listMenus(organizationId, q);
+  }
 
   async createMenu(organizationId: string, actor: Actor, dto: any) {
     await this.assertInstalled(organizationId);
     this.assertWrite(actor);
     await this.ensureRefs(organizationId, dto);
     const kind = dto.kind ?? MenuKind.SERVICE;
-    const siteId = dto.siteId || (kind === MenuKind.CATALOG ? await this.resolvePrimarySiteId(organizationId) : null);
+    const siteId =
+      dto.siteId ||
+      (kind === MenuKind.CATALOG ? await this.resolvePrimarySiteId(organizationId) : null);
     const menuId = await this.prisma.$transaction(async (tx) => {
-      if (dto.isPrimary) await tx.menu.updateMany({ where: { organizationId, kind }, data: { isPrimary: false } });
-      const menu = await tx.menu.create({ data: {
+      if (dto.isPrimary)
+        await tx.menu.updateMany({ where: { organizationId, kind }, data: { isPrimary: false } });
+      const menu = await tx.menu.create({
+        data: {
+          organizationId,
+          name: dto.name,
+          date: dto.date ? new Date(dto.date) : null,
+          service: dto.service,
+          kind,
+          activity: dto.activity ?? MenuActivity.RESTAURANT_CAFE,
+          catalogType: dto.catalogType ?? null,
+          siteId,
+          description: dto.description,
+          activeFrom: dto.activeFrom ? new Date(dto.activeFrom) : null,
+          activeUntil: dto.activeUntil ? new Date(dto.activeUntil) : null,
+          isPrimary: dto.isPrimary ?? false,
+          expectedGuests: dto.expectedGuests ?? 0,
+          createdById: actor.id,
+        },
+      });
+      if (dto.items?.length)
+        await tx.menuItem.createMany({
+          data: dto.items.map((i) => this.menuItemData(organizationId, menu.id, i)),
+        });
+      await this.history(
+        tx,
         organizationId,
-        name: dto.name,
-        date: dto.date ? new Date(dto.date) : null,
-        service: dto.service,
-        kind,
-        activity: dto.activity ?? MenuActivity.RESTAURANT_CAFE,
-        catalogType: dto.catalogType ?? null,
-        siteId,
-        description: dto.description,
-        activeFrom: dto.activeFrom ? new Date(dto.activeFrom) : null,
-        activeUntil: dto.activeUntil ? new Date(dto.activeUntil) : null,
-        isPrimary: dto.isPrimary ?? false,
-        expectedGuests: dto.expectedGuests ?? 0,
-        createdById: actor.id,
-      } });
-      if (dto.items?.length) await tx.menuItem.createMany({ data: dto.items.map((i) => this.menuItemData(organizationId, menu.id, i)) });
-      await this.history(tx, organizationId, menu.id, null, actor.id, MenuHistoryAction.CREATED, dto.kind === MenuKind.CATALOG ? 'Création de la carte' : 'Création du menu');
+        menu.id,
+        null,
+        actor.id,
+        MenuHistoryAction.CREATED,
+        dto.kind === MenuKind.CATALOG ? 'Création de la carte' : 'Création du menu',
+      );
       return menu.id;
     });
     return this.getMenu(organizationId, menuId);
@@ -245,26 +615,44 @@ export class MenusService {
     const current = await this.ensureMenu(organizationId, id);
     await this.ensureRefs(organizationId, dto);
     await this.prisma.$transaction(async (tx) => {
-      if (dto.isPrimary) await tx.menu.updateMany({ where: { organizationId, kind: dto.kind ?? current.kind, id: { not: id } }, data: { isPrimary: false } });
-      await tx.menu.update({ where: { id }, data: {
-        name: dto.name,
-        date: dto.date ? new Date(dto.date) : null,
-        service: dto.service,
-        kind: dto.kind,
-        activity: dto.activity ?? current.activity,
-        catalogType: dto.catalogType ?? current.catalogType,
-        siteId: dto.siteId || null,
-        description: dto.description,
-        activeFrom: dto.activeFrom ? new Date(dto.activeFrom) : null,
-        activeUntil: dto.activeUntil ? new Date(dto.activeUntil) : null,
-        isPrimary: dto.isPrimary,
-        expectedGuests: dto.expectedGuests ?? 0,
-        updatedById: actor.id,
-        productionDirtySince: current.productionGeneratedAt ? new Date() : undefined,
-      } });
+      if (dto.isPrimary)
+        await tx.menu.updateMany({
+          where: { organizationId, kind: dto.kind ?? current.kind, id: { not: id } },
+          data: { isPrimary: false },
+        });
+      await tx.menu.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          date: dto.date ? new Date(dto.date) : null,
+          service: dto.service,
+          kind: dto.kind,
+          activity: dto.activity ?? current.activity,
+          catalogType: dto.catalogType ?? current.catalogType,
+          siteId: dto.siteId || null,
+          description: dto.description,
+          activeFrom: dto.activeFrom ? new Date(dto.activeFrom) : null,
+          activeUntil: dto.activeUntil ? new Date(dto.activeUntil) : null,
+          isPrimary: dto.isPrimary,
+          expectedGuests: dto.expectedGuests ?? 0,
+          updatedById: actor.id,
+          productionDirtySince: current.productionGeneratedAt ? new Date() : undefined,
+        },
+      });
       await tx.menuItem.deleteMany({ where: { menuId: id } });
-      if (dto.items?.length) await tx.menuItem.createMany({ data: dto.items.map((i) => this.menuItemData(organizationId, id, i)) });
-      await this.history(tx, organizationId, id, null, actor.id, MenuHistoryAction.UPDATED, current.kind === MenuKind.CATALOG ? 'Modification de la carte' : 'Modification du menu');
+      if (dto.items?.length)
+        await tx.menuItem.createMany({
+          data: dto.items.map((i) => this.menuItemData(organizationId, id, i)),
+        });
+      await this.history(
+        tx,
+        organizationId,
+        id,
+        null,
+        actor.id,
+        MenuHistoryAction.UPDATED,
+        current.kind === MenuKind.CATALOG ? 'Modification de la carte' : 'Modification du menu',
+      );
     });
     return this.getMenu(organizationId, id);
   }
@@ -273,33 +661,197 @@ export class MenusService {
     await this.assertInstalled(organizationId);
     this.assertManager(actor);
     await this.prisma.$transaction(async (tx) => {
-      const menu = await tx.menu.findFirst({ where: { id, organizationId }, include: this.menuInclude() });
+      const menu = await tx.menu.findFirst({
+        where: { id, organizationId },
+        include: this.menuInclude(),
+      });
       if (!menu) throw new NotFoundException('Menu introuvable');
       if (['VALIDATED', 'PUBLISHED'].includes(dto.status)) {
         const alerts = this.serializeMenu(menu).alerts.filter((alert) => alert.blocking);
-        if (alerts.length) throw new BadRequestException({ message: 'Validation impossible: alertes bloquantes.', alerts });
+        if (alerts.length)
+          throw new BadRequestException({
+            message: 'Validation impossible: alertes bloquantes.',
+            alerts,
+          });
       }
-      const action = dto.status === 'VALIDATED' ? MenuHistoryAction.VALIDATED : dto.status === 'PUBLISHED' ? MenuHistoryAction.PUBLISHED : dto.status === 'ARCHIVED' ? MenuHistoryAction.ARCHIVED : MenuHistoryAction.UPDATED;
+      const action =
+        dto.status === 'VALIDATED'
+          ? MenuHistoryAction.VALIDATED
+          : dto.status === 'PUBLISHED'
+            ? MenuHistoryAction.PUBLISHED
+            : dto.status === 'ARCHIVED'
+              ? MenuHistoryAction.ARCHIVED
+              : MenuHistoryAction.UPDATED;
       const serialized = this.serializeMenu(menu);
-      await tx.menu.update({ where: { id }, data: { status: dto.status, publishedSnapshot: dto.status === 'PUBLISHED' ? serialized : undefined, updatedById: actor.id } });
+      await tx.menu.update({
+        where: { id },
+        data: {
+          status: dto.status,
+          publishedSnapshot: dto.status === 'PUBLISHED' ? serialized : undefined,
+          updatedById: actor.id,
+        },
+      });
       await this.history(tx, organizationId, id, null, actor.id, action, `Statut ${dto.status}`);
     });
     return this.getMenu(organizationId, id);
   }
 
-  async diets(organizationId: string) { await this.assertInstalled(organizationId); return this.prisma.menuDiet.findMany({ where: { organizationId }, orderBy: [{ isArchived: 'asc' }, { name: 'asc' }] }); }
-  async upsertDiet(organizationId: string, actor: Actor, dto: any, id?: string) { await this.assertInstalled(organizationId); this.assertManager(actor); return id ? this.prisma.menuDiet.update({ where: { id, organizationId }, data: dto }) : this.prisma.menuDiet.create({ data: { organizationId, ...dto } }); }
-  async guestGroups(organizationId: string) { await this.assertInstalled(organizationId); return this.prisma.menuGuestGroup.findMany({ where: { organizationId }, orderBy: [{ isArchived: 'asc' }, { name: 'asc' }] }); }
-  async upsertGuestGroup(organizationId: string, actor: Actor, dto: any, id?: string) { await this.assertInstalled(organizationId); this.assertManager(actor); return id ? this.prisma.menuGuestGroup.update({ where: { id, organizationId }, data: dto }) : this.prisma.menuGuestGroup.create({ data: { organizationId, ...dto } }); }
-  async updateGuests(organizationId: string, actor: Actor, menuId: string, dto: any) { await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureMenu(organizationId, menuId); for (const f of dto.forecasts) { await this.ensureGuestGroup(organizationId, f.guestGroupId); if (f.dietId) await this.ensureDiet(organizationId, f.dietId); } await this.prisma.$transaction(async (tx) => { await tx.menuGuestForecast.deleteMany({ where: { menuId } }); if (dto.forecasts.length) await tx.menuGuestForecast.createMany({ data: dto.forecasts.map((f) => ({ organizationId, menuId, ...f })) }); const total = dto.forecasts.reduce((s, f) => s + Number(f.count || 0), 0); await tx.menu.update({ where: { id: menuId }, data: { expectedGuests: total, productionDirtySince: (await tx.menu.findUnique({ where: { id: menuId } })).productionGeneratedAt ? new Date() : undefined } }); await this.history(tx, organizationId, menuId, null, actor.id, MenuHistoryAction.GUESTS_UPDATED, 'Modification des convives', { total }); }); return this.getMenu(organizationId, menuId); }
+  async diets(organizationId: string) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuDiet.findMany({
+      where: { organizationId },
+      orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
+    });
+  }
+  async upsertDiet(organizationId: string, actor: Actor, dto: any, id?: string) {
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
+    return id
+      ? this.prisma.menuDiet.update({ where: { id, organizationId }, data: dto })
+      : this.prisma.menuDiet.create({ data: { organizationId, ...dto } });
+  }
+  async guestGroups(organizationId: string) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuGuestGroup.findMany({
+      where: { organizationId },
+      orderBy: [{ isArchived: 'asc' }, { name: 'asc' }],
+    });
+  }
+  async upsertGuestGroup(organizationId: string, actor: Actor, dto: any, id?: string) {
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
+    return id
+      ? this.prisma.menuGuestGroup.update({ where: { id, organizationId }, data: dto })
+      : this.prisma.menuGuestGroup.create({ data: { organizationId, ...dto } });
+  }
+  async updateGuests(organizationId: string, actor: Actor, menuId: string, dto: any) {
+    await this.assertInstalled(organizationId);
+    this.assertWrite(actor);
+    await this.ensureMenu(organizationId, menuId);
+    for (const f of dto.forecasts) {
+      await this.ensureGuestGroup(organizationId, f.guestGroupId);
+      if (f.dietId) await this.ensureDiet(organizationId, f.dietId);
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.menuGuestForecast.deleteMany({ where: { menuId } });
+      if (dto.forecasts.length)
+        await tx.menuGuestForecast.createMany({
+          data: dto.forecasts.map((f) => ({ organizationId, menuId, ...f })),
+        });
+      const total = dto.forecasts.reduce((s, f) => s + Number(f.count || 0), 0);
+      await tx.menu.update({
+        where: { id: menuId },
+        data: {
+          expectedGuests: total,
+          productionDirtySince: (await tx.menu.findUnique({ where: { id: menuId } }))
+            .productionGeneratedAt
+            ? new Date()
+            : undefined,
+        },
+      });
+      await this.history(
+        tx,
+        organizationId,
+        menuId,
+        null,
+        actor.id,
+        MenuHistoryAction.GUESTS_UPDATED,
+        'Modification des convives',
+        { total },
+      );
+    });
+    return this.getMenu(organizationId, menuId);
+  }
 
-  async upsertVariant(organizationId: string, actor: Actor, menuId: string, dto: any, id?: string) { await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureMenu(organizationId, menuId); await this.ensureDiet(organizationId, dto.dietId); for (const r of dto.replacements ?? []) await this.ensureTechnicalSheet(organizationId, r.replacementTechnicalSheetId); await this.prisma.$transaction(async (tx) => { const variant = id ? await tx.menuVariant.update({ where: { id, organizationId }, data: { dietId: dto.dietId, mode: dto.mode, name: dto.name, expectedGuests: dto.expectedGuests ?? 0, notes: dto.notes } }) : await tx.menuVariant.create({ data: { organizationId, menuId, dietId: dto.dietId, mode: dto.mode, name: dto.name, expectedGuests: dto.expectedGuests ?? 0, notes: dto.notes } }); await tx.menuVariantReplacement.deleteMany({ where: { variantId: variant.id } }); if (dto.replacements?.length) await tx.menuVariantReplacement.createMany({ data: dto.replacements.map((r) => ({ variantId: variant.id, ...r })) }); await tx.menu.update({ where: { id: menuId }, data: { productionDirtySince: (await tx.menu.findUnique({ where: { id: menuId } })).productionGeneratedAt ? new Date() : undefined } }); await this.history(tx, organizationId, menuId, null, actor.id, MenuHistoryAction.VARIANTS_UPDATED, 'Modification des variantes'); }); return this.getMenu(organizationId, menuId); }
+  async upsertVariant(organizationId: string, actor: Actor, menuId: string, dto: any, id?: string) {
+    await this.assertInstalled(organizationId);
+    this.assertWrite(actor);
+    await this.ensureMenu(organizationId, menuId);
+    await this.ensureDiet(organizationId, dto.dietId);
+    for (const r of dto.replacements ?? [])
+      await this.ensureTechnicalSheet(organizationId, r.replacementTechnicalSheetId);
+    await this.prisma.$transaction(async (tx) => {
+      const variant = id
+        ? await tx.menuVariant.update({
+            where: { id, organizationId },
+            data: {
+              dietId: dto.dietId,
+              mode: dto.mode,
+              name: dto.name,
+              expectedGuests: dto.expectedGuests ?? 0,
+              notes: dto.notes,
+            },
+          })
+        : await tx.menuVariant.create({
+            data: {
+              organizationId,
+              menuId,
+              dietId: dto.dietId,
+              mode: dto.mode,
+              name: dto.name,
+              expectedGuests: dto.expectedGuests ?? 0,
+              notes: dto.notes,
+            },
+          });
+      await tx.menuVariantReplacement.deleteMany({ where: { variantId: variant.id } });
+      if (dto.replacements?.length)
+        await tx.menuVariantReplacement.createMany({
+          data: dto.replacements.map((r) => ({ variantId: variant.id, ...r })),
+        });
+      await tx.menu.update({
+        where: { id: menuId },
+        data: {
+          productionDirtySince: (await tx.menu.findUnique({ where: { id: menuId } }))
+            .productionGeneratedAt
+            ? new Date()
+            : undefined,
+        },
+      });
+      await this.history(
+        tx,
+        organizationId,
+        menuId,
+        null,
+        actor.id,
+        MenuHistoryAction.VARIANTS_UPDATED,
+        'Modification des variantes',
+      );
+    });
+    return this.getMenu(organizationId, menuId);
+  }
 
-  async cycles(organizationId: string, q: any={}) { await this.assertInstalled(organizationId); return this.prisma.menuCycle.findMany({ where: { organizationId, status: q.status }, include: { site: true, items: { include: { technicalSheet: true, diet: true }, orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }, { position: 'asc' }] }, forecasts: { include: { destinationSite: true, guestGroup: true, diet: true }, orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }] } }, orderBy: { updatedAt: 'desc' }, ...this.page(q) }); }
+  async cycles(organizationId: string, q: any = {}) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuCycle.findMany({
+      where: { organizationId, status: q.status },
+      include: {
+        site: true,
+        items: {
+          include: { technicalSheet: true, diet: true },
+          orderBy: [
+            { weekNumber: 'asc' },
+            { dayOfWeek: 'asc' },
+            { service: 'asc' },
+            { position: 'asc' },
+          ],
+        },
+        forecasts: {
+          include: { destinationSite: true, guestGroup: true, diet: true },
+          orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      ...this.page(q),
+    });
+  }
   async upsertCycle(organizationId: string, actor: Actor, dto: any, id?: string) {
-    await this.assertInstalled(organizationId); this.assertManager(actor);
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
     if (dto.siteId) await this.ensureSite(organizationId, dto.siteId);
-    for (const item of dto.items ?? []) { await this.ensureTechnicalSheet(organizationId, item.technicalSheetId); if (item.dietId) await this.ensureDiet(organizationId, item.dietId); }
+    for (const item of dto.items ?? []) {
+      await this.ensureTechnicalSheet(organizationId, item.technicalSheetId);
+      if (item.dietId) await this.ensureDiet(organizationId, item.dietId);
+    }
     for (const forecast of dto.forecasts ?? []) {
       await this.ensureSite(organizationId, forecast.destinationSiteId);
       await this.ensureGuestGroup(organizationId, forecast.guestGroupId);
@@ -307,52 +859,144 @@ export class MenusService {
     }
     return this.prisma.$transaction(async (tx) => {
       const cycle = id
-        ? await tx.menuCycle.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } })
-        : await tx.menuCycle.create({ data: { organizationId, name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } });
+        ? await tx.menuCycle.update({
+            where: { id, organizationId },
+            data: {
+              name: dto.name,
+              description: dto.description,
+              durationWeeks: dto.durationWeeks,
+              siteId: dto.siteId || null,
+            },
+          })
+        : await tx.menuCycle.create({
+            data: {
+              organizationId,
+              name: dto.name,
+              description: dto.description,
+              durationWeeks: dto.durationWeeks,
+              siteId: dto.siteId || null,
+            },
+          });
       await tx.menuCycleItem.deleteMany({ where: { cycleId: cycle.id } });
       await tx.menuCycleForecast.deleteMany({ where: { cycleId: cycle.id } });
-      if (dto.items?.length) await tx.menuCycleItem.createMany({ data: dto.items.map((item) => ({ organizationId, cycleId: cycle.id, ...item })) });
-      if (dto.forecasts?.length) await tx.menuCycleForecast.createMany({ data: dto.forecasts.map((forecast) => ({ organizationId, cycleId: cycle.id, ...forecast })) });
+      if (dto.items?.length)
+        await tx.menuCycleItem.createMany({
+          data: dto.items.map((item) => ({ organizationId, cycleId: cycle.id, ...item })),
+        });
+      if (dto.forecasts?.length)
+        await tx.menuCycleForecast.createMany({
+          data: dto.forecasts.map((forecast) => ({
+            organizationId,
+            cycleId: cycle.id,
+            ...forecast,
+          })),
+        });
       return cycle;
     });
   }
   async replicateCycle(organizationId: string, actor: Actor, cycleId: string, dto: any) {
-    await this.assertInstalled(organizationId); this.assertManager(actor);
-    const cycle = await this.prisma.menuCycle.findFirst({ where: { id: cycleId, organizationId }, include: { items: true, forecasts: true } });
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
+    const cycle = await this.prisma.menuCycle.findFirst({
+      where: { id: cycleId, organizationId },
+      include: { items: true, forecasts: true },
+    });
     if (!cycle) throw new NotFoundException('Cycle introuvable');
     const productionSiteId = dto.siteId || cycle.siteId;
-    if (!productionSiteId) throw new BadRequestException('Le site de production du cycle est obligatoire.');
-    const start = new Date(dto.startDate); const end = new Date(dto.endDate);
-    let created = 0; let updated = 0; const skipped = [];
+    if (!productionSiteId)
+      throw new BadRequestException('Le site de production du cycle est obligatoire.');
+    const start = new Date(dto.startDate);
+    const end = new Date(dto.endDate);
+    let created = 0;
+    let updated = 0;
+    const skipped = [];
     return this.prisma.$transaction(async (tx) => {
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const diffDays = Math.floor((+d - +start) / 86400000);
         const weekNumber = (Math.floor(diffDays / 7) % cycle.durationWeeks) + 1;
         const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
         const services = new Set([
-          ...cycle.items.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek).map((item) => item.service),
-          ...cycle.forecasts.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek).map((item) => item.service),
+          ...cycle.items
+            .filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek)
+            .map((item) => item.service),
+          ...cycle.forecasts
+            .filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek)
+            .map((item) => item.service),
         ]);
         for (const service of services) {
-          const items = cycle.items.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek && item.service === service);
-          const forecasts = cycle.forecasts.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek && item.service === service);
-          const dayStart = new Date(d); dayStart.setHours(0,0,0,0);
-          const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
-          const current = await tx.menu.findFirst({ where: { organizationId, cycleId, date: { gte: dayStart, lt: dayEnd }, service, siteId: productionSiteId } });
+          const items = cycle.items.filter(
+            (item) =>
+              item.weekNumber === weekNumber &&
+              item.dayOfWeek === dayOfWeek &&
+              item.service === service,
+          );
+          const forecasts = cycle.forecasts.filter(
+            (item) =>
+              item.weekNumber === weekNumber &&
+              item.dayOfWeek === dayOfWeek &&
+              item.service === service,
+          );
+          const dayStart = new Date(d);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setDate(dayEnd.getDate() + 1);
+          const current = await tx.menu.findFirst({
+            where: {
+              organizationId,
+              cycleId,
+              date: { gte: dayStart, lt: dayEnd },
+              service,
+              siteId: productionSiteId,
+            },
+          });
           if (current && (current.status !== MenuStatus.DRAFT || current.productionGeneratedAt)) {
-            skipped.push({ menuId: current.id, date: dayStart, service, reason: 'Menu verrouillé, publié ou déjà produit' });
+            skipped.push({
+              menuId: current.id,
+              date: dayStart,
+              service,
+              reason: 'Menu verrouillé, publié ou déjà produit',
+            });
             continue;
           }
-          const expectedGuests = forecasts.length ? forecasts.reduce((sum, forecast) => sum + Number(forecast.count), 0) : Number(dto.expectedGuests ?? 0);
-          const menuData = { name: `${cycle.name} - S${weekNumber} J${dayOfWeek} ${service}`, date: new Date(d), service, kind: MenuKind.CYCLE, activity: MenuActivity.CENTRAL_KITCHEN, siteId: productionSiteId, expectedGuests, cycleId, cycleWeek: weekNumber, cycleDay: dayOfWeek, updatedById: actor.id };
+          const expectedGuests = forecasts.length
+            ? forecasts.reduce((sum, forecast) => sum + Number(forecast.count), 0)
+            : Number(dto.expectedGuests ?? 0);
+          const menuData = {
+            name: `${cycle.name} - S${weekNumber} J${dayOfWeek} ${service}`,
+            date: new Date(d),
+            service,
+            kind: MenuKind.CYCLE,
+            activity: MenuActivity.CENTRAL_KITCHEN,
+            siteId: productionSiteId,
+            expectedGuests,
+            cycleId,
+            cycleWeek: weekNumber,
+            cycleDay: dayOfWeek,
+            updatedById: actor.id,
+          };
           const menu = current
             ? await tx.menu.update({ where: { id: current.id }, data: menuData })
-            : await tx.menu.create({ data: { organizationId, ...menuData, createdById: actor.id } });
-          if (current) updated++; else created++;
+            : await tx.menu.create({
+                data: { organizationId, ...menuData, createdById: actor.id },
+              });
+          if (current) updated++;
+          else created++;
           await tx.menuItem.deleteMany({ where: { menuId: menu.id } });
           await tx.menuGuestForecast.deleteMany({ where: { menuId: menu.id } });
           await tx.menuDispatch.deleteMany({ where: { menuId: menu.id } });
-          if (items.length) await tx.menuItem.createMany({ data: items.map((item) => ({ organizationId, menuId: menu.id, section: item.section, technicalSheetId: item.technicalSheetId, dietId: item.dietId, position: item.position, notes: item.notes, servingQuantity: 1 })) });
+          if (items.length)
+            await tx.menuItem.createMany({
+              data: items.map((item) => ({
+                organizationId,
+                menuId: menu.id,
+                section: item.section,
+                technicalSheetId: item.technicalSheetId,
+                dietId: item.dietId,
+                position: item.position,
+                notes: item.notes,
+                servingQuantity: 1,
+              })),
+            });
           const bySite = new Map();
           for (const forecast of forecasts) {
             const list = bySite.get(forecast.destinationSiteId) ?? [];
@@ -363,57 +1007,139 @@ export class MenusService {
             const first = siteForecasts[0];
             const dispatch = await tx.menuDispatch.create({
               data: {
-                organizationId, menuId: menu.id, destinationSiteId,
+                organizationId,
+                menuId: menu.id,
+                destinationSiteId,
                 departureAt: this.dateWithTime(d, first.departureTime),
                 deliveryAt: this.dateWithTime(d, first.deliveryTime),
               },
             });
-            await tx.menuGuestForecast.createMany({ data: siteForecasts.map((forecast) => ({ organizationId, menuId: menu.id, dispatchId: dispatch.id, destinationSiteId, guestGroupId: forecast.guestGroupId, dietId: forecast.dietId, count: forecast.count, notes: forecast.notes })) });
+            await tx.menuGuestForecast.createMany({
+              data: siteForecasts.map((forecast) => ({
+                organizationId,
+                menuId: menu.id,
+                dispatchId: dispatch.id,
+                destinationSiteId,
+                guestGroupId: forecast.guestGroupId,
+                dietId: forecast.dietId,
+                count: forecast.count,
+                notes: forecast.notes,
+              })),
+            });
           }
         }
       }
-      await this.history(tx, organizationId, null, cycleId, actor.id, MenuHistoryAction.CYCLE_REPLICATED, `${created} menus créés, ${updated} actualisés, ${skipped.length} ignorés`);
+      await this.history(
+        tx,
+        organizationId,
+        null,
+        cycleId,
+        actor.id,
+        MenuHistoryAction.CYCLE_REPLICATED,
+        `${created} menus créés, ${updated} actualisés, ${skipped.length} ignorés`,
+      );
       return { created, updated, skipped };
     });
   }
 
   async dispatches(organizationId: string, q: any = {}) {
     await this.assertInstalled(organizationId);
-    return this.prisma.menuDispatch.findMany({ where: { organizationId, menuId: q.menuId, status: q.status }, include: { destinationSite: true, menu: true, forecasts: { include: { guestGroup: true, diet: true } } }, orderBy: [{ departureAt: 'asc' }, { deliveryAt: 'asc' }] });
+    return this.prisma.menuDispatch.findMany({
+      where: { organizationId, menuId: q.menuId, status: q.status },
+      include: {
+        destinationSite: true,
+        menu: true,
+        forecasts: { include: { guestGroup: true, diet: true } },
+      },
+      orderBy: [{ departureAt: 'asc' }, { deliveryAt: 'asc' }],
+    });
   }
   async updateDispatchStatus(organizationId: string, actor: Actor, id: string, status: any) {
-    await this.assertInstalled(organizationId); this.assertWrite(actor);
+    await this.assertInstalled(organizationId);
+    this.assertWrite(actor);
     const dispatch = await this.prisma.menuDispatch.findFirst({ where: { id, organizationId } });
     if (!dispatch) throw new NotFoundException('Distribution introuvable.');
     const saved = await this.prisma.menuDispatch.update({ where: { id }, data: { status } });
-    await this.prisma.menuHistory.create({ data: { organizationId, menuId: dispatch.menuId, actorUserId: actor.id, action: MenuHistoryAction.UPDATED, summary: `Distribution ${status}`, details: { dispatchId: id, status } } });
+    await this.prisma.menuHistory.create({
+      data: {
+        organizationId,
+        menuId: dispatch.menuId,
+        actorUserId: actor.id,
+        action: MenuHistoryAction.UPDATED,
+        summary: `Distribution ${status}`,
+        details: { dispatchId: id, status },
+      },
+    });
     return saved;
   }
 
   async centralDocument(organizationId: string, actor: Actor, menuId: string, kind: string) {
-    await this.assertInstalled(organizationId); this.assertWrite(actor);
-    if (!['PRODUCTION', 'PACKING', 'DISPATCH'].includes(kind)) throw new BadRequestException('Type de document Cuisine centrale inconnu.');
-    const menu = await this.prisma.menu.findFirst({ where: { id: menuId, organizationId, activity: MenuActivity.CENTRAL_KITCHEN }, include: this.menuInclude(true) });
+    await this.assertInstalled(organizationId);
+    this.assertWrite(actor);
+    if (!['PRODUCTION', 'PACKING', 'DISPATCH'].includes(kind))
+      throw new BadRequestException('Type de document Cuisine centrale inconnu.');
+    const menu = await this.prisma.menu.findFirst({
+      where: { id: menuId, organizationId, activity: MenuActivity.CENTRAL_KITCHEN },
+      include: this.menuInclude(true),
+    });
     if (!menu) throw new NotFoundException('Menu Cuisine centrale introuvable.');
     const serialized = this.serializeMenu(menu);
     const buffer = await new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'A4', margin: 45 }); const chunks = [];
-      doc.on('data', (chunk) => chunks.push(Buffer.from(chunk))); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
-      doc.fontSize(20).text(kind === 'PRODUCTION' ? 'Plan de production global' : kind === 'PACKING' ? 'Fiche de conditionnement' : 'Bons de distribution');
-      doc.moveDown(.3).fontSize(11).fillColor('#475569').text(`${menu.name} · ${menu.date.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })} · ${serialized.totalGuests} repas`);
+      const doc = new PDFDocument({ size: 'A4', margin: 45 });
+      const chunks = [];
+      doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc
+        .fontSize(20)
+        .text(
+          kind === 'PRODUCTION'
+            ? 'Plan de production global'
+            : kind === 'PACKING'
+              ? 'Fiche de conditionnement'
+              : 'Bons de distribution',
+        );
+      doc
+        .moveDown(0.3)
+        .fontSize(11)
+        .fillColor('#475569')
+        .text(
+          `${menu.name} · ${menu.date.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })} · ${serialized.totalGuests} repas`,
+        );
       doc.moveDown().fillColor('#0f172a');
       if (kind === 'PRODUCTION') {
-        for (const line of this.effectiveProductionLines(menu)) doc.fontSize(11).text(`• ${line.technicalSheet.name} — ${line.portions} portion(s)`);
+        for (const line of this.effectiveProductionLines(menu))
+          doc.fontSize(11).text(`• ${line.technicalSheet.name} — ${line.portions} portion(s)`);
       } else {
         for (const dispatch of menu.dispatches ?? []) {
           doc.fontSize(14).text(dispatch.destinationSite.name);
-          doc.fontSize(9).fillColor('#475569').text(`Départ ${dispatch.departureAt?.toLocaleString('fr-FR') ?? '—'} · Livraison ${dispatch.deliveryAt?.toLocaleString('fr-FR') ?? '—'} · ${dispatch.status}`);
-          const forecasts = (menu.guestForecasts ?? []).filter((forecast) => forecast.dispatchId === dispatch.id);
-          for (const forecast of forecasts) doc.fontSize(10).fillColor('#0f172a').text(`• ${forecast.guestGroup.name} · ${forecast.diet?.name ?? 'Standard'} — ${forecast.count} repas`);
+          doc
+            .fontSize(9)
+            .fillColor('#475569')
+            .text(
+              `Départ ${dispatch.departureAt?.toLocaleString('fr-FR') ?? '—'} · Livraison ${dispatch.deliveryAt?.toLocaleString('fr-FR') ?? '—'} · ${dispatch.status}`,
+            );
+          const forecasts = (menu.guestForecasts ?? []).filter(
+            (forecast) => forecast.dispatchId === dispatch.id,
+          );
+          for (const forecast of forecasts)
+            doc
+              .fontSize(10)
+              .fillColor('#0f172a')
+              .text(
+                `• ${forecast.guestGroup.name} · ${forecast.diet?.name ?? 'Standard'} — ${forecast.count} repas`,
+              );
           if (kind === 'PACKING') {
             for (const item of menu.items ?? []) {
-              const guests = forecasts.filter((forecast) => (forecast.dietId ?? null) === (item.dietId ?? null)).reduce((sum, forecast) => sum + forecast.count, 0);
-              if (guests) doc.fontSize(9).text(`  ${item.technicalSheet?.name ?? item.product?.name} — ${guests * Number(item.servingQuantity ?? 1)}`);
+              const guests = forecasts
+                .filter((forecast) => (forecast.dietId ?? null) === (item.dietId ?? null))
+                .reduce((sum, forecast) => sum + forecast.count, 0);
+              if (guests)
+                doc
+                  .fontSize(9)
+                  .text(
+                    `  ${item.technicalSheet?.name ?? item.product?.name} — ${guests * Number(item.servingQuantity ?? 1)}`,
+                  );
             }
           }
           doc.moveDown();
@@ -421,8 +1147,21 @@ export class MenusService {
       }
       doc.end();
     });
-    await this.prisma.menuHistory.create({ data: { organizationId, menuId, actorUserId: actor.id, action: MenuHistoryAction.EXPORT_GENERATED, summary: `Document Cuisine centrale ${kind}`, details: { kind } } });
-    return { buffer, filename: `cuisine-centrale-${kind.toLowerCase()}-${menu.id}.pdf`, mimeType: 'application/pdf' };
+    await this.prisma.menuHistory.create({
+      data: {
+        organizationId,
+        menuId,
+        actorUserId: actor.id,
+        action: MenuHistoryAction.EXPORT_GENERATED,
+        summary: `Document Cuisine centrale ${kind}`,
+        details: { kind },
+      },
+    });
+    return {
+      buffer,
+      filename: `cuisine-centrale-${kind.toLowerCase()}-${menu.id}.pdf`,
+      mimeType: 'application/pdf',
+    };
   }
 
   async availability(organizationId: string, menuId: string, requestedSiteId?: string) {
@@ -435,7 +1174,9 @@ export class MenusService {
           include: {
             menuCategory: true,
             product: { include: { unit: true, category: true } },
-            technicalSheet: { include: { outputProduct: { include: { unit: true } }, yieldUnit: true } },
+            technicalSheet: {
+              include: { outputProduct: { include: { unit: true } }, yieldUnit: true },
+            },
           },
           orderBy: [{ position: 'asc' }],
         },
@@ -444,8 +1185,21 @@ export class MenusService {
     });
     if (!menu) throw new NotFoundException('Menu introuvable');
 
-    const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { primarySiteId: true } });
-    const siteId = requestedSiteId || menu.siteId || organization?.primarySiteId || (await this.prisma.site.findFirst({ where: { organizationId, isArchived: false }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { primarySiteId: true },
+    });
+    const siteId =
+      requestedSiteId ||
+      menu.siteId ||
+      organization?.primarySiteId ||
+      (
+        await this.prisma.site.findFirst({
+          where: { organizationId, isArchived: false },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      )?.id;
     if (requestedSiteId) await this.ensureSite(organizationId, requestedSiteId);
 
     const sheets = await this.prisma.technicalSheet.findMany({
@@ -460,26 +1214,78 @@ export class MenusService {
       },
     });
     const sheetsById = new Map(sheets.map((sheet) => [sheet.id, sheet]));
-    const productIds = [...new Set([
-      ...sheets.flatMap((sheet) => [sheet.outputProductId, ...sheet.ingredients.map((line) => line.productId)]),
-      ...menu.items.map((item) => item.productId),
-    ].filter(Boolean))];
+    const productIds = [
+      ...new Set(
+        [
+          ...sheets.flatMap((sheet) => [
+            sheet.outputProductId,
+            ...sheet.ingredients.map((line) => line.productId),
+          ]),
+          ...menu.items.map((item) => item.productId),
+        ].filter(Boolean),
+      ),
+    ];
     const [stockRows, reservationRows, orders, conversions] = await Promise.all([
-      productIds.length ? this.prisma.stock.groupBy({ by: ['productId'], where: { organizationId, productId: { in: productIds }, ...(siteId ? { siteId } : {}) }, _sum: { quantity: true } }) : [],
-      productIds.length && siteId ? this.prisma.stockReservation.groupBy({ by: ['productId'], where: { organizationId, siteId, productId: { in: productIds }, status: 'ACTIVE' }, _sum: { quantity: true } }) : [],
-      productIds.length ? this.prisma.productionOrder.findMany({ where: { organizationId, outputProductId: { in: productIds }, status: { in: ['PLANNED', 'VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED'] }, ...(siteId ? { siteId } : {}) }, select: { outputProductId: true, plannedPortions: true, proposedQuantity: true, validatedQuantity: true, realizedPortions: true, status: true } }) : [],
+      productIds.length
+        ? this.prisma.stock.groupBy({
+            by: ['productId'],
+            where: { organizationId, productId: { in: productIds }, ...(siteId ? { siteId } : {}) },
+            _sum: { quantity: true },
+          })
+        : [],
+      productIds.length && siteId
+        ? this.prisma.stockReservation.groupBy({
+            by: ['productId'],
+            where: { organizationId, siteId, productId: { in: productIds }, status: 'ACTIVE' },
+            _sum: { quantity: true },
+          })
+        : [],
+      productIds.length
+        ? this.prisma.productionOrder.findMany({
+            where: {
+              organizationId,
+              outputProductId: { in: productIds },
+              status: { in: ['PLANNED', 'VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED'] },
+              ...(siteId ? { siteId } : {}),
+            },
+            select: {
+              outputProductId: true,
+              plannedPortions: true,
+              proposedQuantity: true,
+              validatedQuantity: true,
+              realizedPortions: true,
+              status: true,
+            },
+          })
+        : [],
       this.prisma.unitConversion.findMany({ where: { organizationId } }),
     ]);
-    const stockByProduct = new Map(stockRows.map((row) => [row.productId, Number(row._sum.quantity ?? 0)]));
-    const reservedByProduct = new Map(reservationRows.map((row) => [row.productId, Number(row._sum.quantity ?? 0)]));
+    const stockByProduct = new Map(
+      stockRows.map((row) => [row.productId, Number(row._sum.quantity ?? 0)]),
+    );
+    const reservedByProduct = new Map(
+      reservationRows.map((row) => [row.productId, Number(row._sum.quantity ?? 0)]),
+    );
     const productionByProduct = new Map<string, number>();
     orders.forEach((order) => {
       if (!order.outputProductId) return;
-      const planned = Math.max(Number(order.validatedQuantity ?? 0), Number(order.proposedQuantity ?? 0), Number(order.plannedPortions ?? 0));
+      const planned = Math.max(
+        Number(order.validatedQuantity ?? 0),
+        Number(order.proposedQuantity ?? 0),
+        Number(order.plannedPortions ?? 0),
+      );
       const remaining = Math.max(planned - Number(order.realizedPortions ?? 0), 0);
-      productionByProduct.set(order.outputProductId, (productionByProduct.get(order.outputProductId) ?? 0) + remaining);
+      productionByProduct.set(
+        order.outputProductId,
+        (productionByProduct.get(order.outputProductId) ?? 0) + remaining,
+      );
     });
-    const conversionByPair = new Map(conversions.map((conversion) => [`${conversion.fromUnitId}:${conversion.toUnitId}`, Number(conversion.factor)]));
+    const conversionByPair = new Map(
+      conversions.map((conversion) => [
+        `${conversion.fromUnitId}:${conversion.toUnitId}`,
+        Number(conversion.factor),
+      ]),
+    );
     const convert = (quantity: number, fromUnitId?: string | null, toUnitId?: string | null) => {
       if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) return quantity;
       const direct = conversionByPair.get(`${fromUnitId}:${toUnitId}`);
@@ -487,7 +1293,11 @@ export class MenusService {
       const reverse = conversionByPair.get(`${toUnitId}:${fromUnitId}`);
       return reverse ? quantity / reverse : null;
     };
-    const productBalance = (productId?: string | null) => Math.max((stockByProduct.get(productId ?? '') ?? 0) - (reservedByProduct.get(productId ?? '') ?? 0), 0);
+    const productBalance = (productId?: string | null) =>
+      Math.max(
+        (stockByProduct.get(productId ?? '') ?? 0) - (reservedByProduct.get(productId ?? '') ?? 0),
+        0,
+      );
     const productComposition = (product: any, quantity: number, portions: number) =>
       calculateProductComposition(product, quantity, portions);
     const sheetComposition = (sheetId: string, quantity: number, portions: number) =>
@@ -499,17 +1309,19 @@ export class MenusService {
         referencePortions: portions,
       });
 
-    const buildComponents = (sheetId: string, requiredOutput: number, visited: string[] = []): any[] => {
+    const buildComponents = (
+      sheetId: string,
+      requiredOutput: number,
+      visited: string[] = [],
+    ): any[] => {
       const sheet = sheetsById.get(sheetId);
       if (!sheet || visited.includes(sheetId) || requiredOutput <= 0) return [];
-      const referenceYield = Math.max(Number(sheet.referencePortions ?? 1), 0.001);
+      const referenceYield = Math.max(menuSheetReferenceYield(sheet), 0.001);
       const factor = requiredOutput / referenceYield;
       return sheet.ingredients.map((line) => {
         const requiredInLineUnit = Number(line.quantity) * factor;
         const unitPrice = Number(line.unitPriceSnapshot ?? line.product.averagePrice ?? 0);
-        const estimatedCost = line.cost == null
-          ? null
-          : Number(line.cost) * factor;
+        const estimatedCost = line.cost == null ? null : Number(line.cost) * factor;
         if (line.sourceTechnicalSheetId) {
           const source = sheetsById.get(line.sourceTechnicalSheetId);
           if (!source?.outputProductId || !source.outputProduct || !source.yieldUnitId) {
@@ -529,7 +1341,12 @@ export class MenusService {
               children: [],
             };
           }
-          const requiredYield = convert(requiredInLineUnit, line.unitId, source.yieldUnitId);
+          const requiredYield = menuSubRecipeRequiredYield(
+            source,
+            line,
+            requiredInLineUnit,
+            convert,
+          );
           if (requiredYield == null) {
             return {
               kind: 'SUB_RECIPE',
@@ -548,11 +1365,23 @@ export class MenusService {
               children: [],
             };
           }
-          const stockInYield = convert(productBalance(source.outputProductId), source.outputProduct.unitId, source.yieldUnitId) ?? 0;
-          const productionInYield = convert(productionByProduct.get(source.outputProductId) ?? 0, source.outputProduct.unitId, source.yieldUnitId) ?? 0;
+          const stockInYield =
+            convert(
+              productBalance(source.outputProductId),
+              source.outputProduct.unitId,
+              source.yieldUnitId,
+            ) ?? 0;
+          const productionInYield =
+            convert(
+              productionByProduct.get(source.outputProductId) ?? 0,
+              source.outputProduct.unitId,
+              source.yieldUnitId,
+            ) ?? 0;
           const missing = Math.max(requiredYield - stockInYield - productionInYield, 0);
           const children = buildComponents(source.id, missing, [...visited, sheetId]);
-          const blocked = children.some((child) => child.status === 'BLOCKED' || child.status === 'NOT_CONFIGURED');
+          const blocked = children.some(
+            (child) => child.status === 'BLOCKED' || child.status === 'NOT_CONFIGURED',
+          );
           return {
             kind: 'SUB_RECIPE',
             technicalSheetId: source.id,
@@ -609,10 +1438,15 @@ export class MenusService {
       });
     };
 
-    const totalGuests = menu.guestForecasts.length ? menu.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0) : menu.expectedGuests;
+    const totalGuests = menu.guestForecasts.length
+      ? menu.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0)
+      : menu.expectedGuests;
     const items = menu.items.map((item) => {
       const servingQuantity = Math.max(Number(item.servingQuantity ?? 1), 0.001);
-      const configuredTargetPortions = menu.kind === MenuKind.CATALOG ? Number(item.targetReadyQuantity ?? item.portionsOverride ?? 0) : Number(item.portionsOverride ?? totalGuests ?? 0);
+      const configuredTargetPortions =
+        menu.kind === MenuKind.CATALOG
+          ? Number(item.targetReadyQuantity ?? item.portionsOverride ?? 0)
+          : Number(item.portionsOverride ?? totalGuests ?? 0);
       if (item.productId) {
         const targetPortions = configuredTargetPortions;
         const product = item.product;
@@ -658,31 +1492,42 @@ export class MenusService {
           recipeCost: unitPrice,
           costPerPortion: unitPrice * servingQuantity,
           status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
-          message: missingQuantity > 0 ? `Stock insuffisant : ${missingQuantity.toFixed(3)} ${product.unit?.symbol ?? ''} à approvisionner` : undefined,
+          message:
+            missingQuantity > 0
+              ? `Stock insuffisant : ${missingQuantity.toFixed(3)} ${product.unit?.symbol ?? ''} à approvisionner`
+              : undefined,
           ...productComposition(product, targetQuantity, targetPortions),
-          components: [{
-            kind: 'PRODUCT',
-            productId: product.id,
-            name: product.name,
-            requiredQuantity: targetQuantity,
-            availableQuantity: stockQuantity,
-            missingQuantity,
-            unit: product.unit?.symbol,
-            unitPrice,
-            unitPriceUnit: product.unit?.symbol,
-            estimatedCost: unitPrice * targetQuantity,
-            status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
-            children: [],
-          }],
+          components: [
+            {
+              kind: 'PRODUCT',
+              productId: product.id,
+              name: product.name,
+              requiredQuantity: targetQuantity,
+              availableQuantity: stockQuantity,
+              missingQuantity,
+              unit: product.unit?.symbol,
+              unitPrice,
+              unitPriceUnit: product.unit?.symbol,
+              estimatedCost: unitPrice * targetQuantity,
+              status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
+              children: [],
+            },
+          ],
         };
       }
       const sheet = sheetsById.get(item.technicalSheetId) ?? item.technicalSheet;
       const recipeServingQuantity = menu.kind === MenuKind.CATALOG ? 1 : servingQuantity;
-      const targetPortions = menu.kind === MenuKind.CATALOG
-        ? Math.max(Number(sheet?.referencePortions ?? 1), 0.001)
-        : configuredTargetPortions;
+      const targetPortions =
+        menu.kind === MenuKind.CATALOG
+          ? Math.max(Number(sheet?.referencePortions ?? 1), 0.001)
+          : configuredTargetPortions;
       const outputProduct = sheet?.outputProduct;
-      if (!item.availabilityEnabled || !sheet?.outputProductId || !outputProduct || !sheet.yieldUnitId) {
+      if (
+        !item.availabilityEnabled ||
+        !sheet?.outputProductId ||
+        !outputProduct ||
+        !sheet.yieldUnitId
+      ) {
         const components = sheet
           ? buildComponents(
               sheet.id,
@@ -702,7 +1547,9 @@ export class MenusService {
           recipeCost: Number(sheet?.totalCost ?? 0),
           costPerPortion: Number(sheet?.costPerPortion ?? 0),
           status: 'NOT_CONFIGURED',
-          message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit fabriqué non configuré dans la fiche technique',
+          message: !item.availabilityEnabled
+            ? 'Suivi désactivé'
+            : 'Produit fabriqué non configuré dans la fiche technique',
           ...sheetComposition(
             sheet?.id ?? item.technicalSheetId,
             targetPortions > 0
@@ -713,32 +1560,56 @@ export class MenusService {
           components,
         };
       }
-      const availableOutput = convert(productBalance(sheet.outputProductId), outputProduct.unitId, sheet.yieldUnitId) ?? 0;
-      const inProductionOutput = convert(productionByProduct.get(sheet.outputProductId) ?? 0, outputProduct.unitId, sheet.yieldUnitId) ?? 0;
+      const availableOutput =
+        convert(productBalance(sheet.outputProductId), outputProduct.unitId, sheet.yieldUnitId) ??
+        0;
+      const inProductionOutput =
+        convert(
+          productionByProduct.get(sheet.outputProductId) ?? 0,
+          outputProduct.unitId,
+          sheet.yieldUnitId,
+        ) ?? 0;
       const targetOutput = targetPortions * recipeServingQuantity;
       const toProduceOutput = Math.max(targetOutput - availableOutput - inProductionOutput, 0);
       const productionComponents = buildComponents(sheet.id, toProduceOutput);
       const components = buildComponents(
         sheet.id,
-        targetOutput > 0
-          ? targetOutput
-          : Math.max(Number(sheet.referencePortions ?? 1), 0.001),
+        targetOutput > 0 ? targetOutput : Math.max(Number(sheet.referencePortions ?? 1), 0.001),
       );
-      const flattened = (nodes: any[]): any[] => nodes.flatMap((node) => [node, ...flattened(node.children ?? [])]);
+      const flattened = (nodes: any[]): any[] =>
+        nodes.flatMap((node) => [node, ...flattened(node.children ?? [])]);
       const allComponents = flattened(productionComponents);
-      const hasBlockedComponent = allComponents.some((component) => component.status === 'BLOCKED' || component.status === 'NOT_CONFIGURED');
-      const hasMissingPreparation = allComponents.some((component) => component.kind === 'SUB_RECIPE' && component.missingQuantity > 0);
+      const hasBlockedComponent = allComponents.some(
+        (component) => component.status === 'BLOCKED' || component.status === 'NOT_CONFIGURED',
+      );
+      const hasMissingPreparation = allComponents.some(
+        (component) => component.kind === 'SUB_RECIPE' && component.missingQuantity > 0,
+      );
       const availablePortions = Math.floor(availableOutput / recipeServingQuantity);
-      const projectedPortions = Math.floor((availableOutput + inProductionOutput) / recipeServingQuantity);
+      const projectedPortions = Math.floor(
+        (availableOutput + inProductionOutput) / recipeServingQuantity,
+      );
       let status = 'READY';
-      if (targetOutput > availableOutput) status = toProduceOutput <= 0 ? 'LOW_STOCK' : hasBlockedComponent ? 'BLOCKED' : hasMissingPreparation ? 'COMPONENT_MISSING' : 'TO_PRODUCE';
+      if (targetOutput > availableOutput)
+        status =
+          toProduceOutput <= 0
+            ? 'LOW_STOCK'
+            : hasBlockedComponent
+              ? 'BLOCKED'
+              : hasMissingPreparation
+                ? 'COMPONENT_MISSING'
+                : 'TO_PRODUCE';
       return {
         id: item.id,
         sourceType: 'TECHNICAL_SHEET',
         technicalSheetId: item.technicalSheetId,
         name: sheet.name,
         category: item.menuCategory,
-        outputProduct: { id: outputProduct.id, name: outputProduct.name, unit: sheet.yieldUnit ?? outputProduct.unit },
+        outputProduct: {
+          id: outputProduct.id,
+          name: outputProduct.name,
+          unit: sheet.yieldUnit ?? outputProduct.unit,
+        },
         servingQuantity: recipeServingQuantity,
         targetPortions,
         lowStockThreshold: Number(item.lowStockThreshold ?? 0),
@@ -755,40 +1626,126 @@ export class MenusService {
         components,
       };
     });
-    const counts = items.reduce((summary, item) => ({ ...summary, [item.status]: (summary[item.status] ?? 0) + 1 }), {} as Record<string, number>);
-    return { menu: { id: menu.id, name: menu.name, kind: menu.kind, siteId, site: menu.site }, generatedAt: new Date(), summary: { total: items.length, ready: counts.READY ?? 0, lowStock: counts.LOW_STOCK ?? 0, toProduce: (counts.TO_PRODUCE ?? 0) + (counts.COMPONENT_MISSING ?? 0), blocked: (counts.BLOCKED ?? 0) + (counts.NOT_CONFIGURED ?? 0) }, items };
+    const counts = items.reduce(
+      (summary, item) => ({ ...summary, [item.status]: (summary[item.status] ?? 0) + 1 }),
+      {} as Record<string, number>,
+    );
+    return {
+      menu: { id: menu.id, name: menu.name, kind: menu.kind, siteId, site: menu.site },
+      generatedAt: new Date(),
+      summary: {
+        total: items.length,
+        ready: counts.READY ?? 0,
+        lowStock: counts.LOW_STOCK ?? 0,
+        toProduce: (counts.TO_PRODUCE ?? 0) + (counts.COMPONENT_MISSING ?? 0),
+        blocked: (counts.BLOCKED ?? 0) + (counts.NOT_CONFIGURED ?? 0),
+      },
+      items,
+    };
   }
 
   async planShortages(organizationId: string, actor: Actor, menuId: string, dto: any) {
     await this.assertInstalled(organizationId);
     this.assertManager(actor);
     const report = await this.availability(organizationId, menuId, dto.siteId);
-    if (!report.menu.siteId) throw new BadRequestException('Choisissez un site pour planifier les manquants.');
+    if (!report.menu.siteId)
+      throw new BadRequestException('Choisissez un site pour planifier les manquants.');
     const selectedIds = new Set(dto.itemIds ?? []);
-    const candidates = report.items.filter((item) => item.toProduceQuantity > 0 && item.outputProduct && (!selectedIds.size || selectedIds.has(item.id)));
-    const neededAt = dto.neededAt ? new Date(dto.neededAt) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const candidates = report.items.filter(
+      (item) =>
+        item.toProduceQuantity > 0 &&
+        item.outputProduct &&
+        (!selectedIds.size || selectedIds.has(item.id)),
+    );
+    const neededAt = dto.neededAt
+      ? new Date(dto.neededAt)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000);
     const created = [];
     const skipped = [];
     for (const item of candidates) {
-      const profile = await this.prisma.productionProfile.findFirst({ where: { organizationId, siteId: report.menu.siteId, technicalSheetId: item.technicalSheetId, outputProductId: item.outputProduct.id }, include: { yieldUnit: true } });
+      const profile = await this.prisma.productionProfile.findFirst({
+        where: {
+          organizationId,
+          siteId: report.menu.siteId,
+          technicalSheetId: item.technicalSheetId,
+          outputProductId: item.outputProduct.id,
+        },
+        include: { yieldUnit: true },
+      });
       if (!profile) {
-        skipped.push({ itemId: item.id, name: item.name, reason: 'Profil de production absent pour ce site' });
+        skipped.push({
+          itemId: item.id,
+          name: item.name,
+          reason: 'Profil de production absent pour ce site',
+        });
         continue;
       }
       const sourceReferenceId = `${menuId}:${item.id}`;
-      const existing = await this.prisma.productionNeed.findFirst({ where: { organizationId, source: 'MENU', sourceReferenceType: 'MenuAvailabilityItem', sourceReferenceId, status: { in: ['DRAFT', 'CONFIRMED', 'PARTIALLY_COVERED'] } } });
+      const existing = await this.prisma.productionNeed.findFirst({
+        where: {
+          organizationId,
+          source: 'MENU',
+          sourceReferenceType: 'MenuAvailabilityItem',
+          sourceReferenceId,
+          status: { in: ['DRAFT', 'CONFIRMED', 'PARTIALLY_COVERED'] },
+        },
+      });
       if (existing) {
         if (existing.status === 'DRAFT') {
-          created.push(await this.prisma.productionNeed.update({ where: { id: existing.id }, data: { quantity: new Prisma.Decimal(item.toProduceQuantity), neededAt, notes: `Besoin actualisé depuis la carte ${report.menu.name}` } }));
+          created.push(
+            await this.prisma.productionNeed.update({
+              where: { id: existing.id },
+              data: {
+                quantity: new Prisma.Decimal(item.toProduceQuantity),
+                neededAt,
+                notes: `Besoin actualisé depuis la carte ${report.menu.name}`,
+              },
+            }),
+          );
         } else {
-          skipped.push({ itemId: item.id, name: item.name, reason: 'Un besoin confirmé existe déjà' });
+          skipped.push({
+            itemId: item.id,
+            name: item.name,
+            reason: 'Un besoin confirmé existe déjà',
+          });
         }
         continue;
       }
-      created.push(await this.productionPlanning.createNeed(organizationId, { id: actor.id, role: actor.role, permissions: [] }, { siteId: report.menu.siteId, productId: item.outputProduct.id, unitId: profile.yieldUnitId, source: 'MENU', sourceReferenceType: 'MenuAvailabilityItem', sourceReferenceId, quantity: new Prisma.Decimal(item.toProduceQuantity).toFixed(3), neededAt: neededAt.toISOString(), status: 'DRAFT', notes: `Besoin proposé depuis la carte ${report.menu.name}` }));
+      created.push(
+        await this.productionPlanning.createNeed(
+          organizationId,
+          { id: actor.id, role: actor.role, permissions: [] },
+          {
+            siteId: report.menu.siteId,
+            productId: item.outputProduct.id,
+            unitId: profile.yieldUnitId,
+            source: 'MENU',
+            sourceReferenceType: 'MenuAvailabilityItem',
+            sourceReferenceId,
+            quantity: new Prisma.Decimal(item.toProduceQuantity).toFixed(3),
+            neededAt: neededAt.toISOString(),
+            status: 'DRAFT',
+            notes: `Besoin proposé depuis la carte ${report.menu.name}`,
+          },
+        ),
+      );
     }
-    await this.prisma.menuHistory.create({ data: { organizationId, menuId, actorUserId: actor.id, action: MenuHistoryAction.AVAILABILITY_PLANNED, summary: `${created.length} besoin(s) Production préparé(s)`, details: { needIds: created.map((need) => need.id), skipped } } });
-    return { created: created.length, needs: created, skipped, report: await this.availability(organizationId, menuId, dto.siteId) };
+    await this.prisma.menuHistory.create({
+      data: {
+        organizationId,
+        menuId,
+        actorUserId: actor.id,
+        action: MenuHistoryAction.AVAILABILITY_PLANNED,
+        summary: `${created.length} besoin(s) Production préparé(s)`,
+        details: { needIds: created.map((need) => need.id), skipped },
+      },
+    });
+    return {
+      created: created.length,
+      needs: created,
+      skipped,
+      report: await this.availability(organizationId, menuId, dto.siteId),
+    };
   }
 
   async planCatalogProductionDay(
@@ -853,12 +1810,8 @@ export class MenusService {
           },
           include: { outputProduct: true },
         });
-    const profileBySheet = new Map(
-      profiles.map((profile) => [profile.technicalSheetId, profile]),
-    );
-    const missingProfile = sourceItems.find(
-      (item) => !profileBySheet.has(item.technicalSheetId),
-    );
+    const profileBySheet = new Map(profiles.map((profile) => [profile.technicalSheetId, profile]));
+    const missingProfile = sourceItems.find((item) => !profileBySheet.has(item.technicalSheetId));
     if (missingProfile) {
       throw new BadRequestException({
         code: 'PRODUCTION_PROFILE_REQUIRED_FOR_MENU',
@@ -949,8 +1902,8 @@ export class MenusService {
             (item.dietId ?? null) === (sourceItem.dietId ?? null),
         );
         const existingProductionLink = dailyItem
-          ? linkedProductionByItemId.get(dailyItem.id) ??
-            linkedProductionBySheetId.get(dailyItem.technicalSheetId)
+          ? (linkedProductionByItemId.get(dailyItem.id) ??
+            linkedProductionBySheetId.get(dailyItem.technicalSheetId))
           : linkedProductionBySheetId.get(sourceItem.technicalSheetId);
         if (dailyItem) {
           dailyItem = await tx.menuItem.update({
@@ -1035,17 +1988,12 @@ export class MenusService {
       updatedOrders.push(updated);
     }
     const generation = newLines.length
-      ? await this.generateProductions(
-          organizationId,
-          actor,
-          prepared.dailyMenuId,
-          {
-            mode: MenuProductionGenerationMode.DETAILED,
-            serviceId: dto.serviceId,
-            plannedTime: dto.plannedTime || '08:00',
-            lines: newLines,
-          },
-        )
+      ? await this.generateProductions(organizationId, actor, prepared.dailyMenuId, {
+          mode: MenuProductionGenerationMode.DETAILED,
+          serviceId: dto.serviceId,
+          plannedTime: dto.plannedTime || '08:00',
+          lines: newLines,
+        })
       : {
           created: 0,
           orders: [],
@@ -1093,16 +2041,14 @@ export class MenusService {
     if (!menu.siteId)
       throw new BadRequestException('Un site est obligatoire pour générer la production.');
     if (!menu.date)
-      throw new BadRequestException('Une date est obligatoire pour planifier la production du menu.');
-    if (!hasLineSelection && menu.productionGeneratedAt && !dto.force)
       throw new BadRequestException(
-        'Productions déjà générées: confirmation force requise.',
+        'Une date est obligatoire pour planifier la production du menu.',
       );
+    if (!hasLineSelection && menu.productionGeneratedAt && !dto.force)
+      throw new BadRequestException('Productions déjà générées: confirmation force requise.');
 
     const effectiveAll = this.effectiveProductionLines(menu);
-    const requestedLines = new Map(
-      (dto.lines ?? []).map((line) => [line.menuItemId, line]),
-    );
+    const requestedLines = new Map((dto.lines ?? []).map((line) => [line.menuItemId, line]));
     if (
       hasLineSelection &&
       [...requestedLines.keys()].some(
@@ -1154,13 +2100,17 @@ export class MenusService {
     const groups =
       dto.mode === MenuProductionGenerationMode.DETAILED
         ? effective.map((line) => ({ key: line.menuItemId, lines: [line] }))
-        : [...effective.reduce((map, line) => {
-            const groupKey = `${line.technicalSheetId}:${line.productionDate ?? menu.date.toISOString()}:${line.plannedTime}`;
-            const current = map.get(groupKey) ?? [];
-            current.push(line);
-            map.set(groupKey, current);
-            return map;
-          }, new Map()).entries()].map(([key, lines]) => ({ key, lines }));
+        : [
+            ...effective
+              .reduce((map, line) => {
+                const groupKey = `${line.technicalSheetId}:${line.productionDate ?? menu.date.toISOString()}:${line.plannedTime}`;
+                const current = map.get(groupKey) ?? [];
+                current.push(line);
+                map.set(groupKey, current);
+                return map;
+              }, new Map())
+              .entries(),
+          ].map(([key, lines]) => ({ key, lines }));
 
     const prepared = [];
     for (const group of groups) {
@@ -1192,7 +2142,10 @@ export class MenusService {
     for (const { group, profile } of prepared) {
       const portions = group.lines.reduce((sum, line) => sum + line.portions, 0);
       const reference = hasLineSelection
-        ? `${menu.id}:${group.lines.map((line) => line.menuItemId).sort().join(',')}`
+        ? `${menu.id}:${group.lines
+            .map((line) => line.menuItemId)
+            .sort()
+            .join(',')}`
         : `${menu.id}:${group.key}:${menu.productionDirtySince?.toISOString() ?? 'initial'}`;
       let need = await this.prisma.productionNeed.findFirst({
         where: {
@@ -1248,9 +2201,7 @@ export class MenusService {
       } catch (error) {
         const response = error instanceof ConflictException ? error.getResponse() : null;
         const code =
-          response && typeof response === 'object' && 'code' in response
-            ? response.code
-            : null;
+          response && typeof response === 'object' && 'code' in response ? response.code : null;
         if (code !== 'PRODUCTION_NEED_COVERED_BY_CONFIRMED_FUTURE_OUTPUT') {
           throw error;
         }
@@ -1278,8 +2229,7 @@ export class MenusService {
               technicalSheetId: line.technicalSheetId,
               section: line.section,
               portions: line.portions,
-              targetPortions:
-                requestedLines.get(line.menuItemId)?.targetPortions ?? line.portions,
+              targetPortions: requestedLines.get(line.menuItemId)?.targetPortions ?? line.portions,
               openingCarryOverPortions:
                 requestedLines.get(line.menuItemId)?.openingCarryOverPortions ?? 0,
               plannedTime: line.plannedTime,
@@ -1296,18 +2246,13 @@ export class MenusService {
       group.lines.forEach((line) => plannedAfter.add(line.menuItemId));
     });
     const allMenuProductsPlanned =
-      effectiveAll.length > 0 &&
-      effectiveAll.every((line) => plannedAfter.has(line.menuItemId));
+      effectiveAll.length > 0 && effectiveAll.every((line) => plannedAfter.has(line.menuItemId));
     await this.prisma.$transaction(async (tx) => {
       await tx.menu.update({
         where: { id: menuId },
         data: {
-          productionGeneratedAt: allMenuProductsPlanned
-            ? new Date()
-            : menu.productionGeneratedAt,
-          productionDirtySince: allMenuProductsPlanned
-            ? null
-            : menu.productionDirtySince,
+          productionGeneratedAt: allMenuProductsPlanned ? new Date() : menu.productionGeneratedAt,
+          productionDirtySince: allMenuProductsPlanned ? null : menu.productionDirtySince,
         },
       });
       await this.history(
@@ -1322,9 +2267,7 @@ export class MenusService {
           mode: dto.mode,
           campaignIds: created.map((campaign) => campaign.id),
           reusedCampaignIds: reused.map((campaign) => campaign.id),
-          menuItemIds: prepared.flatMap(({ group }) =>
-            group.lines.map((line) => line.menuItemId),
-          ),
+          menuItemIds: prepared.flatMap(({ group }) => group.lines.map((line) => line.menuItemId)),
           skipped,
           allMenuProductsPlanned,
         },
@@ -1339,35 +2282,244 @@ export class MenusService {
     };
   }
 
-  async exports(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuExport.findMany({ where: { organizationId, menuId: q.menuId }, include: { requestedBy: { select: { email: true, firstName: true, lastName: true } }, menu: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
-  async prepareExport(organizationId: string, actor: Actor, dto: any) { await this.assertInstalled(organizationId); this.assertManager(actor); const menus = dto.menuId ? [await this.getMenu(organizationId, dto.menuId)] : (await this.listMenus(organizationId, { startDate: dto.startDate, endDate: dto.endDate, pageSize: 200 })).items; const snapshot = { generatedAt: new Date().toISOString(), audience: dto.audience, menus }; const ext = dto.format === MenuExportFormat.EXCEL ? 'xlsx' : dto.format === MenuExportFormat.PDF ? 'pdf' : 'print'; const exp = await this.prisma.menuExport.create({ data: { organizationId, menuId: dto.menuId || null, requestedById: actor.id, format: dto.format, audience: dto.audience, filename: `menus-${dto.audience.toLowerCase()}-${Date.now()}.${ext}`, filters: dto.filters, snapshot } }); await this.prisma.menuHistory.create({ data: { organizationId, menuId: dto.menuId || null, actorUserId: actor.id, action: MenuHistoryAction.EXPORT_GENERATED, summary: `Export ${dto.audience} ${dto.format}`, details: { exportId: exp.id } } }); return exp; }
-  async historyList(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuHistory.findMany({ where: { organizationId, menuId: q.menuId, cycleId: q.cycleId, action: q.action, menu: q.activity ? { activity: q.activity } : undefined }, include: { actorUser: { select: { email: true, firstName: true, lastName: true } }, menu: true, cycle: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
+  async exports(organizationId: string, q: any = {}) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuExport.findMany({
+      where: { organizationId, menuId: q.menuId },
+      include: {
+        requestedBy: { select: { email: true, firstName: true, lastName: true } },
+        menu: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      ...this.page(q),
+    });
+  }
+  async prepareExport(organizationId: string, actor: Actor, dto: any) {
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
+    const menus = dto.menuId
+      ? [await this.getMenu(organizationId, dto.menuId)]
+      : (
+          await this.listMenus(organizationId, {
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+            pageSize: 200,
+          })
+        ).items;
+    const snapshot = { generatedAt: new Date().toISOString(), audience: dto.audience, menus };
+    const ext =
+      dto.format === MenuExportFormat.EXCEL
+        ? 'xlsx'
+        : dto.format === MenuExportFormat.PDF
+          ? 'pdf'
+          : 'print';
+    const exp = await this.prisma.menuExport.create({
+      data: {
+        organizationId,
+        menuId: dto.menuId || null,
+        requestedById: actor.id,
+        format: dto.format,
+        audience: dto.audience,
+        filename: `menus-${dto.audience.toLowerCase()}-${Date.now()}.${ext}`,
+        filters: dto.filters,
+        snapshot,
+      },
+    });
+    await this.prisma.menuHistory.create({
+      data: {
+        organizationId,
+        menuId: dto.menuId || null,
+        actorUserId: actor.id,
+        action: MenuHistoryAction.EXPORT_GENERATED,
+        summary: `Export ${dto.audience} ${dto.format}`,
+        details: { exportId: exp.id },
+      },
+    });
+    return exp;
+  }
+  async historyList(organizationId: string, q: any = {}) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuHistory.findMany({
+      where: {
+        organizationId,
+        menuId: q.menuId,
+        cycleId: q.cycleId,
+        action: q.action,
+        menu: q.activity ? { activity: q.activity } : undefined,
+      },
+      include: {
+        actorUser: { select: { email: true, firstName: true, lastName: true } },
+        menu: true,
+        cycle: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      ...this.page(q),
+    });
+  }
 
-  private menuInclude(full=false) { return { site: true, cycle: true, items: { include: { menuCategory: true, diet: true, product: { include: { unit: true, category: true } }, technicalSheet: { include: this.sheetInclude() } }, orderBy: [{ section: 'asc' }, { position: 'asc' }] }, variants: { include: { diet: true, replacements: { include: { menuItem: true, replacementTechnicalSheet: { include: this.sheetInclude() } } } } }, guestForecasts: { include: { guestGroup: true, diet: true, destinationSite: true } }, dispatches: { include: { destinationSite: true } }, productionLinks: { include: { productionOrder: true } }, ...(full ? { exports: { orderBy: { createdAt: 'desc' }, take: 20 }, history: { orderBy: { createdAt: 'desc' }, take: 50, include: { actorUser: { select: { email: true, firstName: true, lastName: true } } } } } : {}) }; }
-  private sheetInclude() { return { outputProduct: { include: { unit: true } }, yieldUnit: true, ingredients: { include: { allergens: { include: { allergen: true } } } } }; }
+  private menuInclude(full = false) {
+    return {
+      site: true,
+      cycle: true,
+      items: {
+        include: {
+          menuCategory: true,
+          diet: true,
+          product: { include: { unit: true, category: true } },
+          technicalSheet: { include: this.sheetInclude() },
+        },
+        orderBy: [{ section: 'asc' }, { position: 'asc' }],
+      },
+      variants: {
+        include: {
+          diet: true,
+          replacements: {
+            include: {
+              menuItem: true,
+              replacementTechnicalSheet: { include: this.sheetInclude() },
+            },
+          },
+        },
+      },
+      guestForecasts: { include: { guestGroup: true, diet: true, destinationSite: true } },
+      dispatches: { include: { destinationSite: true } },
+      productionLinks: { include: { productionOrder: true } },
+      ...(full
+        ? {
+            exports: { orderBy: { createdAt: 'desc' }, take: 20 },
+            history: {
+              orderBy: { createdAt: 'desc' },
+              take: 50,
+              include: { actorUser: { select: { email: true, firstName: true, lastName: true } } },
+            },
+          }
+        : {}),
+    };
+  }
+  private sheetInclude() {
+    return {
+      outputProduct: { include: { unit: true } },
+      yieldUnit: true,
+      ingredients: { include: { allergens: { include: { allergen: true } } } },
+    };
+  }
   private serializeMenu(m: any) {
-    const totalGuests = (m.guestForecasts?.length ? m.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0) : m.expectedGuests) || 0;
+    const totalGuests =
+      (m.guestForecasts?.length
+        ? m.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0)
+        : m.expectedGuests) || 0;
     const menuItems = m.items ?? [];
     const technicalItems = menuItems.filter((item) => item.technicalSheetId);
     const productItems = menuItems.filter((item) => item.productId);
     const sheets = technicalItems.map((item) => item.technicalSheet).filter(Boolean);
-    const allergens = [...new Set(sheets.flatMap((sheet) => sheet.ingredients?.flatMap((ingredient) => ingredient.allergens?.map((entry) => entry.allergen?.name).filter(Boolean) ?? []) ?? []))];
+    const allergens = [
+      ...new Set(
+        sheets.flatMap(
+          (sheet) =>
+            sheet.ingredients?.flatMap(
+              (ingredient) =>
+                ingredient.allergens?.map((entry) => entry.allergen?.name).filter(Boolean) ?? [],
+            ) ?? [],
+        ),
+      ),
+    ];
     const estimatedCost = menuItems.reduce((sum, item) => {
-      const portions = Number(item.portionsOverride ?? (m.kind === MenuKind.CATALOG ? item.targetReadyQuantity ?? 0 : totalGuests));
-      if (item.productId) return sum + Number(item.product?.averagePrice ?? 0) * Number(item.servingQuantity ?? 1) * portions;
+      const portions = Number(
+        item.portionsOverride ??
+          (m.kind === MenuKind.CATALOG ? (item.targetReadyQuantity ?? 0) : totalGuests),
+      );
+      if (item.productId)
+        return (
+          sum +
+          Number(item.product?.averagePrice ?? 0) * Number(item.servingQuantity ?? 1) * portions
+        );
       return sum + Number(item.technicalSheet?.costPerPortion ?? 0) * portions;
     }, 0);
     const alerts = [];
-    if (!menuItems.length) alerts.push({ code: 'INCOMPLETE_MENU', severity: 'WARNING', title: 'Menu sans composition', blocking: true });
-    if (m.kind !== MenuKind.CATALOG && !totalGuests) alerts.push({ code: 'NO_GUESTS', severity: 'WARNING', title: 'Convives non renseignés', blocking: false });
-    if (technicalItems.some((item) => item.technicalSheet?.status !== 'ACTIVE' || item.technicalSheet?.isArchived)) alerts.push({ code: 'TECHNICAL_SHEET_INACTIVE', severity: 'CRITICAL', title: 'Fiche technique manquante, inactive ou archivée', blocking: true });
-    if (technicalItems.some((item) => !item.technicalSheet?.outputProductId)) alerts.push({ code: 'OUTPUT_PRODUCT_REQUIRED', severity: 'CRITICAL', title: 'Enregistrez à nouveau la fiche technique pour activer son suivi', blocking: true });
-    if (productItems.some((item) => !item.product || item.product.isArchived)) alerts.push({ code: 'STOCK_PRODUCT_INACTIVE', severity: 'CRITICAL', title: 'Produit Stocks manquant ou archivé', blocking: true });
-    if (allergens.length) alerts.push({ code: 'ALLERGENS', severity: 'INFO', title: 'Allergènes présents', blocking: false, allergens });
-    if (m.kind !== MenuKind.CATALOG && ['VALIDATED', 'PUBLISHED'].includes(m.status) && !m.productionGeneratedAt) alerts.push({ code: 'PRODUCTION_NOT_GENERATED', severity: 'WARNING', title: 'Production non générée', blocking: false });
-    if (m.productionDirtySince) alerts.push({ code: 'PRODUCTION_DIRTY', severity: 'WARNING', title: 'Menu modifié après génération Production', blocking: false });
-    const items = menuItems.map((item) => ({ ...item, sourceType: item.productId ? 'PRODUCT' : 'TECHNICAL_SHEET', portionsOverride: item.portionsOverride == null ? null : Number(item.portionsOverride), servingQuantity: Number(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : Number(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : Number(item.lowStockThreshold) }));
-    return { ...m, items, totalGuests, estimatedCost, costPerGuest: totalGuests ? estimatedCost / totalGuests : 0, allergens, alerts, hasBlockingAlerts: alerts.some((alert) => alert.blocking) };
+    if (!menuItems.length)
+      alerts.push({
+        code: 'INCOMPLETE_MENU',
+        severity: 'WARNING',
+        title: 'Menu sans composition',
+        blocking: true,
+      });
+    if (m.kind !== MenuKind.CATALOG && !totalGuests)
+      alerts.push({
+        code: 'NO_GUESTS',
+        severity: 'WARNING',
+        title: 'Convives non renseignés',
+        blocking: false,
+      });
+    if (
+      technicalItems.some(
+        (item) => item.technicalSheet?.status !== 'ACTIVE' || item.technicalSheet?.isArchived,
+      )
+    )
+      alerts.push({
+        code: 'TECHNICAL_SHEET_INACTIVE',
+        severity: 'CRITICAL',
+        title: 'Fiche technique manquante, inactive ou archivée',
+        blocking: true,
+      });
+    if (technicalItems.some((item) => !item.technicalSheet?.outputProductId))
+      alerts.push({
+        code: 'OUTPUT_PRODUCT_REQUIRED',
+        severity: 'CRITICAL',
+        title: 'Enregistrez à nouveau la fiche technique pour activer son suivi',
+        blocking: true,
+      });
+    if (productItems.some((item) => !item.product || item.product.isArchived))
+      alerts.push({
+        code: 'STOCK_PRODUCT_INACTIVE',
+        severity: 'CRITICAL',
+        title: 'Produit Stocks manquant ou archivé',
+        blocking: true,
+      });
+    if (allergens.length)
+      alerts.push({
+        code: 'ALLERGENS',
+        severity: 'INFO',
+        title: 'Allergènes présents',
+        blocking: false,
+        allergens,
+      });
+    if (
+      m.kind !== MenuKind.CATALOG &&
+      ['VALIDATED', 'PUBLISHED'].includes(m.status) &&
+      !m.productionGeneratedAt
+    )
+      alerts.push({
+        code: 'PRODUCTION_NOT_GENERATED',
+        severity: 'WARNING',
+        title: 'Production non générée',
+        blocking: false,
+      });
+    if (m.productionDirtySince)
+      alerts.push({
+        code: 'PRODUCTION_DIRTY',
+        severity: 'WARNING',
+        title: 'Menu modifié après génération Production',
+        blocking: false,
+      });
+    const items = menuItems.map((item) => ({
+      ...item,
+      sourceType: item.productId ? 'PRODUCT' : 'TECHNICAL_SHEET',
+      portionsOverride: item.portionsOverride == null ? null : Number(item.portionsOverride),
+      servingQuantity: Number(item.servingQuantity ?? 1),
+      targetReadyQuantity:
+        item.targetReadyQuantity == null ? null : Number(item.targetReadyQuantity),
+      lowStockThreshold: item.lowStockThreshold == null ? null : Number(item.lowStockThreshold),
+    }));
+    return {
+      ...m,
+      items,
+      totalGuests,
+      estimatedCost,
+      costPerGuest: totalGuests ? estimatedCost / totalGuests : 0,
+      allergens,
+      alerts,
+      hasBlockingAlerts: alerts.some((alert) => alert.blocking),
+    };
   }
   private effectiveProductionLines(menu: any) {
     const totalGuests =
@@ -1380,9 +2532,7 @@ export class MenusService {
         const itemGuests =
           menu.activity === MenuActivity.CENTRAL_KITCHEN && menu.guestForecasts?.length
             ? menu.guestForecasts
-                .filter(
-                  (forecast) => (forecast.dietId ?? null) === (item.dietId ?? null),
-                )
+                .filter((forecast) => (forecast.dietId ?? null) === (item.dietId ?? null))
                 .reduce((sum, forecast) => sum + forecast.count, 0)
             : totalGuests;
         return {
@@ -1399,25 +2549,50 @@ export class MenusService {
         };
       });
   }
-  private dateWithTime(date: Date, time?: string | null) { if (!time) return null; const [hours, minutes] = time.split(':').map(Number); const value = new Date(date); value.setHours(hours || 0, minutes || 0, 0, 0); return value; }
-  private avg(v: number[]) { const f = v.filter(Number.isFinite); return f.length ? f.reduce((a,b)=>a+b,0)/f.length : 0; }
+  private dateWithTime(date: Date, time?: string | null) {
+    if (!time) return null;
+    const [hours, minutes] = time.split(':').map(Number);
+    const value = new Date(date);
+    value.setHours(hours || 0, minutes || 0, 0, 0);
+    return value;
+  }
+  private avg(v: number[]) {
+    const f = v.filter(Number.isFinite);
+    return f.length ? f.reduce((a, b) => a + b, 0) / f.length : 0;
+  }
   private async ensureRefs(org: string, dto: any) {
     if (dto.siteId) await this.ensureSite(org, dto.siteId);
     for (const item of dto.items ?? []) {
       if (item.menuCategoryId) await this.ensureMenuCategory(org, item.menuCategoryId);
       if (item.dietId) await this.ensureDiet(org, item.dietId);
       const sourceCount = Number(Boolean(item.technicalSheetId)) + Number(Boolean(item.productId));
-      if (sourceCount !== 1) throw new BadRequestException('Choisissez soit un produit Stocks, soit une fiche technique.');
+      if (sourceCount !== 1)
+        throw new BadRequestException(
+          'Choisissez soit un produit Stocks, soit une fiche technique.',
+        );
       if (item.productId) {
         await this.ensureProduct(org, item.productId);
         continue;
       }
       const sheet = await this.ensureTechnicalSheet(org, item.technicalSheetId);
-      if (!sheet.outputProductId) throw new BadRequestException(`La fiche « ${sheet.name} » doit être enregistrée à nouveau avant d’être ajoutée au menu.`);
+      if (!sheet.outputProductId)
+        throw new BadRequestException(
+          `La fiche « ${sheet.name} » doit être enregistrée à nouveau avant d’être ajoutée au menu.`,
+        );
     }
   }
-  private async ensureMenu(org: string, id: string) { const x = await this.prisma.menu.findFirst({ where: { id, organizationId: org } }); if (!x) throw new NotFoundException('Menu introuvable'); return x; }
-  private async ensureSite(org: string, id: string) { const x = await this.prisma.site.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Site introuvable'); return x; }
+  private async ensureMenu(org: string, id: string) {
+    const x = await this.prisma.menu.findFirst({ where: { id, organizationId: org } });
+    if (!x) throw new NotFoundException('Menu introuvable');
+    return x;
+  }
+  private async ensureSite(org: string, id: string) {
+    const x = await this.prisma.site.findFirst({
+      where: { id, organizationId: org, isArchived: false },
+    });
+    if (!x) throw new NotFoundException('Site introuvable');
+    return x;
+  }
   private async resolvePrimarySiteId(organizationId: string) {
     const organization = await this.prisma.organization.findUnique({
       where: { id: organizationId },
@@ -1429,18 +2604,172 @@ export class MenusService {
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
-    if (!firstSite) throw new BadRequestException('Aucun site actif n’est configuré pour cette organisation.');
+    if (!firstSite)
+      throw new BadRequestException('Aucun site actif n’est configuré pour cette organisation.');
     return firstSite.id;
   }
-  private async ensureDiet(org: string, id: string) { const x = await this.prisma.menuDiet.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Régime introuvable'); return x; }
-  private async ensureGuestGroup(org: string, id: string) { const x = await this.prisma.menuGuestGroup.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Groupe de convives introuvable'); return x; }
-  private async ensureTechnicalSheet(org: string, id: string) { const x = await this.prisma.technicalSheet.findFirst({ where: { id, organizationId: org, isArchived: false, status: 'ACTIVE' } }); if (!x) throw new NotFoundException('Fiche technique active introuvable'); return x; }
-  private async ensureProduct(org: string, id: string) { const x = await this.prisma.product.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Produit Stocks actif introuvable'); return x; }
-  private async ensureMenuCategory(org: string, id: string) { const x = await this.prisma.menuCategory.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Rubrique Menu introuvable'); return x; }
-  private async ensureMenuSettings(organizationId: string) { return this.prisma.menuSettings.upsert({ where: { organizationId }, update: {}, create: { organizationId, usageProfile: MenuUsageProfile.RESTAURANT_CAFE, ...MENU_PROFILE_DEFAULTS.RESTAURANT_CAFE } }); }
-  private menuItemData(organizationId: string, menuId: string, item: any) { return { organizationId, menuId, section: item.section ?? 'OTHER', menuCategoryId: item.menuCategoryId || null, technicalSheetId: item.technicalSheetId || null, productId: item.productId || null, dietId: item.dietId || null, position: item.position ?? 0, portionsOverride: item.portionsOverride == null ? null : new Prisma.Decimal(item.portionsOverride), servingQuantity: new Prisma.Decimal(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : new Prisma.Decimal(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : new Prisma.Decimal(item.lowStockThreshold), availabilityEnabled: item.availabilityEnabled ?? true, notes: item.notes }; }
-  private async recalculateProductionOrderTx(tx: any, organizationId: string, orderId: string) { const order = await tx.productionOrder.findFirst({ where: { id: orderId, organizationId }, include: { technicalSheet: { include: { ingredients: { include: { product: { include: { unit: true, primarySupplier: true, stocks: true } }, unit: true } } } } } }); if (!order) return; await tx.productionMaterialRequirement.deleteMany({ where: { orderId } }); const factor = new Prisma.Decimal(order.plannedPortions).div(order.technicalSheet.referencePortions || 1); let estimatedCost = new Prisma.Decimal(0); for (const ing of order.technicalSheet.ingredients) { const required = new Prisma.Decimal(ing.quantity).mul(factor); const available = ing.product.stocks.reduce((s, st) => s.add(st.quantity), new Prisma.Decimal(0)); const status = ing.product.isArchived ? ProductionMaterialStatus.PRODUCT_ARCHIVED : available.isZero() ? ProductionMaterialStatus.STOCK_UNKNOWN : available.lt(required) ? ProductionMaterialStatus.INSUFFICIENT_STOCK : available.sub(required).lte(ing.product.minimumStock) ? ProductionMaterialStatus.POTENTIAL_SHORTAGE : ProductionMaterialStatus.OK; const cost = ing.cost == null ? null : new Prisma.Decimal(ing.cost).mul(factor); if (cost) estimatedCost = estimatedCost.add(cost); await tx.productionMaterialRequirement.create({ data: { organizationId, orderId, technicalSheetIngredientId: ing.id, productId: ing.productId, unitId: ing.unitId, supplierId: ing.product.primarySupplierId, requiredQuantity: required, stockAvailable: available, varianceQuantity: available.sub(required), status, estimatedCost: cost, productNameSnapshot: ing.product.name, unitSymbolSnapshot: ing.unit.symbol, supplierNameSnapshot: ing.product.primarySupplier?.name, details: { source: 'MENUS', sourceMenuOrderId: orderId } } }); } await tx.productionOrder.update({ where: { id: orderId }, data: { estimatedCost } }); }
-  private async nextProductionNumber(tx: any, org: string) { const year = new Date().getFullYear(); const count = await tx.productionOrder.count({ where: { organizationId: org, number: { startsWith: `OP-${year}-` } } }); return `OP-${year}-${String(count + 1).padStart(4, '0')}`; }
-  private history(tx: any, organizationId: string, menuId: string | null, cycleId: string | null, actorUserId: string | null, action: any, summary: string, details?: any) { return tx.menuHistory.create({ data: { organizationId, menuId, cycleId, actorUserId, action, summary, details } }); }
-  private installedApps(org: any) { return [...(org?.stocksInstalledAt ? ['stocks'] : []), ...(org?.rnmPricesInstalledAt ? ['rnm-prices'] : []), ...(org?.hrInstalledAt ? ['hr'] : []), ...(org?.planningInstalledAt ? ['planning'] : []), ...(org?.technicalSheetsInstalledAt ? ['technical-sheets'] : []), ...(org?.productionInstalledAt ? ['production'] : []), ...(org?.menusInstalledAt ? ['menus'] : []), ...(org?.clientsInstalledAt ? ['clients'] : []), ...(org?.haccpInstalledAt ? ['haccp'] : []), ...(org?.purchasingInstalledAt ? ['purchasing'] : []), ...(org?.financeInstalledAt ? ['finance'] : [])]; }
+  private async ensureDiet(org: string, id: string) {
+    const x = await this.prisma.menuDiet.findFirst({
+      where: { id, organizationId: org, isArchived: false },
+    });
+    if (!x) throw new NotFoundException('Régime introuvable');
+    return x;
+  }
+  private async ensureGuestGroup(org: string, id: string) {
+    const x = await this.prisma.menuGuestGroup.findFirst({
+      where: { id, organizationId: org, isArchived: false },
+    });
+    if (!x) throw new NotFoundException('Groupe de convives introuvable');
+    return x;
+  }
+  private async ensureTechnicalSheet(org: string, id: string) {
+    const x = await this.prisma.technicalSheet.findFirst({
+      where: { id, organizationId: org, isArchived: false, status: 'ACTIVE' },
+    });
+    if (!x) throw new NotFoundException('Fiche technique active introuvable');
+    return x;
+  }
+  private async ensureProduct(org: string, id: string) {
+    const x = await this.prisma.product.findFirst({
+      where: { id, organizationId: org, isArchived: false },
+    });
+    if (!x) throw new NotFoundException('Produit Stocks actif introuvable');
+    return x;
+  }
+  private async ensureMenuCategory(org: string, id: string) {
+    const x = await this.prisma.menuCategory.findFirst({
+      where: { id, organizationId: org, isArchived: false },
+    });
+    if (!x) throw new NotFoundException('Rubrique Menu introuvable');
+    return x;
+  }
+  private async ensureMenuSettings(organizationId: string) {
+    return this.prisma.menuSettings.upsert({
+      where: { organizationId },
+      update: {},
+      create: {
+        organizationId,
+        usageProfile: MenuUsageProfile.RESTAURANT_CAFE,
+        ...MENU_PROFILE_DEFAULTS.RESTAURANT_CAFE,
+      },
+    });
+  }
+  private menuItemData(organizationId: string, menuId: string, item: any) {
+    return {
+      organizationId,
+      menuId,
+      section: item.section ?? 'OTHER',
+      menuCategoryId: item.menuCategoryId || null,
+      technicalSheetId: item.technicalSheetId || null,
+      productId: item.productId || null,
+      dietId: item.dietId || null,
+      position: item.position ?? 0,
+      portionsOverride:
+        item.portionsOverride == null ? null : new Prisma.Decimal(item.portionsOverride),
+      servingQuantity: new Prisma.Decimal(item.servingQuantity ?? 1),
+      targetReadyQuantity:
+        item.targetReadyQuantity == null ? null : new Prisma.Decimal(item.targetReadyQuantity),
+      lowStockThreshold:
+        item.lowStockThreshold == null ? null : new Prisma.Decimal(item.lowStockThreshold),
+      availabilityEnabled: item.availabilityEnabled ?? true,
+      notes: item.notes,
+    };
+  }
+  private async recalculateProductionOrderTx(tx: any, organizationId: string, orderId: string) {
+    const order = await tx.productionOrder.findFirst({
+      where: { id: orderId, organizationId },
+      include: {
+        technicalSheet: {
+          include: {
+            ingredients: {
+              include: {
+                product: { include: { unit: true, primarySupplier: true, stocks: true } },
+                unit: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!order) return;
+    await tx.productionMaterialRequirement.deleteMany({ where: { orderId } });
+    const factor = new Prisma.Decimal(order.plannedPortions).div(
+      order.technicalSheet.referencePortions || 1,
+    );
+    let estimatedCost = new Prisma.Decimal(0);
+    for (const ing of order.technicalSheet.ingredients) {
+      const required = new Prisma.Decimal(ing.quantity).mul(factor);
+      const available = ing.product.stocks.reduce(
+        (s, st) => s.add(st.quantity),
+        new Prisma.Decimal(0),
+      );
+      const status = ing.product.isArchived
+        ? ProductionMaterialStatus.PRODUCT_ARCHIVED
+        : available.isZero()
+          ? ProductionMaterialStatus.STOCK_UNKNOWN
+          : available.lt(required)
+            ? ProductionMaterialStatus.INSUFFICIENT_STOCK
+            : available.sub(required).lte(ing.product.minimumStock)
+              ? ProductionMaterialStatus.POTENTIAL_SHORTAGE
+              : ProductionMaterialStatus.OK;
+      const cost = ing.cost == null ? null : new Prisma.Decimal(ing.cost).mul(factor);
+      if (cost) estimatedCost = estimatedCost.add(cost);
+      await tx.productionMaterialRequirement.create({
+        data: {
+          organizationId,
+          orderId,
+          technicalSheetIngredientId: ing.id,
+          productId: ing.productId,
+          unitId: ing.unitId,
+          supplierId: ing.product.primarySupplierId,
+          requiredQuantity: required,
+          stockAvailable: available,
+          varianceQuantity: available.sub(required),
+          status,
+          estimatedCost: cost,
+          productNameSnapshot: ing.product.name,
+          unitSymbolSnapshot: ing.unit.symbol,
+          supplierNameSnapshot: ing.product.primarySupplier?.name,
+          details: { source: 'MENUS', sourceMenuOrderId: orderId },
+        },
+      });
+    }
+    await tx.productionOrder.update({ where: { id: orderId }, data: { estimatedCost } });
+  }
+  private async nextProductionNumber(tx: any, org: string) {
+    const year = new Date().getFullYear();
+    const count = await tx.productionOrder.count({
+      where: { organizationId: org, number: { startsWith: `OP-${year}-` } },
+    });
+    return `OP-${year}-${String(count + 1).padStart(4, '0')}`;
+  }
+  private history(
+    tx: any,
+    organizationId: string,
+    menuId: string | null,
+    cycleId: string | null,
+    actorUserId: string | null,
+    action: any,
+    summary: string,
+    details?: any,
+  ) {
+    return tx.menuHistory.create({
+      data: { organizationId, menuId, cycleId, actorUserId, action, summary, details },
+    });
+  }
+  private installedApps(org: any) {
+    return [
+      ...(org?.stocksInstalledAt ? ['stocks'] : []),
+      ...(org?.rnmPricesInstalledAt ? ['rnm-prices'] : []),
+      ...(org?.hrInstalledAt ? ['hr'] : []),
+      ...(org?.planningInstalledAt ? ['planning'] : []),
+      ...(org?.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
+      ...(org?.productionInstalledAt ? ['production'] : []),
+      ...(org?.menusInstalledAt ? ['menus'] : []),
+      ...(org?.clientsInstalledAt ? ['clients'] : []),
+      ...(org?.haccpInstalledAt ? ['haccp'] : []),
+      ...(org?.purchasingInstalledAt ? ['purchasing'] : []),
+      ...(org?.financeInstalledAt ? ['finance'] : []),
+    ];
+  }
 }

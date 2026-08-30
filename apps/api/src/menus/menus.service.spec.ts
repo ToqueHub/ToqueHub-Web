@@ -1,20 +1,161 @@
 import { Prisma } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
-import { menuProductQuantityGrams } from './menu-composition';
+import { calculateSheetComposition, menuProductQuantityGrams } from './menu-composition';
 import { MenusService } from './menus.service';
 
 describe('Menu nutrition quantities', () => {
   it('converts mass and documented unit weights without guessing volume density', () => {
+    expect(menuProductQuantityGrams({ unit: { symbol: 'kg', type: 'MASS' } }, 0.25)).toBe(250);
     expect(
-      menuProductQuantityGrams({ unit: { symbol: 'kg', type: 'MASS' } }, 0.25),
-    ).toBe(250);
-    expect(
-      menuProductQuantityGrams(
-        { unit: { symbol: 'pc', type: 'COUNT' }, unitWeightGrams: 42 },
-        3,
-      ),
+      menuProductQuantityGrams({ unit: { symbol: 'pc', type: 'COUNT' }, unitWeightGrams: 42 }, 3),
     ).toBe(126);
     expect(menuProductQuantityGrams({ unit: { symbol: 'L', type: 'VOLUME' } }, 1)).toBeNull();
+  });
+
+  it('expands a legacy portion-yield sub-recipe used by mass instead of its output product', () => {
+    const gram = { id: 'unit-g', symbol: 'g', type: 'MASS' };
+    const piece = { id: 'unit-piece', symbol: 'pc', type: 'COUNT' };
+    const rawProduct = {
+      id: 'product-blueberry',
+      name: 'Myrtille',
+      unitId: gram.id,
+      unit: gram,
+      allergensPresent: ['Aucun allergène de la sous-recette'],
+      possibleTraces: [],
+      energyKj: 400,
+      energyKcal: 100,
+      fatGrams: 1,
+      saturatedFatGrams: 0,
+      carbohydratesGrams: 20,
+      sugarsGrams: 15,
+      fiberGrams: 4,
+      proteinGrams: 1,
+      saltGrams: 0,
+    };
+    const outputProduct = {
+      id: 'product-blueberry-sauce',
+      name: 'Sauce myrtille',
+      unitId: piece.id,
+      unit: piece,
+      energyKcal: 9_999,
+    };
+    const sheetsById = new Map([
+      [
+        'sheet-dessert',
+        {
+          id: 'sheet-dessert',
+          yieldMode: 'PORTIONS',
+          referencePortions: 10,
+          ingredients: [
+            {
+              quantity: 500,
+              unitId: gram.id,
+              unit: gram,
+              sourceTechnicalSheetId: 'sheet-blueberry-sauce',
+              product: outputProduct,
+            },
+          ],
+        },
+      ],
+      [
+        'sheet-blueberry-sauce',
+        {
+          id: 'sheet-blueberry-sauce',
+          name: 'Sauce myrtille',
+          yieldMode: 'PORTIONS',
+          totalMassGrams: 1_000,
+          referencePortions: 1,
+          yieldUnitId: piece.id,
+          ingredients: [
+            {
+              quantity: 400,
+              unitId: gram.id,
+              sourceTechnicalSheetId: null,
+              product: rawProduct,
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const result = calculateSheetComposition({
+      sheetsById,
+      convert: (quantity, fromUnitId, toUnitId) => (fromUnitId === toUnitId ? quantity : null),
+      sheetId: 'sheet-dessert',
+      requiredOutput: 10,
+      referencePortions: 10,
+    });
+
+    expect(result.nutrition.complete).toBe(true);
+    expect(result.nutrition.total.energyKcal).toBe(200);
+    expect(result.nutrition.perPortion.energyKcal).toBe(20);
+    expect(result.nutrition.total.energyKcal).not.toBe(9_999);
+    expect(result.allergens.present).toEqual([
+      { name: 'Aucun allergène de la sous-recette', products: ['Myrtille'] },
+    ]);
+  });
+
+  it('keeps a partial subtotal and distinguishes an unknown value from a confirmed zero', () => {
+    const gram = { id: 'unit-g', symbol: 'g', type: 'MASS' };
+    const nutrition = (value: number) => ({
+      energyKj: value,
+      energyKcal: value,
+      fatGrams: value,
+      saturatedFatGrams: value,
+      carbohydratesGrams: value,
+      sugarsGrams: value,
+      fiberGrams: value,
+      proteinGrams: value,
+      saltGrams: value,
+    });
+    const knownProduct = {
+      id: 'product-known',
+      name: 'Produit complet',
+      unitId: gram.id,
+      unit: gram,
+      ...nutrition(10),
+    };
+    const partialProduct = {
+      id: 'product-partial',
+      name: 'Produit sans fibres renseignées',
+      unitId: gram.id,
+      unit: gram,
+      ...nutrition(20),
+      fiberGrams: null as number | null,
+    };
+    const sheet = {
+      id: 'sheet-partial',
+      yieldMode: 'PORTIONS',
+      referencePortions: 1,
+      ingredients: [
+        { quantity: 100, unitId: gram.id, product: knownProduct },
+        { quantity: 100, unitId: gram.id, product: partialProduct },
+      ],
+    };
+    const calculate = () =>
+      calculateSheetComposition({
+        sheetsById: new Map([[sheet.id, sheet]]),
+        convert: (quantity, fromUnitId, toUnitId) => (fromUnitId === toUnitId ? quantity : null),
+        sheetId: sheet.id,
+        requiredOutput: 1,
+        referencePortions: 1,
+      });
+
+    const partial = calculate();
+    expect(partial.nutrition.total.energyKcal).toBe(30);
+    expect(partial.nutrition.coverage.energyKcal).toBe(100);
+    expect(partial.nutrition.total.fiberGrams).toBe(10);
+    expect(partial.nutrition.coverage.fiberGrams).toBe(50);
+    expect(partial.nutrition.coveragePercent).toBe(94.4);
+    expect(partial.nutrition.missingProductsByField.fiberGrams).toEqual([partialProduct.name]);
+    expect(partial.nutrition.complete).toBe(false);
+
+    partialProduct.fiberGrams = 0;
+    const confirmedZero = calculate();
+    expect(confirmedZero.nutrition.total.fiberGrams).toBe(10);
+    expect(confirmedZero.nutrition.coverage.fiberGrams).toBe(100);
+    expect(confirmedZero.nutrition.missingProducts).toEqual([]);
+    expect(confirmedZero.nutrition.complete).toBe(true);
   });
 });
 
@@ -133,18 +274,16 @@ describe('MenusService card availability', () => {
       },
       stockReservation: { groupBy: jest.fn().mockResolvedValue([]) },
       productionOrder: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              outputProductId: rootProduct.id,
-              plannedPortions: 2,
-              proposedQuantity: 0,
-              validatedQuantity: 0,
-              realizedPortions: 0,
-              status: 'PLANNED',
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            outputProductId: rootProduct.id,
+            plannedPortions: 2,
+            proposedQuantity: 0,
+            validatedQuantity: 0,
+            realizedPortions: 0,
+            status: 'PLANNED',
+          },
+        ]),
       },
       unitConversion: { findMany: jest.fn().mockResolvedValue([]) },
     };

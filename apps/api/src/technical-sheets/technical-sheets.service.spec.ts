@@ -106,15 +106,13 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     },
   );
 
-  it('keeps unmatched ingredients as new Stocks products instead of dropping them', async () => {
+  it('keeps unmatched ingredients pending review instead of silently creating products', async () => {
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
       product: { findMany: jest.fn().mockResolvedValue([]) },
       unit: {
@@ -123,14 +121,13 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
       technicalSheetCategory: {
         findMany: jest.fn().mockResolvedValue([{ id: 'cat-1', name: 'Pâtisserie' }]),
       },
+      technicalSheet: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const mistral = {
-      ocrMarkdown: jest
-        .fn()
-        .mockResolvedValue({
-          markdown: kesproMarkdown('Glace yaourt', 1, ['| Stab2000 | 2 g | - | 0 % |']),
-          pageCount: 2,
-        }),
+      ocrMarkdown: jest.fn().mockResolvedValue({
+        markdown: kesproMarkdown('Glace yaourt', 1, ['| Stab2000 | 2 g | - | 0 % |']),
+        pageCount: 2,
+      }),
       chatJson: jest.fn().mockResolvedValue({ ...baseImport, name: 'Glace yaourt' }),
     };
     const result = await new TechnicalSheetsService(prisma as any, mistral as any).importRecipePdf(
@@ -144,13 +141,14 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     );
 
     expect(result.matchedIngredientsCount).toBe(0);
-    expect(result.newProductsCount).toBe(1);
+    expect(result.newProductsCount).toBe(0);
+    expect(result.unresolvedIngredientsCount).toBe(1);
     expect(result.skippedIngredientsCount).toBe(0);
     expect(result.payload.stockPolicy).toBe('MAKE_TO_STOCK');
     expect(result.payload.ingredients).toEqual([
       expect.objectContaining({
         productName: 'Stab2000',
-        createProduct: true,
+        createProduct: false,
         quantity: 2,
         unitId: 'unit-g',
       }),
@@ -164,6 +162,96 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
         }),
       }),
     );
+  });
+
+  it('imports an active fabrication as a sub-recipe instead of a Stocks product', async () => {
+    const unit = { id: 'unit-g', name: 'Gramme', symbol: 'g' };
+    const outputProduct = {
+      id: 'product-blueberry-sauce',
+      name: 'Mustikkakastike',
+      unitId: unit.id,
+      unit,
+    };
+    const sourceTechnicalSheet = {
+      id: 'sheet-blueberry-sauce',
+      name: 'Mustikkakastike 1 kg (valmis kastike)',
+      mode: 'PRODUCTION',
+      status: 'ACTIVE',
+      outputProductId: outputProduct.id,
+      outputProduct,
+      yieldUnitId: unit.id,
+      yieldUnit: unit,
+    };
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'placeholder-product',
+            name: 'Mustikkakastike (ingrédient Kespro)',
+            unitId: unit.id,
+            unit,
+          },
+        ]),
+      },
+      unit: { findMany: jest.fn().mockResolvedValue([unit]) },
+      technicalSheetCategory: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'cat-1', name: 'Pâtisserie' }]),
+      },
+      technicalSheet: { findMany: jest.fn().mockResolvedValue([sourceTechnicalSheet]) },
+    };
+    const mistral = {
+      ocrMarkdown: jest.fn().mockResolvedValue({
+        markdown: kesproMarkdown('Dessert myrtille', 10, [
+          '| Mustikkakastike (ingrédient Kespro) | 500 g | - | 0 % |',
+        ]),
+        pageCount: 1,
+      }),
+      chatJson: jest.fn().mockResolvedValue({ ...baseImport, name: 'Dessert myrtille' }),
+    };
+
+    const result = await new TechnicalSheetsService(prisma as any, mistral as any).importRecipePdf(
+      'org-1',
+      {
+        originalname: 'Dessert myrtille - Kespro.com.pdf',
+        mimetype: 'application/pdf',
+        size: 3,
+        buffer: Buffer.from('pdf'),
+      },
+    );
+
+    expect(result.matchedIngredientsCount).toBe(0);
+    expect(result.matchedSubRecipesCount).toBe(1);
+    expect(result.newProductsCount).toBe(0);
+    expect(result.payload.mode).toBe('ASSEMBLY');
+    expect(result.payload.ingredients).toEqual([
+      expect.objectContaining({
+        sourceTechnicalSheetId: sourceTechnicalSheet.id,
+        productId: outputProduct.id,
+        quantity: 500,
+        unitId: unit.id,
+      }),
+    ]);
+    expect(result.payload.ingredients[0]).not.toHaveProperty('createProduct');
+    expect(prisma.technicalSheet.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ mode: 'PRODUCTION' }),
+      }),
+    );
+  });
+
+  it('does not auto-link an ambiguous sub-recipe name', () => {
+    const matched = (service as any).matchSourceTechnicalSheet('Ganache', [
+      { id: 'sheet-1', name: 'Ganache' },
+      { id: 'sheet-2', name: 'Ganache (ingrédient Kespro)' },
+    ]);
+
+    expect(matched).toBeNull();
   });
 
   it('does not match a short ingredient name to a contaminated longer product name', () => {
@@ -547,6 +635,37 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     );
   });
 
+  it('uses the documented mass when a legacy sub-recipe yield is still expressed in portions', async () => {
+    const gram = { id: 'unit-g', symbol: 'g', type: UnitType.MASS };
+    const source = {
+      id: 'sheet-cream',
+      yieldMode: TechnicalSheetYieldMode.PORTIONS,
+      yieldUnitId: 'unit-piece',
+      referencePortions: new Prisma.Decimal(1),
+      totalMassGrams: new Prisma.Decimal(2_000),
+      totalCost: new Prisma.Decimal(20),
+    };
+    const line = {
+      sourceTechnicalSheetId: source.id,
+      sourceTechnicalSheet: source,
+      product: { isArchived: false },
+      unitId: gram.id,
+      unit: gram,
+      quantity: new Prisma.Decimal(200),
+    };
+    const tx = {
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue(source) },
+      unitConversion: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    const mass = await (service as any).ingredientMassGramsTx(tx, 'org-1', line, gram.id);
+    const calculated = await (service as any).calculateLine(tx, 'org-1', line);
+
+    expect(Number(mass)).toBe(200);
+    expect(calculated.isCalculable).toBe(true);
+    expect(Number(calculated.cost)).toBe(2);
+  });
+
   it('rejects sub-recipes in a fabrication sheet', async () => {
     const tx = {
       technicalSheet: { findFirst: jest.fn().mockResolvedValue({ mode: 'PRODUCTION' }) },
@@ -669,12 +788,10 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
   it('limits a recipe OCR batch to ten files', async () => {
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
     };
     const importService = new TechnicalSheetsService(prisma as any, {} as any);
@@ -935,14 +1052,12 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     };
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            rnmPricesInstalledAt: null,
-            hrInstalledAt: null,
-            planningInstalledAt: null,
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          rnmPricesInstalledAt: null,
+          hrInstalledAt: null,
+          planningInstalledAt: null,
+        }),
       },
       $transaction: jest.fn(async (callback: any) => callback(tx)),
     };
@@ -958,12 +1073,10 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
   it('derives the technical-sheets onboarding step from real categories and recipes', async () => {
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
       technicalSheetCategory: { findMany: jest.fn().mockResolvedValue([{ name: 'Pâtisserie' }]) },
       technicalSheet: { count: jest.fn().mockResolvedValue(0) },
@@ -997,12 +1110,10 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     };
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
       technicalSheetCategory: {
         findMany: jest.fn().mockResolvedValue([{ name: 'Pâtisserie' }, { name: 'Desserts' }]),
@@ -1053,21 +1164,17 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     };
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
       technicalSheet: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: archivedRecipe.id,
-            name: archivedRecipe.name,
-            isArchived: true,
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: archivedRecipe.id,
+          name: archivedRecipe.name,
+          isArchived: true,
+        }),
       },
       technicalSheetCategory: {
         findFirst: jest.fn().mockResolvedValue({ id: 'category-desserts', isArchived: false }),
@@ -1130,12 +1237,10 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
   it('rejects a duplicate active recipe with a clear business error', async () => {
     const prisma = {
       organization: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stocksInstalledAt: new Date(),
-            technicalSheetsInstalledAt: new Date(),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
       },
       technicalSheet: {
         findFirst: jest
@@ -1264,15 +1369,11 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
         }),
       },
       technicalSheetStep: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({ order: 1, title: 'Tourage' }),
+        findFirst: jest.fn().mockResolvedValue({ order: 1, title: 'Tourage' }),
       },
     };
 
-    await expect(
-      (service as any).assertRecipeCanBeActiveTx(tx, 'sheet-1'),
-    ).rejects.toThrow(
+    await expect((service as any).assertRecipeCanBeActiveTx(tx, 'sheet-1')).rejects.toThrow(
       'Indiquez une durée entière supérieure à 0 minute pour l’étape « Tourage ».',
     );
   });

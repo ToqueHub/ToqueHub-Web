@@ -100,7 +100,11 @@ const NUTRITION_LABELS: Record<
   saltGrams: { fr: 'Sel', en: 'Salt', unit: 'g' },
 };
 const ALLERGEN_TRANSLATIONS = [
-  { patterns: ['gluteenia sisaltavat viljat', 'cereales contenant du gluten', 'gluten cereals'], fr: 'Céréales contenant du gluten', en: 'Cereals containing gluten' },
+  {
+    patterns: ['gluteenia sisaltavat viljat', 'cereales contenant du gluten', 'gluten cereals'],
+    fr: 'Céréales contenant du gluten',
+    en: 'Cereals containing gluten',
+  },
   { patterns: ['ayriaiset', 'crustaces', 'crustaceans'], fr: 'Crustacés', en: 'Crustaceans' },
   { patterns: ['kananmuna', 'oeuf', 'eggs'], fr: 'Œufs', en: 'Eggs' },
   { patterns: ['kala', 'poisson', 'fish'], fr: 'Poisson', en: 'Fish' },
@@ -111,7 +115,11 @@ const ALLERGEN_TRANSLATIONS = [
   { patterns: ['selleri', 'celeri', 'celery'], fr: 'Céleri', en: 'Celery' },
   { patterns: ['sinappi', 'moutarde', 'mustard'], fr: 'Moutarde', en: 'Mustard' },
   { patterns: ['seesaminsiemen', 'sesame'], fr: 'Sésame', en: 'Sesame' },
-  { patterns: ['rikkidioksidi', 'sulfiit', 'sulfite', 'sulphite'], fr: 'Anhydride sulfureux et sulfites', en: 'Sulphur dioxide and sulphites' },
+  {
+    patterns: ['rikkidioksidi', 'sulfiit', 'sulfite', 'sulphite'],
+    fr: 'Anhydride sulfureux et sulfites',
+    en: 'Sulphur dioxide and sulphites',
+  },
   { patterns: ['lupiini', 'lupin'], fr: 'Lupin', en: 'Lupin' },
   { patterns: ['nilviaiset', 'mollusques', 'molluscs'], fr: 'Mollusques', en: 'Molluscs' },
 ];
@@ -356,11 +364,7 @@ export class MenuExportsService {
     };
   }
 
-  private async exportMenu(
-    organizationId: string,
-    id: string,
-    audience: MenuExportAudience,
-  ) {
+  private async exportMenu(organizationId: string, id: string, audience: MenuExportAudience) {
     const menu = await this.prisma.menu.findFirst({
       where: { id, organizationId },
       include: {
@@ -541,11 +545,7 @@ export class MenuExportsService {
     return Buffer.from(await pdf.save());
   }
 
-  private async publicToqueHubPdf(
-    menu: any,
-    organization: any,
-    language: ExportLanguage = 'fr',
-  ) {
+  private async publicToqueHubPdf(menu: any, organization: any, language: ExportLanguage = 'fr') {
     const reference = this.menuReference(menu, language);
     const documentTitle = this.text(language, 'NOTRE MENU', 'OUR MENU');
     return this.pdfKitBuffer(
@@ -745,14 +745,7 @@ export class MenuExportsService {
         );
         y += 68;
 
-        y = this.ensureRestaurantDocumentSpace(
-          doc,
-          y,
-          124,
-          organization,
-          documentTitle,
-          reference,
-        );
+        y = this.ensureRestaurantDocumentSpace(doc, y, 124, organization, documentTitle, reference);
         this.drawRestaurantSectionTitle(
           doc,
           this.text(language, 'ORGANISATION DU SERVICE', 'SERVICE ORGANIZATION'),
@@ -906,8 +899,8 @@ export class MenuExportsService {
                 54,
                 y + 21,
                 {
-                width: 330,
-                height: 12,
+                  width: 330,
+                  height: 12,
                 },
               );
           } else {
@@ -1050,14 +1043,7 @@ export class MenuExportsService {
               (missingNutrition ? 23 : 0) +
               (suppliers.length ? 22 : 8);
 
-            y = this.ensureSpace(
-              doc,
-              organization,
-              menu.name,
-              documentTitle,
-              y,
-              cardHeight + 12,
-            );
+            y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, cardHeight + 12);
             doc.roundedRect(48, y, 499, cardHeight, 10).fillAndStroke('#ffffff', '#dbe4ee');
             let cursor = y + 13;
             doc
@@ -1079,7 +1065,11 @@ export class MenuExportsService {
               .font('Helvetica-Bold')
               .fontSize(7.5)
               .text(
-                this.text(language, 'ALLERGÈNES PRÉSENTS — 1 PORTION', 'ALLERGENS PRESENT — 1 PORTION'),
+                this.text(
+                  language,
+                  'ALLERGÈNES PRÉSENTS — 1 PORTION',
+                  'ALLERGENS PRESENT — 1 PORTION',
+                ),
                 74,
                 cursor + 7,
                 { width: 447 },
@@ -1130,6 +1120,8 @@ export class MenuExportsService {
               const cellY = cursor + row * 32;
               const label = NUTRITION_LABELS[field];
               const value = nutritionValues[field];
+              const coverage = composition.nutrition.coverage[field];
+              const partial = value != null && coverage < 100;
               doc.roundedRect(x, cellY, cellWidth, 27, 5).fill('#ecfdf5');
               doc
                 .fillColor('#047857')
@@ -1142,11 +1134,11 @@ export class MenuExportsService {
               doc
                 .fillColor(value == null ? '#94a3b8' : '#0f172a')
                 .font('Helvetica-Bold')
-                .fontSize(value == null ? 6.8 : 8.5)
+                .fontSize(value == null || partial ? 6.8 : 8.5)
                 .text(
                   value == null
                     ? this.text(language, 'Non calculable', 'Not calculable')
-                    : `${this.number(value, language)} ${label.unit}`,
+                    : `${partial ? '≈ ' : ''}${this.number(value, language)} ${label.unit}${partial ? ` · ${coverage} %` : ''}`,
                   x + 7,
                   cellY + 14,
                   { width: cellWidth - 14, height: 10 },
@@ -1429,14 +1421,12 @@ export class MenuExportsService {
       const categoryName = item.menuCategory?.name;
       const name = categoryName
         ? this.categoryLabel(categoryName, language)
-        : (language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
-          this.text(language, 'Autres', 'Other');
+        : ((language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
+          this.text(language, 'Autres', 'Other'));
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name)!.push({
         name:
-          item.technicalSheet?.name ??
-          item.product?.name ??
-          this.text(language, 'Article', 'Item'),
+          item.technicalSheet?.name ?? item.product?.name ?? this.text(language, 'Article', 'Item'),
         description: item.notes ?? item.technicalSheet?.description ?? null,
         raw: item,
       });
@@ -1446,12 +1436,10 @@ export class MenuExportsService {
 
   private itemAllergens(item: any) {
     const values = item.product
-      ? item.product.allergensPresent ?? []
+      ? (item.product.allergensPresent ?? [])
       : (item.technicalSheet?.ingredients ?? []).flatMap((ingredient: any) => [
           ...(ingredient.product?.allergensPresent ?? []),
-          ...(ingredient.allergens ?? [])
-            .map((entry: any) => entry.allergen?.name)
-            .filter(Boolean),
+          ...(ingredient.allergens ?? []).map((entry: any) => entry.allergen?.name).filter(Boolean),
         ]);
     return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
   }
@@ -1500,8 +1488,7 @@ export class MenuExportsService {
     context = this.menuCompositionContext(menu, item.technicalSheet),
   ): MenuCompositionResult {
     const servingQuantity = Math.max(Number(item.servingQuantity ?? 1), 0.001);
-    if (item.product)
-      return calculateProductComposition(item.product, servingQuantity, 1);
+    if (item.product) return calculateProductComposition(item.product, servingQuantity, 1);
 
     const sheetId = item.technicalSheetId ?? item.technicalSheet?.id;
     if (sheetId) {
