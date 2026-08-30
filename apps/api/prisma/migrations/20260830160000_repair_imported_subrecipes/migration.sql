@@ -82,6 +82,7 @@ FROM "_repair_imported_subrecipes" repair
 WHERE ingredient.id = repair."ingredientId";
 
 INSERT INTO technical_sheet_history (
+  id,
   "organizationId",
   "technicalSheetId",
   action,
@@ -89,6 +90,7 @@ INSERT INTO technical_sheet_history (
   details
 )
 SELECT
+  gen_random_uuid(),
   parent."organizationId",
   parent.id,
   'INGREDIENTS_UPDATED',
