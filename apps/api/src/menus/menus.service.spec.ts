@@ -1,6 +1,22 @@
 import { Prisma } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
+import { menuProductQuantityGrams } from './menu-composition';
 import { MenusService } from './menus.service';
+
+describe('Menu nutrition quantities', () => {
+  it('converts mass and documented unit weights without guessing volume density', () => {
+    expect(
+      menuProductQuantityGrams({ unit: { symbol: 'kg', type: 'MASS' } }, 0.25),
+    ).toBe(250);
+    expect(
+      menuProductQuantityGrams(
+        { unit: { symbol: 'pc', type: 'COUNT' }, unitWeightGrams: 42 },
+        3,
+      ),
+    ).toBe(126);
+    expect(menuProductQuantityGrams({ unit: { symbol: 'L', type: 'VOLUME' } }, 1)).toBeNull();
+  });
+});
 
 describe('MenusService card availability', () => {
   const installedOrganization = {
@@ -11,7 +27,7 @@ describe('MenusService card availability', () => {
   };
 
   it('combines finished stock, work in progress and missing sub-recipes', async () => {
-    const unit = { id: 'unit-piece', symbol: 'pc' };
+    const unit = { id: 'unit-piece', symbol: 'pc', type: 'COUNT' };
     const rootProduct = { id: 'product-snicker', name: 'Snicker', unitId: unit.id, unit };
     const childProduct = { id: 'product-ganache', name: 'Ganache', unitId: unit.id, unit };
     const rawProduct = {
@@ -20,6 +36,18 @@ describe('MenusService card availability', () => {
       unitId: unit.id,
       unit,
       averagePrice: 2,
+      unitWeightGrams: 50,
+      allergensPresent: ['Lait'],
+      possibleTraces: ['Fruits à coque', 'Lait'],
+      energyKj: 1_000,
+      energyKcal: 240,
+      fatGrams: 12,
+      saturatedFatGrams: 7,
+      carbohydratesGrams: 30,
+      sugarsGrams: 22,
+      fiberGrams: 3,
+      proteinGrams: 8,
+      saltGrams: 0.4,
     };
     const rootSheet = {
       id: 'sheet-snicker',
@@ -155,6 +183,20 @@ describe('MenusService card availability', () => {
         name: 'Chocolat',
         unitPrice: 2,
         estimatedCost: 3.2,
+      }),
+    );
+    expect(report.items[0].allergens).toEqual({
+      present: [{ name: 'Lait', products: ['Chocolat'] }],
+      traces: [{ name: 'Fruits à coque', products: ['Chocolat'] }],
+      unresolvedIngredients: [],
+    });
+    expect(report.items[0].nutrition).toEqual(
+      expect.objectContaining({
+        referencePortions: 10,
+        complete: true,
+        total: expect.objectContaining({ energyKj: 1_000, energyKcal: 240, fatGrams: 12 }),
+        perPortion: expect.objectContaining({ energyKj: 100, energyKcal: 24, fatGrams: 1.2 }),
+        missingProducts: [],
       }),
     );
   });

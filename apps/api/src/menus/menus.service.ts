@@ -6,6 +6,10 @@ import { ProductionExecutionService } from '../production/production-execution.s
 import { ProductionPlanningService } from '../production/production-planning.service';
 import { TechnicalSheetsService } from '../technical-sheets/technical-sheets.service';
 import PDFDocument from 'pdfkit';
+import {
+  calculateProductComposition,
+  calculateSheetComposition,
+} from './menu-composition';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second'];
 const MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
@@ -484,6 +488,16 @@ export class MenusService {
       return reverse ? quantity / reverse : null;
     };
     const productBalance = (productId?: string | null) => Math.max((stockByProduct.get(productId ?? '') ?? 0) - (reservedByProduct.get(productId ?? '') ?? 0), 0);
+    const productComposition = (product: any, quantity: number, portions: number) =>
+      calculateProductComposition(product, quantity, portions);
+    const sheetComposition = (sheetId: string, quantity: number, portions: number) =>
+      calculateSheetComposition({
+        sheetsById,
+        convert,
+        sheetId,
+        requiredOutput: quantity,
+        referencePortions: portions,
+      });
 
     const buildComponents = (sheetId: string, requiredOutput: number, visited: string[] = []): any[] => {
       const sheet = sheetsById.get(sheetId);
@@ -617,6 +631,7 @@ export class MenusService {
             status: 'NOT_CONFIGURED',
             message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit Stocks indisponible',
             components: [],
+            ...productComposition(product, targetPortions * servingQuantity, targetPortions),
           };
         }
         const stockQuantity = productBalance(product.id);
@@ -644,6 +659,7 @@ export class MenusService {
           costPerPortion: unitPrice * servingQuantity,
           status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
           message: missingQuantity > 0 ? `Stock insuffisant : ${missingQuantity.toFixed(3)} ${product.unit?.symbol ?? ''} à approvisionner` : undefined,
+          ...productComposition(product, targetQuantity, targetPortions),
           components: [{
             kind: 'PRODUCT',
             productId: product.id,
@@ -687,6 +703,13 @@ export class MenusService {
           costPerPortion: Number(sheet?.costPerPortion ?? 0),
           status: 'NOT_CONFIGURED',
           message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit fabriqué non configuré dans la fiche technique',
+          ...sheetComposition(
+            sheet?.id ?? item.technicalSheetId,
+            targetPortions > 0
+              ? targetPortions * recipeServingQuantity
+              : Math.max(Number(sheet?.referencePortions ?? 1), 0.001),
+            targetPortions,
+          ),
           components,
         };
       }
@@ -728,6 +751,7 @@ export class MenusService {
         recipeCost: Number(sheet.totalCost ?? 0),
         costPerPortion: Number(sheet.costPerPortion ?? 0),
         status,
+        ...sheetComposition(sheet.id, targetOutput, targetPortions),
         components,
       };
     });

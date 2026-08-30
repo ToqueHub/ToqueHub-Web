@@ -3350,7 +3350,31 @@ export interface MenuAvailabilityItem {
   costPerPortion?: number | null;
   status: 'READY' | 'LOW_STOCK' | 'TO_PRODUCE' | 'COMPONENT_MISSING' | 'BLOCKED' | 'NOT_CONFIGURED';
   message?: string;
+  allergens: {
+    present: Array<{ name: string; products: string[] }>;
+    traces: Array<{ name: string; products: string[] }>;
+    unresolvedIngredients: string[];
+  };
+  nutrition: {
+    referencePortions: number;
+    total: MenuNutritionValues;
+    perPortion: MenuNutritionValues;
+    complete: boolean;
+    missingProducts: string[];
+  };
   components: MenuAvailabilityComponent[];
+}
+
+export interface MenuNutritionValues {
+  energyKj: number | null;
+  energyKcal: number | null;
+  fatGrams: number | null;
+  saturatedFatGrams: number | null;
+  carbohydratesGrams: number | null;
+  sugarsGrams: number | null;
+  fiberGrams: number | null;
+  proteinGrams: number | null;
+  saltGrams: number | null;
 }
 
 export interface MenuAvailabilityReport {

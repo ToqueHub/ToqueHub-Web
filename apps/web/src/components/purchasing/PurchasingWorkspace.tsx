@@ -306,7 +306,6 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
         <PurchasingDraftsBar
           bootstrap={bootstrap!}
           drafts={drafts}
-          loading={draftsLoading}
           token={token}
           flash={flash}
           onChanged={() => void refresh()}
@@ -433,14 +432,12 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
 function PurchasingDraftsBar({
   bootstrap,
   drafts,
-  loading,
   token,
   flash,
   onChanged,
 }: {
   bootstrap: PurchasingBootstrap;
   drafts: PurchaseOrder[];
-  loading: boolean;
   token: string;
   flash: (kind: 'success' | 'error', message: string) => void;
   onChanged: () => void;
@@ -491,6 +488,8 @@ function PurchasingDraftsBar({
     onChanged();
   };
 
+  if (!visibleDrafts.length) return null;
+
   return (
     <section className="purchasing-drafts" aria-labelledby="purchasing-drafts-title">
       <div className="purchasing-drafts-heading">
@@ -504,9 +503,8 @@ function PurchasingDraftsBar({
           <p>Une commande en cours est conservée automatiquement pour chaque fournisseur.</p>
         </div>
       </div>
-      {visibleDrafts.length ? (
-        <div className="purchasing-drafts-list">
-          {visibleDrafts.map((draft) => (
+      <div className="purchasing-drafts-list">
+        {visibleDrafts.map((draft) => (
             <button
               type="button"
               className="purchasing-draft-card"
@@ -534,13 +532,8 @@ function PurchasingDraftsBar({
               </span>
               <ChevronRight size={18} aria-hidden="true" />
             </button>
-          ))}
-        </div>
-      ) : (
-        <p className="purchasing-drafts-empty">
-          {loading ? 'Chargement des brouillons…' : 'Aucun brouillon en cours.'}
-        </p>
-      )}
+        ))}
+      </div>
       {selectedDraft && (
         <Modal
           isOpen

@@ -3,6 +3,7 @@ import {
   alignFinanceAccountingPeriods,
   allocateMonthlyBudgetPerCalendarDay,
   buildFinanceMonthlyComparisonRanges,
+  resolveHistoricalPayrollRange,
   countMonths,
   computeBudgetTransactionPacing,
   deriveAccountingResults,
@@ -137,13 +138,13 @@ describe('Finance monthly comparison periods', () => {
       },
       {
         id: 'n_1',
-        detail: 'Même mois à date · N-1',
+        detail: 'Même mois à date · N-1 · masse salariale sur le mois complet',
         from: new Date('2025-08-01T00:00:00.000Z'),
         to: new Date('2025-08-15T23:59:59.999Z'),
       },
       {
         id: 'n_2',
-        detail: 'Même mois à date · N-2',
+        detail: 'Même mois à date · N-2 · masse salariale sur le mois complet',
         from: new Date('2024-08-01T00:00:00.000Z'),
         to: new Date('2024-08-15T23:59:59.999Z'),
       },
@@ -154,6 +155,24 @@ describe('Finance monthly comparison periods', () => {
         to: new Date('2026-07-31T23:59:59.999Z'),
       },
     ]);
+  });
+
+  it('uses the complete realized month for prior-year payroll only', () => {
+    const partialFrom = new Date('2025-08-01T00:00:00.000Z');
+    const partialTo = new Date('2025-08-15T23:59:59.999Z');
+
+    expect(resolveHistoricalPayrollRange('monthly', 'n_1', partialFrom, partialTo)).toEqual({
+      from: partialFrom,
+      to: new Date('2025-08-31T23:59:59.999Z'),
+    });
+    expect(resolveHistoricalPayrollRange('monthly', 'current', partialFrom, partialTo)).toEqual({
+      from: partialFrom,
+      to: partialTo,
+    });
+    expect(resolveHistoricalPayrollRange('monthly', 'm_1', partialFrom, partialTo)).toEqual({
+      from: partialFrom,
+      to: partialTo,
+    });
   });
 });
 
