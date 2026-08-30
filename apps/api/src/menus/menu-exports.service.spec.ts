@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { MenuExportFormat } from '@prisma/client';
+import { MenuExportAudience, MenuExportFormat } from '@prisma/client';
 import { PDFDocument } from 'pdf-lib';
 import { MenuExportsService } from './menu-exports.service';
 
@@ -8,6 +8,9 @@ describe('MenuExportsService', () => {
     organization: {
       findUnique: jest.fn().mockResolvedValue({ menusInstalledAt: new Date() }),
     },
+    menu: { findFirst: jest.fn() },
+    technicalSheet: { findMany: jest.fn() },
+    unitConversion: { findMany: jest.fn() },
   };
   const mistral = { ocrMarkdown: jest.fn() };
   const service = new MenuExportsService(prisma as any, mistral as any);
@@ -103,6 +106,115 @@ describe('MenuExportsService', () => {
     expect(composition.nutrition.perPortion.proteinGrams).toBe(1.6);
     expect((service as any).allergenLabel('Maito', 'fr')).toBe('Lait');
     expect((service as any).allergenLabel('Maito', 'en')).toBe('Milk');
+  });
+
+  it('loads only the technical-sheet tree used by the dining-room export', async () => {
+    const grandchild = { id: 'sheet-grandchild', ingredients: [] };
+    const child = {
+      id: 'sheet-child',
+      ingredients: [{ sourceTechnicalSheetId: grandchild.id }],
+    };
+    const root = {
+      id: 'sheet-root',
+      isArchived: false,
+      ingredients: [{ sourceTechnicalSheetId: child.id }],
+    };
+    prisma.menu.findFirst.mockResolvedValue({
+      id: 'menu-1',
+      items: [{ technicalSheetId: root.id, technicalSheet: root }],
+    });
+    prisma.technicalSheet.findMany
+      .mockResolvedValueOnce([child])
+      .mockResolvedValueOnce([grandchild]);
+    prisma.unitConversion.findMany.mockResolvedValue([]);
+
+    const menu = await (service as any).exportMenu(
+      'org-1',
+      'menu-1',
+      MenuExportAudience.DINING_ROOM,
+    );
+
+    expect(prisma.technicalSheet.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.technicalSheet.findMany.mock.calls[0][0].where).toEqual({
+      organizationId: 'org-1',
+      isArchived: false,
+      id: { in: ['sheet-child'] },
+    });
+    expect(prisma.technicalSheet.findMany.mock.calls[1][0].where.id).toEqual({
+      in: ['sheet-grandchild'],
+    });
+    expect(menu.compositionSheets.map((sheet: any) => sheet.id)).toEqual([
+      'sheet-root',
+      'sheet-child',
+      'sheet-grandchild',
+    ]);
+  });
+
+  it('skips composition queries for exports that do not use the dining-room data', async () => {
+    prisma.menu.findFirst.mockResolvedValue({ id: 'menu-1', items: [] });
+
+    const menu = await (service as any).exportMenu(
+      'org-1',
+      'menu-1',
+      MenuExportAudience.KITCHEN,
+    );
+
+    expect(menu).toEqual({ id: 'menu-1', items: [] });
+    expect(prisma.technicalSheet.findMany).not.toHaveBeenCalled();
+    expect(prisma.unitConversion.findMany).not.toHaveBeenCalled();
+  });
+
+  it('skips recipe composition queries for a product-only dining-room menu', async () => {
+    prisma.menu.findFirst.mockResolvedValue({
+      id: 'menu-products',
+      items: [{ productId: 'product-1', product: { id: 'product-1' } }],
+    });
+
+    const menu = await (service as any).exportMenu(
+      'org-1',
+      'menu-products',
+      MenuExportAudience.DINING_ROOM,
+    );
+
+    expect(menu).toMatchObject({ compositionSheets: [], unitConversions: [] });
+    expect(prisma.technicalSheet.findMany).not.toHaveBeenCalled();
+    expect(prisma.unitConversion.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reuses composition and supplier indexes across dining-room items', () => {
+    const gram = { id: 'unit-g', name: 'Gramme', symbol: 'g', type: 'MASS' };
+    const sheet = {
+      id: 'sheet-shared',
+      name: 'Sauce',
+      referencePortions: 1,
+      yieldUnitId: gram.id,
+      ingredients: [
+        {
+          quantity: 100,
+          unitId: gram.id,
+          product: {
+            id: 'product-1',
+            name: 'Crème',
+            unitId: gram.id,
+            unit: gram,
+            primarySupplier: { name: 'Fournisseur A' },
+          },
+          allergens: [],
+        },
+      ],
+    };
+    const menu = { compositionSheets: [sheet], unitConversions: [] };
+    const item = { technicalSheetId: sheet.id, technicalSheet: sheet, servingQuantity: 1 };
+    const context = (service as any).menuCompositionContext(menu);
+
+    const first = (service as any).itemComposition(menu, item, context);
+    const second = (service as any).itemComposition(menu, item, context);
+    expect(second).toBe(first);
+    expect(context.compositions.size).toBe(1);
+
+    expect((service as any).itemSuppliers(item, menu, context)).toEqual(['Fournisseur A']);
+    expect((service as any).itemSuppliers(item, menu, context)).toEqual(['Fournisseur A']);
+    expect(context.suppliersBySheetId.size).toBe(1);
   });
 
   it('localizes known categories and dining-room PDF metadata in English', async () => {

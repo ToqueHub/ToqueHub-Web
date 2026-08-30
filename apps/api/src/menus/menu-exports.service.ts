@@ -23,6 +23,16 @@ import {
 
 type Actor = { id: string; role: string };
 type ExportLanguage = 'fr' | 'en';
+type MenuCompositionContext = {
+  sheetsById: Map<string, any>;
+  convert: (
+    quantity: number,
+    fromUnitId?: string | null,
+    toUnitId?: string | null,
+  ) => number | null;
+  compositions: Map<string, MenuCompositionResult>;
+  suppliersBySheetId: Map<string, string[]>;
+};
 type UploadedTemplate = { originalname: string; mimetype: string; size: number; buffer: Buffer };
 type Zone = { x: number; y: number; width: number; height: number };
 type PublicLayout = {
@@ -269,7 +279,7 @@ export class MenuExportsService {
     }
 
     const [menu, organization] = await Promise.all([
-      this.exportMenu(organizationId, dto.menuId),
+      this.exportMenu(organizationId, dto.menuId, dto.audience),
       this.prisma.organization.findUnique({
         where: { id: organizationId },
         select: { name: true, logoDataUrl: true, mainSiteName: true },
@@ -346,39 +356,60 @@ export class MenuExportsService {
     };
   }
 
-  private async exportMenu(organizationId: string, id: string) {
-    const [menu, compositionSheets, unitConversions] = await Promise.all([
-      this.prisma.menu.findFirst({
-        where: { id, organizationId },
-        include: {
-          site: true,
-          items: {
-            orderBy: [{ position: 'asc' }],
-            include: {
-              menuCategory: true,
-              product: { include: { unit: true, primarySupplier: true } },
-              technicalSheet: {
-                include: {
-                  category: true,
-                  yieldUnit: true,
-                  ingredients: {
-                    orderBy: [{ order: 'asc' }],
-                    include: {
-                      product: { include: { unit: true, primarySupplier: true } },
-                      unit: true,
-                      sourceTechnicalSheet: true,
-                      allergens: { include: { allergen: true } },
-                    },
+  private async exportMenu(
+    organizationId: string,
+    id: string,
+    audience: MenuExportAudience,
+  ) {
+    const menu = await this.prisma.menu.findFirst({
+      where: { id, organizationId },
+      include: {
+        site: true,
+        items: {
+          orderBy: [{ position: 'asc' }],
+          include: {
+            menuCategory: true,
+            product: { include: { unit: true, primarySupplier: true } },
+            technicalSheet: {
+              include: {
+                category: true,
+                yieldUnit: true,
+                ingredients: {
+                  orderBy: [{ order: 'asc' }],
+                  include: {
+                    product: { include: { unit: true, primarySupplier: true } },
+                    unit: true,
+                    sourceTechnicalSheet: true,
+                    allergens: { include: { allergen: true } },
                   },
-                  steps: { orderBy: [{ order: 'asc' }] },
                 },
+                steps: { orderBy: [{ order: 'asc' }] },
               },
             },
           },
         },
-      }),
-      this.prisma.technicalSheet.findMany({
-        where: { organizationId, isArchived: false },
+      },
+    });
+    if (!menu || audience !== MenuExportAudience.DINING_ROOM) return menu;
+
+    const rootSheets = menu.items
+      .map((item: any) => item.technicalSheet)
+      .filter((sheet: any) => sheet && !sheet.isArchived);
+    if (!rootSheets.length) return { ...menu, compositionSheets: [], unitConversions: [] };
+    const [compositionSheets, unitConversions] = await Promise.all([
+      this.loadCompositionSheets(organizationId, rootSheets),
+      this.prisma.unitConversion.findMany({ where: { organizationId } }),
+    ]);
+    return { ...menu, compositionSheets, unitConversions };
+  }
+
+  private async loadCompositionSheets(organizationId: string, rootSheets: any[]) {
+    const sheetsById = new Map<string, any>(rootSheets.map((sheet) => [sheet.id, sheet]));
+    let pendingIds = this.missingSourceSheetIds(rootSheets, sheetsById);
+
+    while (pendingIds.length) {
+      const sheets = await this.prisma.technicalSheet.findMany({
+        where: { organizationId, isArchived: false, id: { in: pendingIds } },
         include: {
           yieldUnit: true,
           ingredients: {
@@ -390,10 +421,24 @@ export class MenuExportsService {
             },
           },
         },
-      }),
-      this.prisma.unitConversion.findMany({ where: { organizationId } }),
-    ]);
-    return menu ? { ...menu, compositionSheets, unitConversions } : null;
+      });
+      for (const sheet of sheets) sheetsById.set(sheet.id, sheet);
+      pendingIds = this.missingSourceSheetIds(sheets, sheetsById);
+    }
+
+    return [...sheetsById.values()];
+  }
+
+  private missingSourceSheetIds(sheets: any[], loaded: Map<string, any>) {
+    return [
+      ...new Set<string>(
+        sheets.flatMap((sheet) =>
+          (sheet.ingredients ?? [])
+            .map((ingredient: any) => ingredient.sourceTechnicalSheetId)
+            .filter((id: unknown): id is string => typeof id === 'string' && !loaded.has(id)),
+        ),
+      ),
+    ];
   }
 
   private async publicPdfFromTemplate(menu: any, template: any) {
@@ -933,6 +978,7 @@ export class MenuExportsService {
   private async diningRoomPdf(menu: any, organization: any, language: ExportLanguage = 'fr') {
     const documentTitle = this.text(language, 'FICHE SALLE', 'DINING ROOM BRIEF');
     const reference = this.menuReference(menu, language);
+    const compositionContext = this.menuCompositionContext(menu);
     return this.pdfKitBuffer(
       (doc) => {
         this.drawBrandPage(doc, organization, menu.name, documentTitle);
@@ -961,14 +1007,14 @@ export class MenuExportsService {
             .text(group.name.toUpperCase(), 48, y);
           y += 28;
           for (const item of group.items) {
-            const composition = this.itemComposition(menu, item.raw);
+            const composition = this.itemComposition(menu, item.raw, compositionContext);
             const present = composition.allergens.present.map((entry) =>
               this.allergenLabel(entry.name, language),
             );
             const traces = composition.allergens.traces.map((entry) =>
               this.allergenLabel(entry.name, language),
             );
-            const suppliers = this.itemSuppliers(item.raw, menu);
+            const suppliers = this.itemSuppliers(item.raw, menu, compositionContext);
             const description =
               item.description ||
               this.text(
@@ -1410,35 +1456,73 @@ export class MenuExportsService {
     return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
   }
 
-  private itemSuppliers(item: any, menu?: any) {
+  private itemSuppliers(
+    item: any,
+    menu?: any,
+    context = this.menuCompositionContext(menu, item.technicalSheet),
+  ) {
     const values = item.product?.primarySupplier?.name ? [item.product.primarySupplier.name] : [];
-    const sheetsById = new Map(
-      (menu?.compositionSheets ?? [item.technicalSheet])
-        .filter(Boolean)
-        .map((sheet: any) => [sheet.id, sheet]),
-    );
-    const visit = (sheetId?: string | null, visited = new Set<string>()) => {
-      if (!sheetId || visited.has(sheetId)) return;
-      const sheet: any = sheetsById.get(sheetId);
-      if (!sheet) return;
-      visited.add(sheetId);
-      for (const ingredient of sheet.ingredients ?? []) {
-        if (ingredient.product?.primarySupplier?.name)
-          values.push(ingredient.product.primarySupplier.name);
-        if (ingredient.sourceTechnicalSheetId)
-          visit(ingredient.sourceTechnicalSheetId, visited);
-      }
-    };
-    visit(item.technicalSheetId ?? item.technicalSheet?.id);
+    const sheetId = item.technicalSheetId ?? item.technicalSheet?.id;
+    if (sheetId) values.push(...this.sheetSuppliers(sheetId, context, new Set<string>()));
     return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
   }
 
-  private itemComposition(menu: any, item: any): MenuCompositionResult {
+  private sheetSuppliers(
+    sheetId: string,
+    context: MenuCompositionContext,
+    visiting: Set<string>,
+  ): string[] {
+    const cached = context.suppliersBySheetId.get(sheetId);
+    if (cached) return cached;
+    if (visiting.has(sheetId)) return [];
+    const sheet = context.sheetsById.get(sheetId);
+    if (!sheet) return [];
+
+    visiting.add(sheetId);
+    const suppliers: string[] = [];
+    for (const ingredient of sheet.ingredients ?? []) {
+      if (ingredient.product?.primarySupplier?.name)
+        suppliers.push(ingredient.product.primarySupplier.name);
+      if (ingredient.sourceTechnicalSheetId)
+        suppliers.push(
+          ...this.sheetSuppliers(ingredient.sourceTechnicalSheetId, context, visiting),
+        );
+    }
+    visiting.delete(sheetId);
+    const result = [...new Set(suppliers)];
+    context.suppliersBySheetId.set(sheetId, result);
+    return result;
+  }
+
+  private itemComposition(
+    menu: any,
+    item: any,
+    context = this.menuCompositionContext(menu, item.technicalSheet),
+  ): MenuCompositionResult {
     const servingQuantity = Math.max(Number(item.servingQuantity ?? 1), 0.001);
     if (item.product)
       return calculateProductComposition(item.product, servingQuantity, 1);
 
-    const sheets = (menu?.compositionSheets ?? [item.technicalSheet]).filter(Boolean);
+    const sheetId = item.technicalSheetId ?? item.technicalSheet?.id;
+    if (sheetId) {
+      const cacheKey = `${sheetId}:${servingQuantity}`;
+      const cached = context.compositions.get(cacheKey);
+      if (cached) return cached;
+      const composition = calculateSheetComposition({
+        sheetsById: context.sheetsById,
+        convert: context.convert,
+        sheetId,
+        requiredOutput: servingQuantity,
+        referencePortions: 1,
+      });
+      context.compositions.set(cacheKey, composition);
+      return composition;
+    }
+    return calculateProductComposition({ name: item.name ?? 'Article' }, 1, 1);
+  }
+
+  private menuCompositionContext(menu?: any, fallbackSheet?: any): MenuCompositionContext {
+    const sheets = (menu?.compositionSheets ?? [fallbackSheet]).filter(Boolean);
     const sheetsById = new Map<string, any>(sheets.map((sheet: any) => [sheet.id, sheet]));
     const conversionByPair = new Map<string, number>(
       (menu?.unitConversions ?? []).map((conversion: any) => [
@@ -1446,23 +1530,18 @@ export class MenuExportsService {
         Number(conversion.factor),
       ]),
     );
-    const convert = (quantity: number, fromUnitId?: string | null, toUnitId?: string | null) => {
-      if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) return quantity;
-      const direct = conversionByPair.get(`${fromUnitId}:${toUnitId}`);
-      if (direct != null) return quantity * direct;
-      const reverse = conversionByPair.get(`${toUnitId}:${fromUnitId}`);
-      return reverse ? quantity / reverse : null;
+    return {
+      sheetsById,
+      convert: (quantity, fromUnitId, toUnitId) => {
+        if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) return quantity;
+        const direct = conversionByPair.get(`${fromUnitId}:${toUnitId}`);
+        if (direct != null) return quantity * direct;
+        const reverse = conversionByPair.get(`${toUnitId}:${fromUnitId}`);
+        return reverse ? quantity / reverse : null;
+      },
+      compositions: new Map(),
+      suppliersBySheetId: new Map(),
     };
-    const sheetId = item.technicalSheetId ?? item.technicalSheet?.id;
-    if (sheetId)
-      return calculateSheetComposition({
-        sheetsById,
-        convert,
-        sheetId,
-        requiredOutput: servingQuantity,
-        referencePortions: 1,
-      });
-    return calculateProductComposition({ name: item.name ?? 'Article' }, 1, 1);
   }
 
   private allergenLabel(value: string, language: ExportLanguage) {
