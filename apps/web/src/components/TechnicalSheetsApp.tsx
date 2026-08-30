@@ -91,7 +91,8 @@ const emptyRecipe: TechnicalSheetRecipePayload = {
 };
 
 const money = (value?: number | string | null) => `${Number(value ?? 0).toFixed(2)} €`;
-const date = (value?: string | null) => (value ? new Date(value).toLocaleDateString(activeLocale()) : '—');
+const date = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString(activeLocale()) : '—';
 const isArchived = (item?: { isArchived?: boolean; archivedAt?: string | null }) =>
   Boolean(item?.isArchived || item?.archivedAt);
 const recipeImportWorking = (status: TechnicalSheetRecipeImportStatus) =>
@@ -771,7 +772,6 @@ function ProductSelect({
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -1387,9 +1387,7 @@ export function TechnicalSheetsApp({
     setError(undefined);
     try {
       await api.dismissTechnicalSheetRecipeImport(token, documentId);
-      setImportStatuses((current) =>
-        current.filter((status) => status.document.id !== documentId),
-      );
+      setImportStatuses((current) => current.filter((status) => status.document.id !== documentId));
       setSuccess('Analyse OCR retirée du suivi.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Suppression du suivi OCR impossible.');
@@ -1420,14 +1418,20 @@ export function TechnicalSheetsApp({
     setImportOpen(false);
     setRecipeDialog(true);
     if (announce) {
+      const matchedSubRecipes = result.matchedSubRecipesCount
+        ? ` ${result.matchedSubRecipesCount} sous-recette(s) reconnue(s).`
+        : '';
       const created = result.newProductsCount
         ? ` ${result.newProductsCount} nouveau(x) produit(s) Stocks seront créés avec la fiche.`
+        : '';
+      const unresolved = result.unresolvedIngredientsCount
+        ? ` ${result.unresolvedIngredientsCount} ingrédient(s) doivent être vérifiés avant l’enregistrement.`
         : '';
       const skipped = result.skippedIngredientsCount
         ? ` ${result.skippedIngredientsCount} ingrédient(s) restent à saisir.`
         : '';
       setSuccess(
-        `Analyse prête : ${result.matchedIngredientsCount} ingrédient(s) rapproché(s) avec Stocks.${created}${skipped}`,
+        `Analyse prête : ${result.matchedIngredientsCount} ingrédient(s) rapproché(s) avec Stocks.${matchedSubRecipes}${created}${unresolved}${skipped}`,
       );
     }
   }
@@ -1632,9 +1636,7 @@ export function TechnicalSheetsApp({
       ) : null}
 
       {categoryCreationTourOpen ? (
-        <TechnicalSheetCategoryCreationTour
-          onClose={() => setCategoryCreationTourOpen(false)}
-        />
+        <TechnicalSheetCategoryCreationTour onClose={() => setCategoryCreationTourOpen(false)} />
       ) : null}
 
       {/* Create / Edit Dialog Component */}
@@ -4504,7 +4506,8 @@ function RecipeCompositionNode({
       >
         <span>{product?.name || line.productName || 'Produit'}</span>
         <strong>
-          {required.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} {unit?.symbol || ''}
+          {required.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })}{' '}
+          {unit?.symbol || ''}
         </strong>
       </div>
     );
@@ -5619,9 +5622,12 @@ function RecipeDialog({
                                 : product?.name || line.productName || 'Composant'}
                             </span>
                             <strong style={{ display: 'block', color: '#1e3a8a' }}>
-                              {(Number(line.quantity) * previewRatio).toLocaleString(activeLocale(), {
-                                maximumFractionDigits: 3,
-                              })}{' '}
+                              {(Number(line.quantity) * previewRatio).toLocaleString(
+                                activeLocale(),
+                                {
+                                  maximumFractionDigits: 3,
+                                },
+                              )}{' '}
                               {unit?.symbol || ''}
                             </strong>
                             <small style={{ color: '#64748b' }}>

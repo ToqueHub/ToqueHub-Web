@@ -2920,8 +2920,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
   }
 
-  async function handleToggleProductFavorite(product: Product) {
-    if (!canManageProductFavorites || favoritePendingIds.has(product.id)) return;
+  async function handleToggleProductFavorite(product: Product): Promise<boolean> {
+    if (!canManageProductFavorites || favoritePendingIds.has(product.id)) {
+      return Boolean(product.isFavorite);
+    }
 
     const previousValue = Boolean(product.isFavorite);
     const nextValue = !previousValue;
@@ -2932,11 +2934,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
     try {
       const updated = await api.updateProductFavorite(token, product.id, nextValue);
-      updateProductFavoriteInState(product.id, Boolean(updated.isFavorite));
+      const updatedValue = Boolean(updated.isFavorite);
+      updateProductFavoriteInState(product.id, updatedValue);
       setSuccess(nextValue ? 'Produit ajouté aux favoris.' : 'Produit retiré des favoris.');
+      return updatedValue;
     } catch (err) {
       updateProductFavoriteInState(product.id, previousValue);
       setError(err instanceof Error ? err.message : 'Impossible de modifier ce favori.');
+      return previousValue;
     } finally {
       setFavoritePendingIds((current) => {
         const next = new Set(current);
@@ -3773,35 +3778,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [activeSuppliers, supplierSearch]);
 
   function renderProductFavorite(product: Product): ReactNode {
-    if (!canManageProductFavorites) {
-      return product.isFavorite ? (
-        <span
-          className="product-favorite-indicator active"
-          title="Produit favori"
-          aria-label="Produit favori"
-        >
-          <Star size={17} fill="currentColor" />
-        </span>
-      ) : null;
-    }
-
-    const pending = favoritePendingIds.has(product.id);
-    const label = product.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris';
     return (
-      <button
-        type="button"
-        className={`product-favorite-toggle${product.isFavorite ? ' active' : ''}`}
-        title={label}
-        aria-label={label}
-        aria-pressed={Boolean(product.isFavorite)}
-        disabled={pending}
-        onClick={(event) => {
-          event.stopPropagation();
-          void handleToggleProductFavorite(product);
-        }}
-      >
-        <Star size={17} fill={product.isFavorite ? 'currentColor' : 'none'} />
-      </button>
+      <ProductFavoriteControl
+        product={product}
+        canManage={canManageProductFavorites}
+        pending={favoritePendingIds.has(product.id)}
+        onToggle={handleToggleProductFavorite}
+      />
     );
   }
 
@@ -5430,6 +5413,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       api.assignProductSites(token, { siteIds, onlyUnassigned: true })
                     }
                     onRefresh={refresh}
+                    canManageProductFavorites={canManageProductFavorites}
+                    favoritePendingIds={favoritePendingIds}
+                    onToggleProductFavorite={handleToggleProductFavorite}
                   />
                 </>
               )}
@@ -12790,6 +12776,48 @@ function ProductTableThumbnail({ product }: { product: Product }) {
   );
 }
 
+function ProductFavoriteControl({
+  product,
+  canManage,
+  pending,
+  onToggle,
+}: {
+  product: Product;
+  canManage: boolean;
+  pending: boolean;
+  onToggle: (product: Product) => Promise<boolean>;
+}) {
+  if (!canManage) {
+    return product.isFavorite ? (
+      <span
+        className="product-favorite-indicator active"
+        title="Produit favori"
+        aria-label="Produit favori"
+      >
+        <Star size={17} fill="currentColor" />
+      </span>
+    ) : null;
+  }
+
+  const label = product.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris';
+  return (
+    <button
+      type="button"
+      className={`product-favorite-toggle${product.isFavorite ? ' active' : ''}`}
+      title={label}
+      aria-label={label}
+      aria-pressed={Boolean(product.isFavorite)}
+      disabled={pending}
+      onClick={(event) => {
+        event.stopPropagation();
+        void onToggle(product);
+      }}
+    >
+      <Star size={17} fill={product.isFavorite ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
 function ArticlesPage({
   data,
   categories,
@@ -12803,6 +12831,9 @@ function ArticlesPage({
   onQuery,
   onAssignUnassigned,
   onRefresh,
+  canManageProductFavorites,
+  favoritePendingIds,
+  onToggleProductFavorite,
 }: {
   data: ArticlesResponse;
   categories: Category[];
@@ -12828,6 +12859,9 @@ function ArticlesPage({
     assignmentsCreated: number;
   }>;
   onRefresh: () => Promise<void>;
+  canManageProductFavorites: boolean;
+  favoritePendingIds: Set<string>;
+  onToggleProductFavorite: (product: Product) => Promise<boolean>;
 }) {
   const activeSites = sites.filter((site) => !site.isArchived);
   const defaultSiteId =
@@ -12853,6 +12887,25 @@ function ArticlesPage({
     result.pagination?.pages ??
     Math.max(1, Math.ceil((result.pagination?.total ?? items.length) / 25));
   const totalFiltered = result.pagination?.total ?? items.length;
+
+  function updateFavoriteInResult(productId: string, isFavorite: boolean) {
+    setResult((current) => ({
+      ...current,
+      items: current.items.map((article) =>
+        article.product.id === productId
+          ? { ...article, product: { ...article.product, isFavorite } }
+          : article,
+      ),
+    }));
+  }
+
+  async function toggleFavorite(product: Product) {
+    const previousValue = Boolean(product.isFavorite);
+    updateFavoriteInResult(product.id, !previousValue);
+    const persistedValue = await onToggleProductFavorite(product);
+    updateFavoriteInResult(product.id, persistedValue);
+    return persistedValue;
+  }
 
   useEffect(() => {
     if (!siteId && defaultSiteId) setSiteId(defaultSiteId);
@@ -13225,7 +13278,17 @@ function ArticlesPage({
                         onClick={() => setSelected(article)}
                       >
                         <td className="articles-photo-column">
-                          <ProductTableThumbnail product={product} />
+                          <span className="articles-photo-favorite-wrap">
+                            <ProductTableThumbnail product={product} />
+                            <span className="articles-photo-favorite">
+                              <ProductFavoriteControl
+                                product={product}
+                                canManage={canManageProductFavorites}
+                                pending={favoritePendingIds.has(product.id)}
+                                onToggle={toggleFavorite}
+                              />
+                            </span>
+                          </span>
                         </td>
                         <td>
                           <strong>{product.name}</strong>
@@ -20498,8 +20561,7 @@ function SettingsPage({
                     className="info-card-premium clickable"
                     onClick={() => setEditingSetting('language')}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ')
-                        setEditingSetting('language');
+                      if (event.key === 'Enter' || event.key === ' ') setEditingSetting('language');
                     }}
                   >
                     <div className="info-card-premium-header">

@@ -34080,6 +34080,34 @@ input:checked + .slider-round:before {
   object-position: center;
 }
 
+.articles-photo-favorite-wrap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+}
+
+.articles-photo-favorite {
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  left: -9px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.articles-photo-favorite .product-favorite-toggle,
+.articles-photo-favorite .product-favorite-indicator {
+  background: #ffffff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.16);
+}
+
+.articles-photo-favorite .product-favorite-toggle:hover:not(:disabled),
+.articles-photo-favorite .product-favorite-toggle.active,
+.articles-photo-favorite .product-favorite-indicator.active {
+  background: #fefce8;
+}
+
 .stocks-metrics-strip {
   display: flex;
   align-items: center;
@@ -43879,6 +43907,17 @@ input:checked + .slider-round:before {
 .menu-nutrition-table strong {
   color: #0f172a;
   font-size: 0.73rem;
+}
+
+.menu-nutrition-metric-label {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.menu-nutrition-metric-label small {
+  color: #94a3b8;
+  font-size: 0.61rem;
+  font-weight: 750;
 }
 
 .menu-composition-warning {

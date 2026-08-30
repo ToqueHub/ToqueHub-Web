@@ -769,13 +769,7 @@ export function MenusApp({
         canManage={canManage}
         tab={catererTab}
         onTabChange={(next) =>
-          onNavigate(
-            next === 'events'
-              ? 'menus'
-              : next === 'documents'
-                ? 'exports'
-                : next,
-          )
+          onNavigate(next === 'events' ? 'menus' : next === 'documents' ? 'exports' : next)
         }
         onProfileSettings={() => setShowProfileSettings(true)}
         onHybridBack={
@@ -2295,7 +2289,6 @@ export function MenusApp({
               </div>
             </div>
           )}
-
         </motion.div>
       </AnimatePresence>
 
@@ -3399,53 +3392,57 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
         </div>
       </div>
       <div className="menu-composition-detail">
-        <div className="menu-composition-tabs" role="tablist" aria-label={`Détails de ${item.name}`}>
+        <div
+          className="menu-composition-tabs"
+          role="tablist"
+          aria-label={`Détails de ${item.name}`}
+        >
           {[
             ['situation', 'Situation des préparations et matières'],
             ['allergens', 'Allergènes'],
             ['nutrition', 'Valeurs nutritionnelles'],
           ].map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={activeDetailTab === id}
-            className={activeDetailTab === id ? 'active' : ''}
-            onClick={() => setActiveDetailTab(id as typeof activeDetailTab)}
-          >
-            {label}
-          </button>
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activeDetailTab === id}
+              className={activeDetailTab === id ? 'active' : ''}
+              onClick={() => setActiveDetailTab(id as typeof activeDetailTab)}
+            >
+              {label}
+            </button>
           ))}
         </div>
         {activeDetailTab === 'situation' ? (
           <div className="menu-composition-panel" role="tabpanel">
             {item.components?.length ? (
               <div style={{ overflowX: 'auto' }}>
-              <div
-                style={{
-                  minWidth: 650,
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(210px, 1.5fr) repeat(3, minmax(110px, .7fr))',
-                  gap: '0.75rem',
-                  padding: '0 0.55rem 0.45rem',
-                  color: '#64748b',
-                  fontSize: '0.66rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '.04em',
-                }}
-              >
-                <span>Ingrédient ou préparation</span>
-                <span>Besoin</span>
-                <span>Prix ingrédient</span>
-                <span>Coût matière</span>
-              </div>
-              {item.components.map((component, index) => (
-                <AvailabilityComponentRow
-                  key={`${component.kind}-${component.technicalSheetId || component.productId}-${index}`}
-                  component={component}
-                />
-              ))}
+                <div
+                  style={{
+                    minWidth: 650,
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(210px, 1.5fr) repeat(3, minmax(110px, .7fr))',
+                    gap: '0.75rem',
+                    padding: '0 0.55rem 0.45rem',
+                    color: '#64748b',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '.04em',
+                  }}
+                >
+                  <span>Ingrédient ou préparation</span>
+                  <span>Besoin</span>
+                  <span>Prix ingrédient</span>
+                  <span>Coût matière</span>
+                </div>
+                {item.components.map((component, index) => (
+                  <AvailabilityComponentRow
+                    key={`${component.kind}-${component.technicalSheetId || component.productId}-${index}`}
+                    component={component}
+                  />
+                ))}
               </div>
             ) : (
               <p className="menu-composition-empty">Aucune matière configurée pour cette fiche.</p>
@@ -3503,12 +3500,15 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
               <div>
                 <strong>Valeurs calculées depuis les produits Stocks</strong>
                 <small>
-                  Quantités de la fiche sélectionnée · {nutrition?.referencePortions ?? item.targetPortions}{' '}
-                  portion{(nutrition?.referencePortions ?? item.targetPortions) > 1 ? 's' : ''}
+                  Quantités de la fiche sélectionnée ·{' '}
+                  {nutrition?.referencePortions ?? item.targetPortions} portion
+                  {(nutrition?.referencePortions ?? item.targetPortions) > 1 ? 's' : ''}
                 </small>
               </div>
               <span className={nutrition?.complete ? 'complete' : 'partial'}>
-                {nutrition?.complete ? 'Calcul complet' : 'Données incomplètes'}
+                {nutrition?.complete
+                  ? 'Calcul complet'
+                  : `Données partielles · ${nutrition?.coveragePercent ?? 0} %`}
               </span>
             </div>
             <div className="menu-nutrition-table">
@@ -3517,25 +3517,34 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
                 <span>Par portion</span>
                 <span>Total fiche</span>
               </div>
-              {nutritionFields.map(([field, label, unit]) => (
-                <div key={field}>
-                  <span>{label}</span>
-                  <strong>
-                    {nutrition?.perPortion[field] == null
-                      ? 'Non calculable'
-                      : `${nutrition.perPortion[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
-                  </strong>
-                  <strong>
-                    {nutrition?.total[field] == null
-                      ? 'Non calculable'
-                      : `${nutrition.total[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
-                  </strong>
-                </div>
-              ))}
+              {nutritionFields.map(([field, label, unit]) => {
+                const coverage =
+                  nutrition?.coverage?.[field] ?? (nutrition?.total[field] == null ? 0 : 100);
+                const partialPrefix = coverage > 0 && coverage < 100 ? '≈ ' : '';
+                return (
+                  <div key={field}>
+                    <span className="menu-nutrition-metric-label">
+                      <span>{label}</span>
+                      <small>{coverage} % couvert</small>
+                    </span>
+                    <strong>
+                      {nutrition?.perPortion[field] == null
+                        ? 'Non calculable'
+                        : `${partialPrefix}${nutrition.perPortion[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
+                    </strong>
+                    <strong>
+                      {nutrition?.total[field] == null
+                        ? 'Non calculable'
+                        : `${partialPrefix}${nutrition.total[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
+                    </strong>
+                  </div>
+                );
+              })}
             </div>
             {nutrition?.missingProducts.length ? (
               <p className="menu-composition-warning">
-                Valeurs ou conversion de poids manquantes pour : {nutrition.missingProducts.join(', ')}.
+                Valeurs ou conversion de poids manquantes pour :{' '}
+                {nutrition.missingProducts.join(', ')}.
               </p>
             ) : null}
           </div>
@@ -3929,7 +3938,11 @@ function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) {
     const label =
       view === 'year'
         ? date.toLocaleDateString(activeLocale(), { month: 'long' })
-        : date.toLocaleDateString(activeLocale(), { weekday: 'short', day: '2-digit', month: '2-digit' });
+        : date.toLocaleDateString(activeLocale(), {
+            weekday: 'short',
+            day: '2-digit',
+            month: '2-digit',
+          });
     return {
       label,
       items: datedMenus.filter((m) =>
