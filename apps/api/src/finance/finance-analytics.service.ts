@@ -637,7 +637,7 @@ export function buildFinanceMonthlyComparisonRanges(
       }),
       detail: monthlyIsComplete
         ? `Même mois complet · N-${offset}`
-        : `Même mois à date · N-${offset}`,
+        : `Même mois à date · N-${offset} · masse salariale sur le mois complet`,
       from: shiftYear(monthStart, -offset),
       to: shiftYear(monthlyActualTo, -offset),
       isCurrent: false,
@@ -655,6 +655,16 @@ export function buildFinanceMonthlyComparisonRanges(
       isCurrent: false,
     },
   ];
+}
+
+export function resolveHistoricalPayrollRange(
+  kind: 'annual' | 'monthly' | 'daily',
+  rangeId: string,
+  from: Date,
+  to: Date,
+) {
+  if (kind !== 'monthly' || !/^n_\d+$/.test(rangeId)) return { from, to };
+  return { from: startOfMonth(from), to: endOfMonth(from) };
 }
 
 function shiftDays(value: Date, offset: number) {
@@ -2439,19 +2449,41 @@ export class FinanceAnalyticsService {
           accountingLockedThrough,
           options,
         );
+        const payrollRange = resolveHistoricalPayrollRange(
+          kind,
+          range.id,
+          range.from,
+          range.to,
+        );
+        const payrollActual =
+          payrollRange.from.getTime() === range.from.getTime() &&
+          payrollRange.to.getTime() === range.to.getTime()
+            ? actual
+            : this.aggregate(
+                ledger,
+                sales,
+                categories,
+                payrollRange.from,
+                payrollRange.to,
+                accountingLockedThrough,
+                options,
+              );
         return {
           ...range,
           basis: actual.revenueBasis,
-          sources: actual.metricSources,
           metrics: {
             revenue: actual.revenue,
             operating_expenses: actual.operatingExpenses,
-            payroll: actual.payroll,
+            payroll: payrollActual.payroll,
             operating_result: actual.operatingResult,
             transactions: actual.transactions || null,
             average_ticket: actual.averageTicket,
             contribution_margin: actual.contributionMargin,
             contribution_margin_rate: actual.contributionMarginRate,
+          },
+          sources: {
+            ...actual.metricSources,
+            payroll: payrollActual.metricSources.payroll,
           },
         };
       }),

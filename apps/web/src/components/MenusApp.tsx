@@ -3274,8 +3274,27 @@ function MenuProfileSetup({
 }
 
 function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items'][number] }) {
-  const [expanded, setExpanded] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState<'situation' | 'allergens' | 'nutrition'>(
+    'situation',
+  );
   const isRecipe = item.sourceType !== 'PRODUCT';
+  const allergens = item.allergens ?? {
+    present: [],
+    traces: [],
+    unresolvedIngredients: [],
+  };
+  const nutrition = item.nutrition;
+  const nutritionFields = [
+    ['energyKj', 'Énergie', 'kJ'],
+    ['energyKcal', 'Énergie', 'kcal'],
+    ['fatGrams', 'Matières grasses', 'g'],
+    ['saturatedFatGrams', 'dont acides gras saturés', 'g'],
+    ['carbohydratesGrams', 'Glucides', 'g'],
+    ['sugarsGrams', 'dont sucres', 'g'],
+    ['fiberGrams', 'Fibres', 'g'],
+    ['proteinGrams', 'Protéines', 'g'],
+    ['saltGrams', 'Sel', 'g'],
+  ] as const;
   return (
     <div
       style={{
@@ -3379,33 +3398,29 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
           </div>
         </div>
       </div>
-      {item.components?.length ? (
-        <div style={{ borderTop: '1px solid #e2e8f0' }}>
+      <div className="menu-composition-detail">
+        <div className="menu-composition-tabs" role="tablist" aria-label={`Détails de ${item.name}`}>
+          {[
+            ['situation', 'Situation des préparations et matières'],
+            ['allergens', 'Allergènes'],
+            ['nutrition', 'Valeurs nutritionnelles'],
+          ].map(([id, label]) => (
           <button
+            key={id}
             type="button"
-            onClick={() => setExpanded(!expanded)}
-            style={{
-              width: '100%',
-              border: 0,
-              background: expanded ? '#f0fdfa' : '#f8fafc',
-              color: '#0f766e',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.4rem',
-              padding: '0.7rem 1rem',
-              fontSize: '0.78rem',
-              cursor: 'pointer',
-              fontWeight: 800,
-            }}
+            role="tab"
+            aria-selected={activeDetailTab === id}
+            className={activeDetailTab === id ? 'active' : ''}
+            onClick={() => setActiveDetailTab(id as typeof activeDetailTab)}
           >
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{' '}
-            {item.sourceType === 'PRODUCT'
-              ? 'Détail du stock'
-              : 'Situation des préparations et matières'}
+            {label}
           </button>
-          {expanded ? (
-            <div style={{ padding: '0.8rem 1rem 1rem', overflowX: 'auto' }}>
+          ))}
+        </div>
+        {activeDetailTab === 'situation' ? (
+          <div className="menu-composition-panel" role="tabpanel">
+            {item.components?.length ? (
+              <div style={{ overflowX: 'auto' }}>
               <div
                 style={{
                   minWidth: 650,
@@ -3431,10 +3446,101 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
                   component={component}
                 />
               ))}
+              </div>
+            ) : (
+              <p className="menu-composition-empty">Aucune matière configurée pour cette fiche.</p>
+            )}
+          </div>
+        ) : null}
+        {activeDetailTab === 'allergens' ? (
+          <div className="menu-composition-panel menu-allergen-panel" role="tabpanel">
+            <section className="menu-allergen-block present">
+              <header>
+                <strong>Allergènes présents</strong>
+                <span>{allergens.present.length}</span>
+              </header>
+              {allergens.present.length ? (
+                <div className="menu-allergen-list">
+                  {allergens.present.map((allergen) => (
+                    <span key={allergen.name} title={`Produits : ${allergen.products.join(', ')}`}>
+                      <strong>{allergen.name}</strong>
+                      <small>{allergen.products.join(', ')}</small>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p>Aucun allergène présent renseigné dans les produits de cette fiche.</p>
+              )}
+            </section>
+            <section className="menu-allergen-block traces">
+              <header>
+                <strong>Traces possibles</strong>
+                <span>{allergens.traces.length}</span>
+              </header>
+              {allergens.traces.length ? (
+                <div className="menu-allergen-list">
+                  {allergens.traces.map((allergen) => (
+                    <span key={allergen.name} title={`Produits : ${allergen.products.join(', ')}`}>
+                      <strong>{allergen.name}</strong>
+                      <small>{allergen.products.join(', ')}</small>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p>Aucune trace possible renseignée dans les produits de cette fiche.</p>
+              )}
+            </section>
+            {allergens.unresolvedIngredients.length ? (
+              <p className="menu-composition-warning">
+                Composition incomplète pour : {allergens.unresolvedIngredients.join(', ')}.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {activeDetailTab === 'nutrition' ? (
+          <div className="menu-composition-panel menu-nutrition-panel" role="tabpanel">
+            <div className="menu-nutrition-heading">
+              <div>
+                <strong>Valeurs calculées depuis les produits Stocks</strong>
+                <small>
+                  Quantités de la fiche sélectionnée · {nutrition?.referencePortions ?? item.targetPortions}{' '}
+                  portion{(nutrition?.referencePortions ?? item.targetPortions) > 1 ? 's' : ''}
+                </small>
+              </div>
+              <span className={nutrition?.complete ? 'complete' : 'partial'}>
+                {nutrition?.complete ? 'Calcul complet' : 'Données incomplètes'}
+              </span>
             </div>
-          ) : null}
-        </div>
-      ) : null}
+            <div className="menu-nutrition-table">
+              <div className="head">
+                <span>Valeur</span>
+                <span>Par portion</span>
+                <span>Total fiche</span>
+              </div>
+              {nutritionFields.map(([field, label, unit]) => (
+                <div key={field}>
+                  <span>{label}</span>
+                  <strong>
+                    {nutrition?.perPortion[field] == null
+                      ? 'Non calculable'
+                      : `${nutrition.perPortion[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
+                  </strong>
+                  <strong>
+                    {nutrition?.total[field] == null
+                      ? 'Non calculable'
+                      : `${nutrition.total[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            {nutrition?.missingProducts.length ? (
+              <p className="menu-composition-warning">
+                Valeurs ou conversion de poids manquantes pour : {nutrition.missingProducts.join(', ')}.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

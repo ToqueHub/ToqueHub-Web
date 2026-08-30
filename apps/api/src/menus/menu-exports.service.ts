@@ -14,6 +14,12 @@ import { PDFDocument as EditablePdfDocument, StandardFonts, rgb } from 'pdf-lib'
 import { MistralClientService } from '../mistral/mistral-client.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PrepareMenuExportDto } from './dto/menus.dto';
+import {
+  calculateProductComposition,
+  calculateSheetComposition,
+  MENU_NUTRITION_FIELDS,
+  type MenuCompositionResult,
+} from './menu-composition';
 
 type Actor = { id: string; role: string };
 type ExportLanguage = 'fr' | 'en';
@@ -69,6 +75,36 @@ const SECTION_LABELS_EN: Record<string, string> = {
   DRINK: 'Drinks',
   OTHER: 'Other',
 };
+const NUTRITION_LABELS: Record<
+  (typeof MENU_NUTRITION_FIELDS)[number],
+  { fr: string; en: string; unit: string }
+> = {
+  energyKj: { fr: 'Énergie', en: 'Energy', unit: 'kJ' },
+  energyKcal: { fr: 'Énergie', en: 'Energy', unit: 'kcal' },
+  fatGrams: { fr: 'Matières grasses', en: 'Fat', unit: 'g' },
+  saturatedFatGrams: { fr: 'dont acides gras saturés', en: 'of which saturates', unit: 'g' },
+  carbohydratesGrams: { fr: 'Glucides', en: 'Carbohydrate', unit: 'g' },
+  sugarsGrams: { fr: 'dont sucres', en: 'of which sugars', unit: 'g' },
+  fiberGrams: { fr: 'Fibres', en: 'Fibre', unit: 'g' },
+  proteinGrams: { fr: 'Protéines', en: 'Protein', unit: 'g' },
+  saltGrams: { fr: 'Sel', en: 'Salt', unit: 'g' },
+};
+const ALLERGEN_TRANSLATIONS = [
+  { patterns: ['gluteenia sisaltavat viljat', 'cereales contenant du gluten', 'gluten cereals'], fr: 'Céréales contenant du gluten', en: 'Cereals containing gluten' },
+  { patterns: ['ayriaiset', 'crustaces', 'crustaceans'], fr: 'Crustacés', en: 'Crustaceans' },
+  { patterns: ['kananmuna', 'oeuf', 'eggs'], fr: 'Œufs', en: 'Eggs' },
+  { patterns: ['kala', 'poisson', 'fish'], fr: 'Poisson', en: 'Fish' },
+  { patterns: ['maapahkina', 'arachide', 'peanuts'], fr: 'Arachides', en: 'Peanuts' },
+  { patterns: ['soija', 'soja', 'soy'], fr: 'Soja', en: 'Soybeans' },
+  { patterns: ['maito', 'lait', 'milk'], fr: 'Lait', en: 'Milk' },
+  { patterns: ['pahkinat', 'fruits a coque', 'nuts'], fr: 'Fruits à coque', en: 'Nuts' },
+  { patterns: ['selleri', 'celeri', 'celery'], fr: 'Céleri', en: 'Celery' },
+  { patterns: ['sinappi', 'moutarde', 'mustard'], fr: 'Moutarde', en: 'Mustard' },
+  { patterns: ['seesaminsiemen', 'sesame'], fr: 'Sésame', en: 'Sesame' },
+  { patterns: ['rikkidioksidi', 'sulfiit', 'sulfite', 'sulphite'], fr: 'Anhydride sulfureux et sulfites', en: 'Sulphur dioxide and sulphites' },
+  { patterns: ['lupiini', 'lupin'], fr: 'Lupin', en: 'Lupin' },
+  { patterns: ['nilviaiset', 'mollusques', 'molluscs'], fr: 'Mollusques', en: 'Molluscs' },
+];
 
 @Injectable()
 export class MenuExportsService {
@@ -311,35 +347,53 @@ export class MenuExportsService {
   }
 
   private async exportMenu(organizationId: string, id: string) {
-    return this.prisma.menu.findFirst({
-      where: { id, organizationId },
-      include: {
-        site: true,
-        items: {
-          orderBy: [{ position: 'asc' }],
-          include: {
-            menuCategory: true,
-            product: { include: { unit: true, primarySupplier: true } },
-            technicalSheet: {
-              include: {
-                category: true,
-                yieldUnit: true,
-                ingredients: {
-                  orderBy: [{ order: 'asc' }],
-                  include: {
-                    product: { include: { unit: true, primarySupplier: true } },
-                    unit: true,
-                    sourceTechnicalSheet: true,
-                    allergens: { include: { allergen: true } },
+    const [menu, compositionSheets, unitConversions] = await Promise.all([
+      this.prisma.menu.findFirst({
+        where: { id, organizationId },
+        include: {
+          site: true,
+          items: {
+            orderBy: [{ position: 'asc' }],
+            include: {
+              menuCategory: true,
+              product: { include: { unit: true, primarySupplier: true } },
+              technicalSheet: {
+                include: {
+                  category: true,
+                  yieldUnit: true,
+                  ingredients: {
+                    orderBy: [{ order: 'asc' }],
+                    include: {
+                      product: { include: { unit: true, primarySupplier: true } },
+                      unit: true,
+                      sourceTechnicalSheet: true,
+                      allergens: { include: { allergen: true } },
+                    },
                   },
+                  steps: { orderBy: [{ order: 'asc' }] },
                 },
-                steps: { orderBy: [{ order: 'asc' }] },
               },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.technicalSheet.findMany({
+        where: { organizationId, isArchived: false },
+        include: {
+          yieldUnit: true,
+          ingredients: {
+            orderBy: [{ order: 'asc' }],
+            include: {
+              product: { include: { unit: true, primarySupplier: true } },
+              unit: true,
+              allergens: { include: { allergen: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.unitConversion.findMany({ where: { organizationId } }),
+    ]);
+    return menu ? { ...menu, compositionSheets, unitConversions } : null;
   }
 
   private async publicPdfFromTemplate(menu: any, template: any) {
@@ -765,7 +819,9 @@ export class MenuExportsService {
         y += 22;
 
         for (const [index, item] of (menu.items ?? []).entries()) {
-          const allergens = this.itemAllergens(item);
+          const allergens = this.itemAllergens(item).map((name) =>
+            this.allergenLabel(String(name), language),
+          );
           const rowHeight = allergens.length ? 38 : 29;
           y = this.ensureRestaurantDocumentSpace(
             doc,
@@ -876,79 +932,222 @@ export class MenuExportsService {
 
   private async diningRoomPdf(menu: any, organization: any, language: ExportLanguage = 'fr') {
     const documentTitle = this.text(language, 'FICHE SALLE', 'DINING ROOM BRIEF');
-    return this.pdfKitBuffer((doc) => {
-      this.drawBrandPage(doc, organization, menu.name, documentTitle);
-      let y = 140;
-      doc
-        .fillColor('#475569')
-        .font('Helvetica')
-        .fontSize(9.5)
-        .text(
-          this.text(
-            language,
-            'Support de briefing: composition, allergènes, origine et arguments utiles pour présenter chaque article.',
-            'Briefing guide: composition, allergens, origin and key points for presenting each item.',
-          ),
-          48,
-          y,
-          { width: 499 },
-        );
-      y += 38;
-      for (const group of this.publicGroups(menu, language)) {
-        y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, 55);
+    const reference = this.menuReference(menu, language);
+    return this.pdfKitBuffer(
+      (doc) => {
+        this.drawBrandPage(doc, organization, menu.name, documentTitle);
+        let y = 140;
         doc
-          .fillColor('#10b981')
-          .font('Helvetica-Bold')
-          .fontSize(13)
-          .text(group.name.toUpperCase(), 48, y);
-        y += 28;
-        for (const item of group.items) {
-          const allergens = this.itemAllergens(item.raw);
-          const suppliers = this.itemSuppliers(item.raw);
-          const description =
-            item.description ||
+          .fillColor('#475569')
+          .font('Helvetica')
+          .fontSize(9.5)
+          .text(
             this.text(
               language,
-              'Présentation commerciale à compléter dans la fiche technique.',
-              'Commercial description to be completed in the technical sheet.',
-            );
-          const meta = [
-            allergens.length
-              ? `${this.text(language, 'Allergènes', 'Allergens')}: ${allergens.join(', ')}`
-              : this.text(language, 'Allergènes: aucun renseigné', 'Allergens: none provided'),
-            suppliers.length
-              ? `${this.text(language, 'Fournisseurs', 'Suppliers')}: ${suppliers.join(', ')}`
-              : '',
-          ]
-            .filter(Boolean)
-            .join('  |  ');
-          const cardHeight = Math.max(
-            82,
-            doc.heightOfString(description, { width: 455 }) +
-              doc.heightOfString(meta, { width: 455 }) +
-              47,
+              'Support de briefing : informations calculées pour une portion, allergènes, traces, valeurs nutritionnelles et fournisseurs.',
+              'Briefing guide: information calculated for one portion, allergens, traces, nutrition values and suppliers.',
+            ),
+            48,
+            y,
+            { width: 499 },
           );
-          y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, cardHeight + 10);
-          doc.roundedRect(48, y, 499, cardHeight, 10).fillAndStroke('#f8fafc', '#dbe4ee');
+        y += 42;
+        for (const group of this.publicGroups(menu, language)) {
+          y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, 55);
           doc
-            .fillColor('#0f172a')
+            .fillColor('#10b981')
             .font('Helvetica-Bold')
-            .fontSize(11)
-            .text(item.name, 62, y + 13, { width: 455 });
-          doc
-            .fillColor('#475569')
-            .font('Helvetica')
-            .fontSize(9)
-            .text(description, 62, y + 33, { width: 455 });
-          doc
-            .fillColor(allergens.length ? '#b45309' : '#64748b')
-            .font('Helvetica-Bold')
-            .fontSize(8)
-            .text(meta, 62, y + cardHeight - 24, { width: 455 });
-          y += cardHeight + 12;
+            .fontSize(13)
+            .text(group.name.toUpperCase(), 48, y);
+          y += 28;
+          for (const item of group.items) {
+            const composition = this.itemComposition(menu, item.raw);
+            const present = composition.allergens.present.map((entry) =>
+              this.allergenLabel(entry.name, language),
+            );
+            const traces = composition.allergens.traces.map((entry) =>
+              this.allergenLabel(entry.name, language),
+            );
+            const suppliers = this.itemSuppliers(item.raw, menu);
+            const description =
+              item.description ||
+              this.text(
+                language,
+                'Présentation commerciale à compléter dans la fiche technique.',
+                'Commercial description to be completed in the technical sheet.',
+              );
+            const presentText = present.length
+              ? present.join(', ')
+              : this.text(language, 'Aucun allergène renseigné', 'No allergens provided');
+            const tracesText = traces.length
+              ? traces.join(', ')
+              : this.text(language, 'Aucune trace renseignée', 'No traces provided');
+            const descriptionHeight = Math.min(
+              35,
+              doc.font('Helvetica').fontSize(9).heightOfString(description, { width: 455 }),
+            );
+            const presentHeight = Math.max(
+              30,
+              doc.font('Helvetica').fontSize(8).heightOfString(presentText, { width: 423 }) + 18,
+            );
+            const tracesHeight = Math.max(
+              30,
+              doc.font('Helvetica').fontSize(8).heightOfString(tracesText, { width: 423 }) + 18,
+            );
+            const missingNutrition = composition.nutrition.missingProducts.length > 0;
+            const cardHeight =
+              60 +
+              descriptionHeight +
+              presentHeight +
+              tracesHeight +
+              124 +
+              (missingNutrition ? 23 : 0) +
+              (suppliers.length ? 22 : 8);
+
+            y = this.ensureSpace(
+              doc,
+              organization,
+              menu.name,
+              documentTitle,
+              y,
+              cardHeight + 12,
+            );
+            doc.roundedRect(48, y, 499, cardHeight, 10).fillAndStroke('#ffffff', '#dbe4ee');
+            let cursor = y + 13;
+            doc
+              .fillColor('#0f172a')
+              .font('Helvetica-Bold')
+              .fontSize(11)
+              .text(item.name, 62, cursor, { width: 455 });
+            cursor += 21;
+            doc
+              .fillColor('#475569')
+              .font('Helvetica')
+              .fontSize(9)
+              .text(description, 62, cursor, { width: 455, height: descriptionHeight });
+            cursor += descriptionHeight + 8;
+
+            doc.roundedRect(62, cursor, 471, presentHeight, 6).fill('#fff7ed');
+            doc
+              .fillColor('#b45309')
+              .font('Helvetica-Bold')
+              .fontSize(7.5)
+              .text(
+                this.text(language, 'ALLERGÈNES PRÉSENTS — 1 PORTION', 'ALLERGENS PRESENT — 1 PORTION'),
+                74,
+                cursor + 7,
+                { width: 447 },
+              );
+            doc
+              .fillColor(present.length ? '#7c2d12' : '#64748b')
+              .font('Helvetica')
+              .fontSize(8)
+              .text(presentText, 74, cursor + 18, { width: 447 });
+            cursor += presentHeight + 6;
+
+            doc.roundedRect(62, cursor, 471, tracesHeight, 6).fill('#f8fafc');
+            doc
+              .fillColor('#475569')
+              .font('Helvetica-Bold')
+              .fontSize(7.5)
+              .text(this.text(language, 'TRACES POSSIBLES', 'POSSIBLE TRACES'), 74, cursor + 7, {
+                width: 447,
+              });
+            doc
+              .fillColor('#475569')
+              .font('Helvetica')
+              .fontSize(8)
+              .text(tracesText, 74, cursor + 18, { width: 447 });
+            cursor += tracesHeight + 12;
+
+            doc
+              .fillColor('#0f766e')
+              .font('Helvetica-Bold')
+              .fontSize(8)
+              .text(
+                this.text(
+                  language,
+                  'VALEURS NUTRITIONNELLES — 1 PORTION',
+                  'NUTRITION VALUES — 1 PORTION',
+                ),
+                62,
+                cursor,
+                { width: 471 },
+              );
+            cursor += 15;
+            const nutritionValues = composition.nutrition.perPortion;
+            MENU_NUTRITION_FIELDS.forEach((field, index) => {
+              const column = index % 3;
+              const row = Math.floor(index / 3);
+              const cellWidth = 151;
+              const x = 62 + column * 160;
+              const cellY = cursor + row * 32;
+              const label = NUTRITION_LABELS[field];
+              const value = nutritionValues[field];
+              doc.roundedRect(x, cellY, cellWidth, 27, 5).fill('#ecfdf5');
+              doc
+                .fillColor('#047857')
+                .font('Helvetica-Bold')
+                .fontSize(6.5)
+                .text(label[language], x + 7, cellY + 5, {
+                  width: cellWidth - 14,
+                  height: 8,
+                });
+              doc
+                .fillColor(value == null ? '#94a3b8' : '#0f172a')
+                .font('Helvetica-Bold')
+                .fontSize(value == null ? 6.8 : 8.5)
+                .text(
+                  value == null
+                    ? this.text(language, 'Non calculable', 'Not calculable')
+                    : `${this.number(value, language)} ${label.unit}`,
+                  x + 7,
+                  cellY + 14,
+                  { width: cellWidth - 14, height: 10 },
+                );
+            });
+            cursor += 99;
+
+            if (missingNutrition) {
+              doc
+                .fillColor('#92400e')
+                .font('Helvetica')
+                .fontSize(7.2)
+                .text(
+                  this.text(
+                    language,
+                    `Calcul incomplet : données nutritionnelles ou conversion manquantes pour ${composition.nutrition.missingProducts.join(', ')}.`,
+                    `Incomplete calculation: nutrition data or conversion missing for ${composition.nutrition.missingProducts.join(', ')}.`,
+                  ),
+                  62,
+                  cursor,
+                  { width: 471, height: 19 },
+                );
+              cursor += 23;
+            }
+            if (suppliers.length) {
+              doc
+                .fillColor('#64748b')
+                .font('Helvetica-Bold')
+                .fontSize(7.5)
+                .text(
+                  `${this.text(language, 'Fournisseurs', 'Suppliers')}: ${suppliers.join(', ')}`,
+                  62,
+                  cursor,
+                  { width: 471 },
+                );
+            }
+            y += cardHeight + 12;
+          }
         }
-      }
-    }, `${this.text(language, 'Fiche salle', 'Dining room brief')} - ${menu.name}`);
+      },
+      `${this.text(language, 'Fiche salle', 'Dining room brief')} - ${menu.name}`,
+      {
+        author: organization?.name ?? 'ToqueHub',
+        footer: (page, count) =>
+          `${reference} · ${this.text(language, 'Informations pour 1 portion', 'Information for 1 portion')} · ${this.text(language, 'Généré le', 'Generated on')} ${new Date().toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR')} · ${page}/${count}`,
+      },
+    );
   }
 
   private pdfKitBuffer(
@@ -1113,6 +1312,7 @@ export class MenuExportsService {
   }
 
   private drawBrandPage(doc: PDFKit.PDFDocument, organization: any, title: string, kicker: string) {
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
     doc.rect(0, 0, doc.page.width, 112).fill('#081a2d');
     doc.rect(0, 106, doc.page.width, 6).fill('#10b981');
     const logo = this.logoBuffer(organization?.logoDataUrl);
@@ -1180,10 +1380,11 @@ export class MenuExportsService {
   private publicGroups(menu: any, language: ExportLanguage = 'fr') {
     const groups = new Map<string, any[]>();
     for (const item of menu.items ?? []) {
-      const name =
-        item.menuCategory?.name ??
-        (language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
-        this.text(language, 'Autres', 'Other');
+      const categoryName = item.menuCategory?.name;
+      const name = categoryName
+        ? this.categoryLabel(categoryName, language)
+        : (language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
+          this.text(language, 'Autres', 'Other');
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name)!.push({
         name:
@@ -1198,22 +1399,101 @@ export class MenuExportsService {
   }
 
   private itemAllergens(item: any) {
-    return [
-      ...new Set(
-        (item.technicalSheet?.ingredients ?? []).flatMap((ingredient: any) =>
-          (ingredient.allergens ?? []).map((entry: any) => entry.allergen?.name).filter(Boolean),
-        ),
-      ),
-    ].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+    const values = item.product
+      ? item.product.allergensPresent ?? []
+      : (item.technicalSheet?.ingredients ?? []).flatMap((ingredient: any) => [
+          ...(ingredient.product?.allergensPresent ?? []),
+          ...(ingredient.allergens ?? [])
+            .map((entry: any) => entry.allergen?.name)
+            .filter(Boolean),
+        ]);
+    return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
   }
 
-  private itemSuppliers(item: any) {
-    const values = item.product?.primarySupplier?.name
-      ? [item.product.primarySupplier.name]
-      : (item.technicalSheet?.ingredients ?? [])
-          .map((ingredient: any) => ingredient.product?.primarySupplier?.name)
-          .filter(Boolean);
+  private itemSuppliers(item: any, menu?: any) {
+    const values = item.product?.primarySupplier?.name ? [item.product.primarySupplier.name] : [];
+    const sheetsById = new Map(
+      (menu?.compositionSheets ?? [item.technicalSheet])
+        .filter(Boolean)
+        .map((sheet: any) => [sheet.id, sheet]),
+    );
+    const visit = (sheetId?: string | null, visited = new Set<string>()) => {
+      if (!sheetId || visited.has(sheetId)) return;
+      const sheet: any = sheetsById.get(sheetId);
+      if (!sheet) return;
+      visited.add(sheetId);
+      for (const ingredient of sheet.ingredients ?? []) {
+        if (ingredient.product?.primarySupplier?.name)
+          values.push(ingredient.product.primarySupplier.name);
+        if (ingredient.sourceTechnicalSheetId)
+          visit(ingredient.sourceTechnicalSheetId, visited);
+      }
+    };
+    visit(item.technicalSheetId ?? item.technicalSheet?.id);
     return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+  }
+
+  private itemComposition(menu: any, item: any): MenuCompositionResult {
+    const servingQuantity = Math.max(Number(item.servingQuantity ?? 1), 0.001);
+    if (item.product)
+      return calculateProductComposition(item.product, servingQuantity, 1);
+
+    const sheets = (menu?.compositionSheets ?? [item.technicalSheet]).filter(Boolean);
+    const sheetsById = new Map<string, any>(sheets.map((sheet: any) => [sheet.id, sheet]));
+    const conversionByPair = new Map<string, number>(
+      (menu?.unitConversions ?? []).map((conversion: any) => [
+        `${conversion.fromUnitId}:${conversion.toUnitId}`,
+        Number(conversion.factor),
+      ]),
+    );
+    const convert = (quantity: number, fromUnitId?: string | null, toUnitId?: string | null) => {
+      if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) return quantity;
+      const direct = conversionByPair.get(`${fromUnitId}:${toUnitId}`);
+      if (direct != null) return quantity * direct;
+      const reverse = conversionByPair.get(`${toUnitId}:${fromUnitId}`);
+      return reverse ? quantity / reverse : null;
+    };
+    const sheetId = item.technicalSheetId ?? item.technicalSheet?.id;
+    if (sheetId)
+      return calculateSheetComposition({
+        sheetsById,
+        convert,
+        sheetId,
+        requiredOutput: servingQuantity,
+        referencePortions: 1,
+      });
+    return calculateProductComposition({ name: item.name ?? 'Article' }, 1, 1);
+  }
+
+  private allergenLabel(value: string, language: ExportLanguage) {
+    const normalized = this.normalizedLabel(value);
+    const translated = ALLERGEN_TRANSLATIONS.find((entry) =>
+      entry.patterns.some((pattern) => normalized.includes(pattern)),
+    );
+    return translated?.[language] ?? value;
+  }
+
+  private categoryLabel(value: string, language: ExportLanguage) {
+    if (language === 'fr') return value;
+    const normalized = this.normalizedLabel(value);
+    const labels: Array<[string[], string]> = [
+      [['entrees', 'alkuruoat', 'starters'], 'Starters'],
+      [['plats', 'paaruoat', 'main courses'], 'Main courses'],
+      [['accompagnements', 'lisukkeet', 'side dishes'], 'Side dishes'],
+      [['fromages', 'juustot', 'cheeses'], 'Cheeses'],
+      [['desserts', 'jalkiruoat'], 'Desserts'],
+      [['boissons', 'juomat', 'drinks'], 'Drinks'],
+      [['autres', 'muut', 'other'], 'Other'],
+    ];
+    return labels.find(([keys]) => keys.includes(normalized))?.[1] ?? value;
+  }
+
+  private normalizedLabel(value: unknown) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
   }
 
   private targetPortions(menu: any, item: any) {

@@ -1643,11 +1643,36 @@ function BudgetView({
   const budget = data.dashboard.budget;
   const isFennoaBudget = budget?.source === 'FENNOA';
   const defaultOpeningDays = budget?.targets?.days ?? 31;
+  const openingDaysStorageKey = budget?.targets
+    ? `finance:budget-opening-days:${data.organizationId}:${budget.id}:${budget.targets.periodStart}`
+    : '';
   const [openingDays, setOpeningDays] = useState(defaultOpeningDays);
-  useEffect(
-    () => setOpeningDays(defaultOpeningDays),
-    [defaultOpeningDays, budget?.targets?.periodStart],
-  );
+  useEffect(() => {
+    if (!openingDaysStorageKey) {
+      setOpeningDays(defaultOpeningDays);
+      return;
+    }
+    try {
+      const stored = Number(localStorage.getItem(openingDaysStorageKey));
+      setOpeningDays(
+        Number.isFinite(stored) && stored >= 1
+          ? Math.min(defaultOpeningDays, Math.round(stored))
+          : defaultOpeningDays,
+      );
+    } catch {
+      setOpeningDays(defaultOpeningDays);
+    }
+  }, [defaultOpeningDays, openingDaysStorageKey]);
+  const selectOpeningDays = (value: number) => {
+    const next = Math.min(defaultOpeningDays, Math.max(1, Math.round(value) || 1));
+    setOpeningDays(next);
+    if (!openingDaysStorageKey) return;
+    try {
+      localStorage.setItem(openingDaysStorageKey, String(next));
+    } catch {
+      // Le simulateur reste utilisable si le stockage du navigateur est indisponible.
+    }
+  };
   if (!budget)
     return (
       <motion.div className="finance-page" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -1891,11 +1916,7 @@ function BudgetView({
                   min={1}
                   max={targets.days}
                   value={openingDays}
-                  onChange={(event) =>
-                    setOpeningDays(
-                      Math.min(targets.days, Math.max(1, Number(event.target.value) || 1)),
-                    )
-                  }
+                  onChange={(event) => selectOpeningDays(Number(event.target.value))}
                 />
               </label>
             </div>
@@ -1906,7 +1927,7 @@ function BudgetView({
                 max={targets.days}
                 value={openingDays}
                 aria-label="Nombre de jours d’ouverture"
-                onChange={(event) => setOpeningDays(Number(event.target.value))}
+                onChange={(event) => selectOpeningDays(Number(event.target.value))}
               />
               <span>1 jour</span>
               <output>{openingDays} jours d’ouverture</output>

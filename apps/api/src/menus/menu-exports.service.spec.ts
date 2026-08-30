@@ -56,6 +56,88 @@ describe('MenuExportsService', () => {
     expect((service as any).editableText('Menu — “Été”…')).toBe('Menu - "Été"...');
   });
 
+  it('calculates dining-room allergens, traces and nutrition for one portion', () => {
+    const gram = { id: 'unit-g', name: 'Gramme', symbol: 'g', type: 'MASS' };
+    const milk = {
+      id: 'product-milk',
+      name: 'Lait entier',
+      unitId: gram.id,
+      unit: gram,
+      allergensPresent: ['Maito'],
+      possibleTraces: ['Sinappi', 'Maito'],
+      energyKj: 250,
+      energyKcal: 60,
+      fatGrams: 3.5,
+      saturatedFatGrams: 2.3,
+      carbohydratesGrams: 4.7,
+      sugarsGrams: 4.7,
+      fiberGrams: 0,
+      proteinGrams: 3.2,
+      saltGrams: 0.1,
+    };
+    const sheet = {
+      id: 'sheet-custard',
+      name: 'Crème',
+      referencePortions: 4,
+      yieldUnitId: gram.id,
+      ingredients: [
+        {
+          product: milk,
+          productId: milk.id,
+          unitId: gram.id,
+          unit: gram,
+          quantity: 200,
+          allergens: [],
+        },
+      ],
+    };
+    const composition = (service as any).itemComposition(
+      { compositionSheets: [sheet], unitConversions: [] },
+      { technicalSheetId: sheet.id, technicalSheet: sheet, servingQuantity: 1 },
+    );
+
+    expect(composition.allergens.present.map((entry: any) => entry.name)).toEqual(['Maito']);
+    expect(composition.allergens.traces.map((entry: any) => entry.name)).toEqual(['Sinappi']);
+    expect(composition.nutrition.referencePortions).toBe(1);
+    expect(composition.nutrition.perPortion.energyKcal).toBe(30);
+    expect(composition.nutrition.perPortion.proteinGrams).toBe(1.6);
+    expect((service as any).allergenLabel('Maito', 'fr')).toBe('Lait');
+    expect((service as any).allergenLabel('Maito', 'en')).toBe('Milk');
+  });
+
+  it('localizes known categories and dining-room PDF metadata in English', async () => {
+    const menu = {
+      id: 'menu-en',
+      name: 'Summer menu',
+      date: '2026-08-30T00:00:00.000Z',
+      service: 'LUNCH',
+      items: [
+        {
+          section: 'MAIN',
+          menuCategory: { name: 'Plats' },
+          servingQuantity: 1,
+          product: {
+            name: 'Salad',
+            unit: { id: 'unit-g', name: 'Gramme', symbol: 'g', type: 'MASS' },
+            allergensPresent: [],
+            possibleTraces: [],
+          },
+        },
+      ],
+    };
+    const groups = (service as any).publicGroups(menu, 'en');
+    const buffer = await (service as any).diningRoomPdf(
+      menu,
+      { name: 'The French Café' },
+      'en',
+    );
+    const pdf = await PDFDocument.load(buffer);
+
+    expect(groups[0].name).toBe('Main courses');
+    expect(pdf.getTitle()).toBe('Dining room brief - Summer menu');
+    expect(pdf.getAuthor()).toBe('The French Café');
+  });
+
   it('renders compact restaurant dossier and client menu with the caterer document titles', async () => {
     const menu = {
       id: 'menu-1',
