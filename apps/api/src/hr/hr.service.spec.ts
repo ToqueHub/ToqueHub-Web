@@ -104,6 +104,149 @@ describe('HrService collaborator account creation', () => {
       toqueHubAccount: { role: 'Utilisateur' as any, temporaryPassword: 'temporary-secret' },
     })).rejects.toThrow('Le prénom, le nom et l’adresse e-mail sont requis');
   });
+
+  it('creates and links an account while editing an existing collaborator', async () => {
+    const prisma = mockPrisma();
+    const usersService = {
+      ensureCoreRolesAndPermissions: jest.fn().mockResolvedValue(undefined),
+      createManagedUserRecord: jest.fn().mockResolvedValue({ id: 'user-2' }),
+      resetManagedUserAccessRecord: jest.fn(),
+    };
+    const service = new HrService(prisma, undefined, usersService as any);
+    jest.spyOn(service as any, 'recomputeOnboarding').mockResolvedValue({ status: 'COMPLETED' });
+    jest.spyOn(service as any, 'validateEmployeeRefs').mockResolvedValue(undefined);
+    prisma.hrEmployee.findFirst
+      .mockResolvedValueOnce({
+        id: 'employee-1',
+        email: 'aino@example.com',
+        userId: null,
+        status: 'ACTIVE',
+        departmentId: 'department-1',
+        positionId: 'position-1',
+        managerId: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'employee-1',
+        email: 'aino@example.com',
+        userId: 'user-2',
+        sensitiveData: null,
+      });
+    prisma.hrEmployee.update.mockResolvedValue({ id: 'employee-1', userId: 'user-2' });
+
+    const result = await service.updateEmployee(
+      'org-1',
+      { id: 'admin-1', role: 'ADMIN' },
+      'employee-1',
+      {
+        firstName: 'Aino',
+        lastName: 'Korhonen',
+        email: 'aino@example.com',
+        hireDate: '2026-08-12',
+        departmentId: 'department-1',
+        positionId: 'position-1',
+        toqueHubAccount: {
+          role: 'Utilisateur' as any,
+          temporaryPassword: 'temporary-secret',
+        },
+      },
+    );
+
+    expect(usersService.createManagedUserRecord).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ email: 'aino@example.com', role: 'Utilisateur' }),
+      expect.any(Object),
+    );
+    expect(prisma.hrEmployee.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: 'user-2' }) }),
+    );
+    expect(result).toMatchObject({ id: 'employee-1', userId: 'user-2' });
+  });
+
+  it('resets and reactivates the linked account while editing a collaborator', async () => {
+    const prisma = mockPrisma();
+    const usersService = {
+      ensureCoreRolesAndPermissions: jest.fn().mockResolvedValue(undefined),
+      createManagedUserRecord: jest.fn(),
+      resetManagedUserAccessRecord: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
+    const service = new HrService(prisma, undefined, usersService as any);
+    jest.spyOn(service as any, 'recomputeOnboarding').mockResolvedValue({ status: 'COMPLETED' });
+    jest.spyOn(service as any, 'validateEmployeeRefs').mockResolvedValue(undefined);
+    prisma.hrEmployee.findFirst
+      .mockResolvedValueOnce({
+        id: 'employee-1',
+        email: 'aino@example.com',
+        userId: 'user-1',
+        status: 'ACTIVE',
+        departmentId: 'department-1',
+        positionId: 'position-1',
+        managerId: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'employee-1',
+        email: 'aino@example.com',
+        userId: 'user-1',
+        sensitiveData: null,
+      });
+    prisma.hrEmployee.update.mockResolvedValue({ id: 'employee-1', userId: 'user-1' });
+
+    await service.updateEmployee(
+      'org-1',
+      { id: 'admin-1', role: 'ADMIN' },
+      'employee-1',
+      {
+        firstName: 'Aino',
+        lastName: 'Korhonen',
+        email: 'aino@example.com',
+        hireDate: '2026-08-12',
+        departmentId: 'department-1',
+        positionId: 'position-1',
+        userId: 'user-1',
+        toqueHubAccount: {
+          role: 'Manager' as any,
+          temporaryPassword: 'replacement-secret',
+        },
+      },
+    );
+
+    expect(usersService.resetManagedUserAccessRecord).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      expect.objectContaining({ role: 'Manager', temporaryPassword: 'replacement-secret' }),
+      expect.any(Object),
+    );
+    expect(usersService.createManagedUserRecord).not.toHaveBeenCalled();
+    expect(prisma.hrEmployeeHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ label: 'Accès au compte ToqueHub réinitialisés' }),
+      }),
+    );
+  });
+
+  it('refuses account management from a non-administrator', async () => {
+    const prisma = mockPrisma();
+    prisma.hrEmployee.findFirst.mockResolvedValue({
+      id: 'employee-1',
+      email: 'aino@example.com',
+      userId: null,
+    });
+    const service = new HrService(prisma, undefined, {} as any);
+
+    await expect(
+      service.updateEmployee('org-1', { id: 'manager-1', role: 'Manager' }, 'employee-1', {
+        firstName: 'Aino',
+        lastName: 'Korhonen',
+        email: 'aino@example.com',
+        hireDate: '2026-08-12',
+        departmentId: 'department-1',
+        positionId: 'position-1',
+        toqueHubAccount: {
+          role: 'Utilisateur' as any,
+          temporaryPassword: 'temporary-secret',
+        },
+      }),
+    ).rejects.toThrow(ForbiddenException);
+  });
 });
 
 describe('HrService onboarding explicit steps', () => {

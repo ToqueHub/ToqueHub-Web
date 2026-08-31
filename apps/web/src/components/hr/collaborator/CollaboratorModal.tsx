@@ -108,7 +108,9 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [contractAnalysis, setContractAnalysis] = useState<HrContractAnalysis | null>(null);
   const [contractAttachmentNotice, setContractAttachmentNotice] = useState('');
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
-  const [accountRole, setAccountRole] = useState(() => defaultCoreRole(roles));
+  const [accountRole, setAccountRole] = useState(
+    () => linkedCoreRole(collaborator?.user) || defaultCoreRole(roles),
+  );
   const [accountPassword, setAccountPassword] = useState('');
   const [accountError, setAccountError] = useState('');
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>(collaborator?.trainingNames ?? []);
@@ -258,7 +260,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     event.preventDefault();
     const nextRequiredErrors = validateRequiredFields(form);
     const nextErrors = validate(form);
-    const nextAccountError = !collaborator && accountPanelOpen
+    const nextAccountError = accountPanelOpen
       ? validateToqueHubAccount(form, accountRole, accountPassword)
       : '';
     setErrors(nextErrors);
@@ -277,9 +279,11 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     setSubmitError('');
     try {
       const payload = cleanPayload({ ...form, trainingNames: selectedTrainings });
-      if (!collaborator && accountPanelOpen) payload.userId = undefined;
+      if (accountPanelOpen) {
+        payload.userId = collaborator?.userId ?? collaborator?.user?.id ?? undefined;
+      }
       await onSubmit(payload, pendingDocuments, {
-        toqueHubAccount: !collaborator && accountPanelOpen
+        toqueHubAccount: accountPanelOpen
           ? { role: accountRole, temporaryPassword: accountPassword }
           : undefined,
       });
@@ -367,7 +371,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
         ) : null}
         <div className="hr-collaborator-body">
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} regulatoryCountryCode={regulatoryCountryCode} /> : null}
-          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} validationError={errors.professional} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} roles={roles} users={availableUsers} collaborator={collaborator} canCreateToqueHubAccount={canCreateToqueHubAccount} accountPanelOpen={accountPanelOpen} accountRole={accountRole} accountPassword={accountPassword} accountError={accountError} onAccountPanelOpenChange={(open) => { setAccountPanelOpen(open); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountRoleChange={(role) => { setAccountRole(role); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountPasswordChange={(password) => { setAccountPassword(password); setAccountError(''); setSubmitError(''); setDirty(true); }} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
+          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} validationError={errors.professional} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} roles={roles} users={availableUsers} collaborator={collaborator} canCreateToqueHubAccount={canCreateToqueHubAccount} accountPanelOpen={accountPanelOpen} accountRole={accountRole} accountPassword={accountPassword} accountError={accountError} onAccountPanelOpenChange={(open) => { setAccountPanelOpen(open); if (open) setForm((current) => ({ ...current, userId: collaborator?.userId ?? collaborator?.user?.id ?? '' })); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountRoleChange={(role) => { setAccountRole(role); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountPasswordChange={(password) => { setAccountPassword(password); setAccountError(''); setSubmitError(''); setDirty(true); }} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} validationError={errors.contracts} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab regulatoryCountryCode={regulatoryCountryCode} selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
@@ -668,7 +672,19 @@ function ProfessionalTab({ form, set, requiredErrors, validationError, departmen
       <FormField label="Notes professionnelles" className="span-2">
         <textarea placeholder="Ajouter des notes professionnelles..." value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
       </FormField>
-      {!collaborator && canCreateToqueHubAccount ? (
+      {collaborator ? (
+        <FormField label="Compte ToqueHub associé" icon={<UserRound size={16} />} className="span-2" isSelect={true}>
+          <select
+            value={form.userId ?? ''}
+            disabled={accountPanelOpen}
+            onChange={(e) => set('userId', e.target.value)}
+          >
+            <option value="">Aucun compte associé</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
+          </select>
+        </FormField>
+      ) : null}
+      {canCreateToqueHubAccount ? (
         <div className={`hr-account-creation-option span-2 ${accountPanelOpen ? 'selected' : ''}`}>
           <button
             type="button"
@@ -678,8 +694,18 @@ function ProfessionalTab({ form, set, requiredErrors, validationError, departmen
           >
             <span className="hr-account-creation-icon"><UserRound size={18} /></span>
             <span className="hr-account-creation-copy">
-              <strong>Ajouter un compte ToqueHub</strong>
-              <small>Le prénom, le nom et l’e-mail seront repris automatiquement depuis l’onglet Profil.</small>
+              <strong>
+                {collaborator?.userId || collaborator?.user
+                  ? 'Gérer les accès ToqueHub'
+                  : collaborator
+                    ? 'Créer un compte ToqueHub'
+                    : 'Ajouter un compte ToqueHub'}
+              </strong>
+              <small>
+                {collaborator?.userId || collaborator?.user
+                  ? `${collaborator.user?.email ?? form.email ?? 'Compte associé'} · ${accountStatusLabel(collaborator.user)}`
+                  : 'Le prénom, le nom et l’e-mail seront repris automatiquement depuis l’onglet Profil.'}
+              </small>
             </span>
             <ChevronDown className="hr-account-creation-chevron" size={18} />
           </button>
@@ -702,17 +728,14 @@ function ProfessionalTab({ form, set, requiredErrors, validationError, departmen
                   required
                 />
               </FormField>
-              <small className="hr-account-creation-help">Ce mot de passe ne sera plus affiché après l’enregistrement.</small>
+              <small className="hr-account-creation-help">
+                {collaborator?.userId || collaborator?.user
+                  ? 'L’enregistrement remplacera le mot de passe, appliquera le rôle choisi et réactivera le compte. Le mot de passe ne sera plus affiché.'
+                  : 'Le compte sera créé et lié à cette fiche. Le mot de passe ne sera plus affiché après l’enregistrement.'}
+              </small>
             </div>
           ) : null}
         </div>
-      ) : collaborator ? (
-        <FormField label="Compte ToqueHub associé" icon={<UserRound size={16} />} className="span-2" isSelect={true}>
-          <select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}>
-            <option value="">Aucun compte associé</option>
-            {users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
-          </select>
-        </FormField>
       ) : null}
     </div>
   </TabPanel>;
@@ -1084,6 +1107,17 @@ function coreRoleOptions(roles: CoreRole[]) {
 function defaultCoreRole(roles: CoreRole[]) {
   const options = coreRoleOptions(roles);
   return options.find((role) => role === 'Utilisateur') ?? options[0];
+}
+function linkedCoreRole(user?: CoreUser | null) {
+  if (!user) return '';
+  const role = user.role as string | { name?: string; label?: string; key?: string };
+  return typeof role === 'string' ? role : role.name ?? role.label ?? role.key ?? '';
+}
+function accountStatusLabel(user?: CoreUser | null) {
+  if (!user) return 'Compte associé';
+  if (user.status === 'DISABLED' || user.isActive === false) return 'Compte désactivé';
+  if (user.status === 'INVITED') return 'Première connexion en attente';
+  return 'Compte actif';
 }
 function validateToqueHubAccount(form: HrCollaboratorPayload, role: string, password: string) {
   const missingIdentity = [

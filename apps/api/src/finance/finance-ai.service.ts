@@ -13,6 +13,11 @@ import {
   countMonths,
   financeBudgetSelectionKey,
 } from './finance-analytics.service';
+import {
+  FINANCE_ANALYSIS_SKILL,
+  FINANCE_BUDGET_SKILL,
+  financeMistralOptions,
+} from './finance-ai-skills';
 import { FinancePolicy } from './finance.policy';
 import { FinanceSalesInsightsService } from './finance-sales-insights.service';
 
@@ -596,8 +601,7 @@ export class FinanceAiService {
       [
         {
           role: 'system',
-          content:
-            'Tu es un contrôleur de gestion pédagogique. Analyse uniquement les agrégats vérifiés fournis. N’invente aucun chiffre, ne donne pas de conseil fiscal ou juridique et distingue clairement faits, signaux et données manquantes. Écris en français simple mais précis pour un dirigeant et un expert-comptable.',
+          content: FINANCE_ANALYSIS_SKILL,
         },
         {
           role: 'user',
@@ -606,7 +610,11 @@ export class FinanceAiService {
       ],
       'finance_management_analysis',
       ANALYSIS_SCHEMA,
-      { temperature: 0, fallbackToJsonObject: true },
+      {
+        temperature: 0,
+        fallbackToJsonObject: true,
+        ...financeMistralOptions(),
+      },
     );
   }
 
@@ -746,8 +754,7 @@ export class FinanceAiService {
       [
         {
           role: 'system',
-          content:
-            'Tu es un contrôleur de gestion spécialisé en restauration. Propose un budget prudent à partir des seuls mois historiques fournis. Préserve la saisonnalité et la structure de coûts du dernier exercice. N’invente jamais de jours d’ouverture, recrutement, événement, météo, crise ou changement opérationnel absent de userGuidance. Les hypothèses doivent uniquement décrire une méthode, un ratio calculé dans les données ou reprendre explicitement userGuidance. N’ajoute aucune catégorie et retourne tous les montants mensuels hors taxes en EUR. Les achats, salaires, amortissements, autres charges et impôts sont des montants positifs. Le résultat financier peut être négatif. Respecte impérativement les controlLimits. ToqueHub recalculera et contrôlera lui-même tous les résultats.',
+          content: FINANCE_BUDGET_SKILL,
         },
         {
           role: 'user',
@@ -788,7 +795,12 @@ export class FinanceAiService {
       ],
       'finance_budget_suggestion',
       suggestionSchema(totalMonths),
-      { temperature: 0, fallbackToJsonObject: true, timeoutMs: 90_000 },
+      {
+        temperature: 0,
+        fallbackToJsonObject: true,
+        timeoutMs: 90_000,
+        ...financeMistralOptions(),
+      },
     );
     const normalizedProposal = normalizeFinanceBudgetProposal(
       raw,

@@ -378,6 +378,7 @@ export interface CoreUser {
   lastName?: string | null;
   role: UserRoleKey | string;
   status: UserStatus;
+  isActive?: boolean;
   organizationId?: string | null;
   organizationName?: string | null;
   lastLoginAt?: string | null;

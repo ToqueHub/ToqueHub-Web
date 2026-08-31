@@ -18,7 +18,7 @@ const MANAGER_ROLES = [...WRITE_ROLES, 'Manager', 'MANAGER', 'Chef', 'Responsabl
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN'];
 const LEGACY_HR_DEFAULT_DEPARTMENTS = ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'];
 const LEGACY_HR_DEFAULT_POSITIONS = ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'];
-const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, secondarySites: { include: { site: true } }, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } }, sensitiveData: true };
+const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, secondarySites: { include: { site: true } }, user: { select: { id: true, email: true, firstName: true, lastName: true, status: true, isActive: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } }, sensitiveData: true };
 function defaultHrUploadRoot() {
   const cwd = process.cwd();
   if (basename(cwd) === 'api' && basename(dirname(cwd)) === 'apps') return resolve(cwd, '..', '..', 'uploads', 'hr');
@@ -373,14 +373,53 @@ export class HrService {
     this.assertWrite(actor);
     this.validateEmergencyContact(dto);
     this.validateRevaluation(dto);
-    if (dto.toqueHubAccount) throw new BadRequestException('Un compte ToqueHub peut uniquement être créé avec une nouvelle fiche collaborateur');
     const current = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Collaborateur introuvable');
+    if (dto.toqueHubAccount) {
+      if (!ADMIN_ROLES.includes(actor.role)) throw new ForbiddenException('La gestion d’un compte ToqueHub est réservée aux administrateurs');
+      if (!dto.firstName.trim() || !dto.lastName.trim() || !dto.email?.trim()) {
+        throw new BadRequestException('Le prénom, le nom et l’adresse e-mail sont requis pour gérer le compte ToqueHub');
+      }
+      if (!this.usersService) throw new BadRequestException('Le service de gestion des comptes ToqueHub est indisponible');
+      if (dto.userId && dto.userId !== current.userId) {
+        throw new BadRequestException('Enregistrez d’abord l’association au compte ToqueHub avant de gérer ses accès');
+      }
+      await this.usersService.ensureCoreRolesAndPermissions();
+    }
     await this.validateEmployeeRefs(organizationId, dto, id);
     if (dto.email && dto.email !== current.email) await this.ensureEmailAvailable(organizationId, dto.email);
     if (dto.userId && dto.userId !== current.userId) await this.ensureUserAvailable(organizationId, dto.userId);
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.hrEmployee.update({ where: { id, organizationId }, data: this.employeeUpdateData(dto), include: includeEmployee });
+      let managedUserId = this.cleanText(dto.userId);
+      let accountHistory: 'created' | 'reset' | null = null;
+      if (dto.toqueHubAccount) {
+        if (current.userId) {
+          await this.usersService!.resetManagedUserAccessRecord(
+            organizationId,
+            current.userId,
+            dto.toqueHubAccount,
+            tx,
+          );
+          managedUserId = current.userId;
+          accountHistory = 'reset';
+        } else {
+          const createdUser = await this.usersService!.createManagedUserRecord(
+            organizationId,
+            {
+              firstName: dto.firstName.trim(),
+              lastName: dto.lastName.trim(),
+              email: dto.email!.trim(),
+              role: dto.toqueHubAccount.role,
+              temporaryPassword: dto.toqueHubAccount.temporaryPassword,
+            },
+            tx,
+          );
+          managedUserId = createdUser.id;
+          accountHistory = 'created';
+        }
+      }
+      const effectiveDto = { ...dto, userId: managedUserId ?? undefined };
+      const updated = await tx.hrEmployee.update({ where: { id, organizationId }, data: this.employeeUpdateData(effectiveDto), include: includeEmployee });
       if (dto.secondaryPositionIds !== undefined) {
         await tx.hrEmployeeSecondaryPosition.deleteMany({ where: { employeeId: id } });
         if (dto.secondaryPositionIds.length) {
@@ -393,14 +432,16 @@ export class HrService {
           await tx.hrEmployeeSecondarySite.createMany({ data: dto.secondarySiteIds.map((siteId) => ({ employeeId: id, siteId })), skipDuplicates: true });
         }
       }
-      await this.syncSensitiveData(tx, organizationId, id, dto.personalIdentityNumber);
-      await this.syncContractAndCompensation(tx, organizationId, id, dto, actor.id);
+      await this.syncSensitiveData(tx, organizationId, id, effectiveDto.personalIdentityNumber);
+      await this.syncContractAndCompensation(tx, organizationId, id, effectiveDto, actor.id);
       await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.UPDATED, 'Mise à jour du collaborateur');
-      if (dto.status && dto.status !== current.status) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.STATUS_CHANGED, 'Changement de statut', { from: current.status, to: dto.status });
-      if (dto.departmentId !== current.departmentId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.DEPARTMENT_CHANGED, 'Changement de service');
-      if (dto.positionId !== current.positionId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.POSITION_CHANGED, 'Changement de poste');
-      if (dto.userId !== current.userId) await this.history(tx, organizationId, id, actor.id, dto.userId ? HrHistoryEventType.USER_LINKED : HrHistoryEventType.USER_UNLINKED, dto.userId ? 'Compte ToqueHub associé' : 'Compte ToqueHub retiré');
-      if (dto.managerId !== current.managerId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.MANAGER_CHANGED, 'Changement de responsable');
+      if (effectiveDto.status && effectiveDto.status !== current.status) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.STATUS_CHANGED, 'Changement de statut', { from: current.status, to: effectiveDto.status });
+      if (effectiveDto.departmentId !== current.departmentId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.DEPARTMENT_CHANGED, 'Changement de service');
+      if (effectiveDto.positionId !== current.positionId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.POSITION_CHANGED, 'Changement de poste');
+      if (!accountHistory && effectiveDto.userId !== current.userId) await this.history(tx, organizationId, id, actor.id, effectiveDto.userId ? HrHistoryEventType.USER_LINKED : HrHistoryEventType.USER_UNLINKED, effectiveDto.userId ? 'Compte ToqueHub associé' : 'Compte ToqueHub retiré');
+      if (accountHistory === 'created') await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub créé', { userId: managedUserId });
+      if (accountHistory === 'reset') await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.UPDATED, 'Accès au compte ToqueHub réinitialisés', { userId: managedUserId, role: dto.toqueHubAccount?.role });
+      if (effectiveDto.managerId !== current.managerId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.MANAGER_CHANGED, 'Changement de responsable');
       await this.recomputeOnboarding(organizationId);
       return this.serializeEmployee(await tx.hrEmployee.findFirst({ where: { id, organizationId }, include: includeEmployee }));
     });
@@ -500,7 +541,10 @@ export class HrService {
     return { employees, roots: employees.filter((e) => !e.managerId), withoutManager: employees.filter((e) => !e.managerId) };
   }
 
-  listAssignableUsers(organizationId: string) { return this.prisma.user.findMany({ where: { organizationId, isActive: true, hrEmployee: null }, select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } }, orderBy: { email: 'asc' } }); }
+  async listAssignableUsers(organizationId: string) {
+    const users = await this.prisma.user.findMany({ where: { organizationId, isActive: true, hrEmployee: null }, select: { id: true, email: true, firstName: true, lastName: true, status: true, isActive: true, role: { select: { name: true } } }, orderBy: { email: 'asc' } });
+    return users.map((user) => ({ ...user, role: user.role.name }));
+  }
 
   private minutesBetween(start: string, end: string) {
     const parse = (value: string) => { const [h, m] = value.split(':').map(Number); if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) throw new BadRequestException('Format horaire invalide'); return h * 60 + m; };
@@ -675,6 +719,9 @@ export class HrService {
     const { sensitiveData, ...safeEmployee } = employee;
     return {
       ...safeEmployee,
+      user: safeEmployee.user
+        ? { ...safeEmployee.user, role: safeEmployee.user.role?.name ?? safeEmployee.user.role }
+        : null,
       personalIdentityNumber: sensitiveData?.personalIdentityNumberCiphertext
         ? this.sensitiveDataCrypto?.decrypt(sensitiveData.personalIdentityNumberCiphertext)
         : null,

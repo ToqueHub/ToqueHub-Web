@@ -144,6 +144,34 @@ export class UsersService {
     return this.serializeUser(user);
   }
 
+  async resetManagedUserAccessRecord(
+    organizationId: string,
+    id: string,
+    dto: { role: CoreRoleName; temporaryPassword: string },
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const target = await client.user.findFirst({ where: { id, organizationId } });
+    if (!target) throw new NotFoundException('Compte ToqueHub introuvable');
+    if (target.isPrimaryAdmin) {
+      throw new ForbiddenException(
+        'Les accès du compte administrateur principal ne peuvent pas être réinitialisés depuis RH',
+      );
+    }
+    const role = await client.role.findUnique({ where: { name: dto.role } });
+    if (!role) throw new NotFoundException('Rôle ToqueHub introuvable');
+    const updated = await client.user.update({
+      where: { id },
+      data: {
+        passwordHash: await hash(dto.temporaryPassword, 12),
+        role: { connect: { id: role.id } },
+        status: UserStatus.INVITED,
+        isActive: true,
+      },
+      include: USER_WITH_ROLE_INCLUDE,
+    });
+    return this.serializeUser(updated);
+  }
+
   async updateUser(actor: AuthenticatedUser, id: string, dto: UpdateManagedUserDto) {
     this.assertAdmin(actor);
     const organizationId = this.requireOrganization(actor);

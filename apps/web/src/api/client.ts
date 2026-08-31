@@ -4841,10 +4841,18 @@ export const api = {
       return response.json() as Promise<HrContractAnalysis>;
     });
   },
-  updateHrCollaborator(token: string, id: string, payload: Partial<HrCollaboratorPayload>) {
+  updateHrCollaborator(
+    token: string,
+    id: string,
+    payload: Partial<HrCollaboratorPayload>,
+    toqueHubAccount?: ToqueHubAccountCreationPayload,
+  ) {
     return request<HrCollaborator>(
       `/hr/employees/${id}`,
-      { method: 'PATCH', body: JSON.stringify(toHrEmployeePayload(payload)) },
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ ...toHrEmployeePayload(payload), toqueHubAccount }),
+      },
       token,
     );
   },

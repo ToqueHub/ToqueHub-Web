@@ -2715,11 +2715,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     return api.analyzeHrDocuments(token, files);
   }
 
-  async function handleUpdateHrCollaborator(id: string, payload: Partial<HrCollaboratorPayload>) {
+  async function handleUpdateHrCollaborator(
+    id: string,
+    payload: Partial<HrCollaboratorPayload>,
+    toqueHubAccount?: ToqueHubAccountCreationPayload,
+  ) {
     const collaborator = (await submit(
-      () => api.updateHrCollaborator(token, id, payload),
-      'Collaborateur RH mis à jour.',
+      () => api.updateHrCollaborator(token, id, payload, toqueHubAccount),
+      toqueHubAccount
+        ? 'Collaborateur et accès ToqueHub mis à jour.'
+        : 'Collaborateur RH mis à jour.',
     )) as HrCollaborator;
+    if (toqueHubAccount) await refreshUsers();
     await refreshHr();
     return collaborator;
   }

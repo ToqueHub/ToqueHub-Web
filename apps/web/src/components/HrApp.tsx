@@ -72,7 +72,7 @@ type HrAppProps = {
   onNavigate: (tab: HrTab) => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload, toqueHubAccount?: ToqueHubAccountCreationPayload) => Promise<HrCollaborator | void>;
   onAnalyzeCollaboratorContract: (files: File[]) => Promise<HrContractAnalysis>;
-  onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>) => Promise<HrCollaborator | void>;
+  onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>, toqueHubAccount?: ToqueHubAccountCreationPayload) => Promise<HrCollaborator | void>;
   onArchiveCollaborator: (id: string) => Promise<void>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
   onDeleteCollaboratorDocument: (employeeId: string, documentId: string) => Promise<void>;
@@ -291,7 +291,13 @@ export function HrApp({
           onDownloadDocument={onDownloadCollaboratorDocument}
           onSubmit={async (payload, documents, options) => {
             const isCreating = collaboratorModal === 'new';
-            const saved = isCreating ? await onCreateCollaborator(payload, options.toqueHubAccount) : await onUpdateCollaborator(collaboratorModal.id, payload);
+            const saved = isCreating
+              ? await onCreateCollaborator(payload, options.toqueHubAccount)
+              : await onUpdateCollaborator(
+                  collaboratorModal.id,
+                  payload,
+                  options.toqueHubAccount,
+                );
             const employeeId = saved?.id ?? (collaboratorModal !== 'new' ? collaboratorModal.id : undefined);
             if (employeeId && documents.length) {
               for (const document of documents) {
