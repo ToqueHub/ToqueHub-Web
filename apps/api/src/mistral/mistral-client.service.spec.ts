@@ -116,6 +116,51 @@ describe('MistralClientService OCR markdown', () => {
     expect(secondRequest.messages[0].content).toContain('conforme à ce schéma');
   });
 
+  it('uses the requested Finance model and falls back when the subscription rejects it', async () => {
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ mistralApiKey: 'test-key' }) },
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ message: 'This model is not available in your subscription tier' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"status":"ok"}' } }],
+        }),
+      }) as any;
+
+    const result = await new MistralClientService(prisma as any).chatJson<{
+      status: string;
+    }>(
+      'org-1',
+      [{ role: 'user', content: 'Analyse les finances.' }],
+      'finance_test',
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['status'],
+        properties: { status: { type: 'string' } },
+      },
+      {
+        model: 'mistral-large-latest',
+        fallbackModels: ['ministral-8b-latest'],
+      },
+    );
+
+    expect(result).toEqual({ status: 'ok' });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const firstRequest = JSON.parse(String((global.fetch as jest.Mock).mock.calls[0][1].body));
+    const secondRequest = JSON.parse(String((global.fetch as jest.Mock).mock.calls[1][1].body));
+    expect(firstRequest.model).toBe('mistral-large-latest');
+    expect(secondRequest.model).toBe('ministral-8b-latest');
+  });
+
   it('reports the configured timeout instead of a generic aborted operation', async () => {
     jest.useFakeTimers();
     const prisma = {

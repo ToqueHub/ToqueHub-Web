@@ -6,6 +6,7 @@ import type {
   ParsedAccountingLine,
   ParsedFinanceImport,
 } from './finance-import-parser.service';
+import { FINANCE_DOCUMENT_EXTRACTION_SKILL, financeMistralOptions } from './finance-ai-skills';
 
 const ACCOUNTING_CATEGORIES = [
   FinanceAccountCategory.REVENUE,
@@ -96,7 +97,9 @@ type MistralAccountingExtraction = {
   warnings: string[];
 };
 
-const SYSTEM_PROMPT = `Tu extrais des états comptables français, anglais et finnois pour ToqueHub.
+const SYSTEM_PROMPT = `${FINANCE_DOCUMENT_EXTRACTION_SKILL}
+
+Tu extrais des états comptables français, anglais et finnois pour ToqueHub.
 Retourne les montants sans symbole monétaire selon la convention ToqueHub : revenus positifs et charges positives.
 Une charge imprimée entre parenthèses ou avec un signe moins reste donc un montant économique positif, sauf si le
 document indique explicitement une extourne ou un remboursement. Si le document possède des colonnes débit/crédit,
@@ -172,7 +175,12 @@ export class FinanceDocumentOcrService {
       ],
       'toquehub_accounting_document_v1',
       EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
-      { temperature: 0, fallbackToJsonObject: true, timeoutMs: 90_000 },
+      {
+        temperature: 0,
+        fallbackToJsonObject: true,
+        timeoutMs: 90_000,
+        ...financeMistralOptions(),
+      },
     );
     const multiplier = [1, 1000, 1_000_000].includes(Number(extracted.unitMultiplier))
       ? Number(extracted.unitMultiplier)

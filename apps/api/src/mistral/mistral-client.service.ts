@@ -84,6 +84,8 @@ export class MistralClientService {
       temperature?: number;
       fallbackToJsonObject?: boolean;
       timeoutMs?: number;
+      model?: string;
+      fallbackModels?: string[];
     } = {},
   ): Promise<T> {
     const apiKey = await this.apiKey(organizationId);
@@ -92,6 +94,7 @@ export class MistralClientService {
       const request = async (
         requestMessages: typeof messages,
         responseFormat: Record<string, unknown>,
+        model: string,
       ) => {
         const configuredTimeoutMs =
           options.timeoutMs ?? Number(process.env.MISTRAL_CHAT_TIMEOUT_MS ?? 60_000);
@@ -111,10 +114,7 @@ export class MistralClientService {
             headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
             signal: controller.signal,
             body: JSON.stringify({
-              model:
-                process.env.STOCK_ASSISTANT_MISTRAL_MODEL ||
-                process.env.OCR_MISTRAL_AI_MODEL ||
-                'mistral-large-latest',
+              model,
               temperature: options.temperature ?? 0,
               messages: requestMessages,
               response_format: responseFormat,
@@ -127,17 +127,46 @@ export class MistralClientService {
           clearTimeout(timeout);
         }
       };
-      let response = await request(messages, {
+      const primaryModel =
+        options.model?.trim() ||
+        process.env.STOCK_ASSISTANT_MISTRAL_MODEL ||
+        process.env.OCR_MISTRAL_AI_MODEL ||
+        'mistral-large-latest';
+      const models = [...new Set([primaryModel, ...(options.fallbackModels || [])])]
+        .map((model) => model.trim())
+        .filter(Boolean);
+      const requestWithModelFallback = async (
+        requestMessages: typeof messages,
+        responseFormat: Record<string, unknown>,
+      ) => {
+        let lastResponse: Response | null = null;
+        let lastJson: any = {};
+        for (const [index, model] of models.entries()) {
+          const response = await request(requestMessages, responseFormat, model);
+          const json: any = await response.json().catch(() => ({}));
+          lastResponse = response;
+          lastJson = json;
+          const hasFallback = index < models.length - 1;
+          if (
+            response.ok ||
+            !hasFallback ||
+            !this.isUnavailableModelResponse(response.status, json)
+          ) {
+            return { response, json };
+          }
+        }
+        return { response: lastResponse as Response, json: lastJson };
+      };
+      let { response, json } = await requestWithModelFallback(messages, {
         type: 'json_schema',
         json_schema: { name: schemaName, strict: true, schema },
       });
-      let json: any = await response.json().catch(() => ({}));
       if (
         !response.ok &&
         options.fallbackToJsonObject &&
         (response.status === 400 || response.status === 422)
       ) {
-        response = await request(
+        ({ response, json } = await requestWithModelFallback(
           [
             {
               role: 'system',
@@ -146,8 +175,7 @@ export class MistralClientService {
             ...messages,
           ],
           { type: 'json_object' },
-        );
-        json = await response.json().catch(() => ({}));
+        ));
       }
       if (!response.ok) {
         const providerMessage = this.providerErrorMessage(json);
@@ -175,6 +203,18 @@ export class MistralClientService {
       .replace(/\s+/g, ' ')
       .trim();
     return message.slice(0, 400);
+  }
+
+  private isUnavailableModelResponse(status: number, json: any) {
+    if (status !== 403 && status !== 404) return false;
+    const message = this.providerErrorMessage(json).toLowerCase();
+    return (
+      message.includes('model') &&
+      (message.includes('not available') ||
+        message.includes('subscription tier') ||
+        message.includes('not found') ||
+        message.includes('access'))
+    );
   }
 
   private ocrRequestBody(model: string, isPdf: boolean, dataUrl: string, input: MistralOcrInput) {

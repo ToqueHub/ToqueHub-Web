@@ -64,6 +64,8 @@ services:
       STOCKS_OCR_UPLOAD_DIR: /app/data/uploads/stocks-ocr
       HACCP_UPLOAD_DIR: /app/data/uploads/haccp
       OCR_TIMEOUT_MS: ${OCR_TIMEOUT_MS:-120000}
+      FINANCE_MISTRAL_MODEL: ${FINANCE_MISTRAL_MODEL:-ministral-8b-latest}
+      FINANCE_MISTRAL_FALLBACK_MODELS: ${FINANCE_MISTRAL_FALLBACK_MODELS:-}
       FLATPAY_CHROME_PATH: ${FLATPAY_CHROME_PATH:-/usr/bin/chromium}
       FLATPAY_CHROME_NO_SANDBOX: ${FLATPAY_CHROME_NO_SANDBOX:-true}
       FLATPAY_BROWSER_PROFILE_DIR: ${FLATPAY_BROWSER_PROFILE_DIR:-/app/data/flatpay/browser-profile}
