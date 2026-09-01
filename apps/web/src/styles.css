@@ -14995,6 +14995,331 @@ input:checked + .slider-round:before {
   }
 }
 
+/* Shared equipment financing contracts */
+.metric-card-modern[role='button'],
+.stocks-metric-item[role='button'] {
+  cursor: pointer;
+}
+
+.metric-card-modern[role='button']:focus-visible,
+.stocks-metric-item[role='button']:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 3px;
+}
+
+.ocr-financing-contract-card {
+  margin: 0 1rem 1rem;
+  padding: 1rem;
+  border: 1px solid #d8e4df;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f6fffb, #f8fafc);
+  box-shadow: 0 10px 25px rgba(15, 118, 110, 0.06);
+}
+
+.ocr-financing-contract-heading,
+.stocks-financing-section-heading,
+.equipment-financing-contract > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ocr-financing-contract-heading h4,
+.equipment-financing-contract h4 {
+  margin: 0.2rem 0 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.ocr-financing-documents-count,
+.stocks-financing-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: fit-content;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  color: #047857;
+  background: #d1fae5;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.stocks-financing-source.fennoa {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.ocr-financing-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.ocr-financing-contract-grid label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ocr-financing-contract-grid label > span {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.ocr-financing-contract-grid input,
+.ocr-financing-contract-grid select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #dbe4ea;
+  border-radius: 10px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.ocr-financing-contract-note {
+  margin: 0.8rem 0 0;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.stocks-financing-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.stocks-financing-section-heading > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.stocks-financing-contract-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.stocks-financing-contract-preview {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.stocks-financing-contract-preview > div:first-child {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.stocks-financing-contract-preview strong {
+  color: #0f172a;
+}
+
+.stocks-financing-contract-preview small {
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+}
+
+.stocks-financing-contract-preview-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.stocks-financing-contract-preview-amount strong {
+  color: #7c3aed;
+  font-size: 1.2rem;
+}
+
+.stocks-financing-contract-preview-amount span {
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.equipment-financing-modal-body {
+  background: #f6f8fb;
+}
+
+.equipment-financing-contracts-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.equipment-financing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.equipment-financing-summary-grid > div {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.equipment-financing-summary-grid span,
+.equipment-financing-contract-facts span,
+.equipment-financing-assets > span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.equipment-financing-summary-grid strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+}
+
+.equipment-financing-contract-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.equipment-financing-contract {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.equipment-financing-contract header > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.equipment-financing-contract header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.equipment-financing-contract-main-amount {
+  display: grid;
+  justify-items: end;
+}
+
+.equipment-financing-contract-main-amount strong {
+  color: #7c3aed;
+  font-size: 1.35rem;
+}
+
+.equipment-financing-contract-main-amount span {
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.equipment-financing-contract-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.equipment-financing-contract-facts > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.equipment-financing-contract-facts strong {
+  color: #0f172a;
+  font-size: 0.82rem;
+}
+
+.equipment-financing-contract-facts small {
+  color: #94a3b8;
+  font-size: 0.63rem;
+}
+
+.equipment-financing-fennoa-proof {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  color: #1e40af;
+  background: #eff6ff;
+  font-size: 0.72rem;
+}
+
+.equipment-financing-assets {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.equipment-financing-assets > div,
+.equipment-financing-contract > footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.equipment-financing-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.38rem 0.55rem;
+  border: 1px solid #dbe4ea;
+  border-radius: 999px;
+  color: #334155;
+  background: #f8fafc;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.equipment-financing-contract > footer > span {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .ocr-financing-contract-grid,
+  .stocks-financing-contract-preview-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .equipment-financing-summary-grid,
+  .equipment-financing-contract-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .ocr-financing-contract-heading,
+  .stocks-financing-section-heading,
+  .equipment-financing-contract > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ocr-financing-contract-grid,
+  .stocks-financing-contract-preview-grid,
+  .equipment-financing-summary-grid,
+  .equipment-financing-contract-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .equipment-financing-contract-main-amount {
+    justify-items: start;
+  }
+}
+
 /* Checkbox group for secondary positions */
 .hr-checkbox-group {
   display: flex;
@@ -35547,6 +35872,112 @@ input:checked + .slider-round:before {
   border-color: #a7f3d0;
 }
 
+.cockpit-receivables-modal-body {
+  padding: 1.25rem;
+  background: #f8fafc;
+}
+
+.cockpit-receivables-table-wrap {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.cockpit-receivables-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #334155;
+  font-size: 0.8rem;
+}
+
+.cockpit-receivables-table th,
+.cockpit-receivables-table td {
+  padding: 0.85rem 0.9rem;
+  border-bottom: 1px solid #eef2f7;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cockpit-receivables-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cockpit-receivables-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cockpit-receivables-table tbody tr:hover td {
+  background: #fbfefd;
+}
+
+.cockpit-receivable-amount {
+  color: #b45309;
+  font-weight: 850;
+}
+
+.cockpit-receivables-table td.overdue {
+  color: #be123c;
+  font-weight: 750;
+}
+
+.cockpit-receivables-table td.overdue small {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.cockpit-receivable-open {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.cockpit-receivable-open:hover {
+  border-color: #10b981;
+  background: #d1fae5;
+  transform: translateY(-1px);
+}
+
+.cockpit-receivables-empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  color: #047857;
+  text-align: center;
+}
+
+.cockpit-receivables-empty strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.cockpit-receivables-empty span {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .cockpit-receivables-table th:nth-child(4),
+  .cockpit-receivables-table td:nth-child(4) {
+    display: none;
+  }
+}
+
 /* Split Columns Layout */
 .cockpit-row-split {
   display: grid;
@@ -43710,6 +44141,224 @@ input:checked + .slider-round:before {
     width: 100%;
     margin-right: 0;
     order: -1;
+  }
+}
+
+.menus-operation-accordion {
+  overflow: hidden;
+  border: 1px solid #a7f3d0;
+  background: linear-gradient(135deg, #ecfdf5, #ffffff 72%);
+}
+
+.menus-operation-accordion > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menus-operation-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menus-operation-accordion-icon,
+.menus-catalog-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: 13px;
+  background: #d1fae5;
+  color: #047857;
+}
+
+.menus-operation-accordion > summary > span:nth-child(2) {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.menus-operation-accordion > summary small,
+.menus-catalog-select-wrap > small {
+  color: #047857;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.menus-operation-accordion > summary strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.menus-operation-accordion-chevron {
+  color: #64748b;
+  transition: transform 180ms ease;
+}
+
+.menus-operation-accordion[open] .menus-operation-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.menus-operation-accordion-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.25rem 1.15rem 5.05rem;
+  border-top: 1px solid rgba(167, 243, 208, 0.65);
+}
+
+.menus-operation-accordion-content p {
+  margin: 0;
+  padding-top: 1rem;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.menus-operation-accordion-content .btn {
+  margin-top: 1rem;
+  white-space: nowrap;
+}
+
+.menus-catalog-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.4fr) minmax(310px, 0.8fr) auto;
+  align-items: stretch;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(135deg, #ffffff, #f8fffc);
+}
+
+.menus-catalog-identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.85rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.menus-catalog-select-wrap {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.16rem;
+}
+
+.menus-catalog-select-wrap select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.12rem 1.8rem 0.12rem 0;
+  border: 0;
+  background-color: transparent;
+  color: #0f172a;
+  font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+  font-weight: 850;
+}
+
+.menus-catalog-site {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menus-catalog-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(85px, 1fr));
+  gap: 0.5rem;
+}
+
+.menus-catalog-summary > span {
+  display: grid;
+  align-content: center;
+  gap: 0.12rem;
+  min-height: 64px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.menus-catalog-summary strong {
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.menus-catalog-summary small {
+  color: #64748b;
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+.menus-catalog-summary > span.ready {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+}
+
+.menus-catalog-summary > span.produce {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.menus-catalog-summary > span.blocked {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.menus-catalog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.menus-catalog-actions .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .menus-catalog-header {
+    grid-template-columns: minmax(280px, 1fr) minmax(300px, 0.8fr);
+  }
+
+  .menus-catalog-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .menus-catalog-header {
+    grid-template-columns: 1fr;
+  }
+
+  .menus-catalog-summary,
+  .menus-catalog-actions {
+    grid-column: auto;
+  }
+
+  .menus-catalog-actions {
+    justify-content: stretch;
+  }
+
+  .menus-catalog-actions .btn {
+    flex: 1;
+  }
+
+  .menus-operation-accordion-content {
+    align-items: stretch;
+    flex-direction: column;
+    padding-left: 1.25rem;
+  }
+
+  .menus-operation-accordion-content .btn {
+    justify-content: center;
   }
 }
 

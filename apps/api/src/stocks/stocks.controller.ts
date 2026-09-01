@@ -57,6 +57,7 @@ import { StocksInventoryImportService } from './stocks-inventory-import.service'
 import { StocksOcrService } from './stocks-ocr.service';
 import { StocksProductImportService } from './stocks-product-import.service';
 import { StocksService } from './stocks.service';
+import { EquipmentFinancingService } from './equipment-financing.service';
 
 @ApiTags('stocks')
 @ApiBearerAuth()
@@ -69,6 +70,7 @@ export class StocksController {
     private readonly stocksMarginsService: StocksMarginsService,
     private readonly stocksProductImportService: StocksProductImportService,
     private readonly stocksInventoryImportService: StocksInventoryImportService,
+    private readonly equipmentFinancingService: EquipmentFinancingService,
   ) {}
 
   private org(user: AuthenticatedUser) {
@@ -93,6 +95,11 @@ export class StocksController {
     @Param('productId') productId: string,
   ) {
     return this.stocksService.listEquipmentDocuments(this.org(user), productId);
+  }
+
+  @Get('equipment/financing/contracts')
+  equipmentFinancingContracts(@CurrentUser() user: AuthenticatedUser) {
+    return this.equipmentFinancingService.list(this.org(user));
   }
 
   @Post('equipment/:productId/documents')
@@ -197,6 +204,23 @@ export class StocksController {
     @Param('extractionId') extractionId: string,
   ) {
     return this.stocksOcrService.getExtraction(this.org(user), this.actor(user), extractionId);
+  }
+
+  @Post('stocks/ocr/extractions/:extractionId/financing-documents')
+  @UseInterceptors(
+    FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }),
+  )
+  uploadOcrFinancingDocuments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('extractionId') extractionId: string,
+    @UploadedFiles() files: any[],
+  ) {
+    return this.stocksOcrService.uploadFinancingDocuments(
+      this.org(user),
+      this.actor(user),
+      extractionId,
+      files,
+    );
   }
 
   @Post('stocks/ocr/extractions/:extractionId/reanalyze-ai')

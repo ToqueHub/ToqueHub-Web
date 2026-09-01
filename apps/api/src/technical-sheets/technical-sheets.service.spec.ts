@@ -25,6 +25,68 @@ const kesproMarkdown = (name: string, portions: number, rows: string[]) =>
     '## Preparation instructions',
   ].join('\n');
 
+describe('TechnicalSheetsService printable recipe composition', () => {
+  it('uses product data for allergens and compact portion/100 g nutrition in both languages', async () => {
+    const gram = { id: 'unit-g', name: 'Gramme', symbol: 'g', type: UnitType.MASS };
+    const product = {
+      id: 'product-milk',
+      name: 'Lait entier',
+      unitId: gram.id,
+      unit: gram,
+      allergensPresent: ['Maito'],
+      possibleTraces: ['Pähkinät'],
+      energyKj: 420,
+      energyKcal: 100,
+      fatGrams: 4,
+      saturatedFatGrams: 2,
+      carbohydratesGrams: 10,
+      sugarsGrams: 10,
+      fiberGrams: 0,
+      proteinGrams: 3,
+      saltGrams: 0.1,
+    };
+    const recipe = {
+      id: 'sheet-custard',
+      name: 'Crème test',
+      yieldMode: TechnicalSheetYieldMode.PORTIONS,
+      referencePortions: 2,
+      totalMassGrams: new Prisma.Decimal(200),
+      totalCost: new Prisma.Decimal(2),
+      category: { name: 'Desserts' },
+      ingredients: [
+        {
+          quantity: new Prisma.Decimal(200),
+          unitId: gram.id,
+          unit: gram,
+          product,
+          cost: new Prisma.Decimal(2),
+          sourceTechnicalSheetId: null,
+          allergens: [],
+        },
+      ],
+      steps: [{ title: 'Mélanger', description: 'Mélanger tous les ingrédients.' }],
+    };
+    const prisma = {
+      technicalSheet: { findMany: jest.fn().mockResolvedValue([recipe]) },
+      unitConversion: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new TechnicalSheetsService(prisma as any, {} as any);
+
+    const composition = await (service as any).recipeComposition('org-1', recipe.id);
+    expect(composition.allergens.present).toEqual([{ name: 'Maito', products: ['Lait entier'] }]);
+    expect(composition.allergens.traces).toEqual([{ name: 'Pähkinät', products: ['Lait entier'] }]);
+    expect(composition.nutrition.perPortion.energyKcal).toBe(100);
+    expect(composition.nutrition.per100Grams.energyKcal).toBe(100);
+
+    const [frenchPdf, englishPdf] = await Promise.all([
+      (service as any).recipePdf(recipe, composition, 'fr'),
+      (service as any).recipePdf(recipe, composition, 'en'),
+    ]);
+    expect(frenchPdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(englishPdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+});
+
 describe('TechnicalSheetsService Kespro recipe import', () => {
   const service = new TechnicalSheetsService({} as any, {} as any);
   const parse = (markdown: string) => (service as any).applyKesproRecipeData(markdown, baseImport);

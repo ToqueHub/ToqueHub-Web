@@ -1127,6 +1127,7 @@ model Organization {
   units                                 Unit[]
   products                              Product[]
   equipmentProfiles                     EquipmentProfile[]
+  equipmentFinancingContracts           EquipmentFinancingContract[]
   productSites                          ProductSite[]
   productVariants                       ProductVariant[]
   packagingCompositionItems             PackagingCompositionItem[]
@@ -1808,6 +1809,7 @@ model EquipmentProfile {
   id                String                   @id @default(uuid()) @db.Uuid
   organizationId    String                   @db.Uuid
   productId         String                   @unique @db.Uuid
+  financingContractId String?                @db.Uuid
   brand             String?
   model             String?
   purchaseUrl       String?                  @db.Text
@@ -1828,12 +1830,48 @@ model EquipmentProfile {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  financingContract EquipmentFinancingContract? @relation(fields: [financingContractId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([financingContractId])
   @@index([acquisitionMode])
   @@index([financingEnd])
   @@index([condition])
   @@map("equipment_profiles")
+}
+
+model EquipmentFinancingContract {
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @db.Uuid
+  supplierId        String?                  @db.Uuid
+  acquisitionMode   EquipmentAcquisitionMode
+  contractNumber    String?
+  financingProvider String?
+  termMonths        Int?
+  installmentAmount Decimal?                 @db.Decimal(14, 2)
+  paymentFrequency  String?
+  monthlyPayment    Decimal?                 @db.Decimal(14, 2)
+  financingStart    DateTime?
+  financingEnd      DateTime?
+  financedAmount    Decimal?                 @db.Decimal(14, 2)
+  buyoutValue       Decimal?                 @db.Decimal(14, 2)
+  currency          String                   @default("EUR")
+  source            String                   @default("TOQUEHUB")
+  sourceConfidence  Decimal?                 @db.Decimal(5, 4)
+  notes             String?                  @db.Text
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier          Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  equipmentProfiles EquipmentProfile[]
+  documents         Document[]
+
+  @@index([organizationId, acquisitionMode])
+  @@index([organizationId, financingEnd])
+  @@index([organizationId, financingProvider])
+  @@index([supplierId])
+  @@map("equipment_financing_contracts")
 }
 
 model ProductSite {
@@ -1940,6 +1978,7 @@ model Supplier {
   productOffers          SupplierProductOffer[]
   purchaseOrders         PurchaseOrder[]
   ocrIdentifiers         SupplierOcrIdentifier[]
+  equipmentFinancingContracts EquipmentFinancingContract[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2209,6 +2248,7 @@ model Document {
   sourceModule     String
   sourceType       String?
   sourceId         String?        @db.Uuid
+  equipmentFinancingContractId String? @db.Uuid
   status           DocumentStatus @default(UPLOADED)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -2219,11 +2259,13 @@ model Document {
   stockReceptions  StockReception[]
   haccpOilSessions HaccpOilSession[]
   purchaseReceipts PurchaseReceipt[]
+  equipmentFinancingContract EquipmentFinancingContract? @relation(fields: [equipmentFinancingContractId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([uploadedById])
   @@index([status])
   @@index([sourceModule, sourceType, sourceId])
+  @@index([equipmentFinancingContractId])
   @@index([organizationId, contentSha256])
   @@map("documents")
 }

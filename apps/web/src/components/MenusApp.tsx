@@ -23,6 +23,7 @@ import {
   Settings,
   Sparkles,
   Truck,
+  Trash2,
   Utensils,
   UsersRound,
   Wine,
@@ -217,6 +218,7 @@ export function MenusApp({
   const [catalogWizardStep, setCatalogWizardStep] = useState<1 | 2 | 3>(1);
   const [catalogType, setCatalogType] = useState<MenuCatalogType>();
   const [selectedPresetCategories, setSelectedPresetCategories] = useState<string[]>([]);
+  const [dashboardOverviewOpen, setDashboardOverviewOpen] = useState(true);
   const [cycleForm, setCycleForm] = useState<MenuCyclePayload>({
     name: '',
     description: '',
@@ -249,7 +251,10 @@ export function MenusApp({
     () => menus.find((menu) => menu.id === selectedMenuId) ?? menus[0],
     [menus, selectedMenuId],
   );
-  const catalogs = useMemo(() => menus.filter((menu) => menu.kind === 'CATALOG'), [menus]);
+  const catalogs = useMemo(
+    () => menus.filter((menu) => menu.kind === 'CATALOG' && menu.status !== 'ARCHIVED'),
+    [menus],
+  );
   const averageCatalogSellingPrice = useMemo(() => averageCatalogPrice(catalogs), [catalogs]);
   const selectedCatalog = useMemo(
     () => catalogs.find((menu) => menu.id === selectedMenuId) ?? catalogs[0],
@@ -564,14 +569,20 @@ export function MenusApp({
     }, 'Rubrique ajoutée à votre carte.');
   }
 
-  async function planCatalogShortages() {
-    if (!selectedCatalog) return;
+  async function deleteCatalog() {
+    if (!selectedCatalog || !canManage) return;
+    if (
+      !window.confirm(
+        `Supprimer la carte « ${selectedCatalog.name} » ? Elle sera retirée de la liste avec tous ses articles.`,
+      )
+    )
+      return;
+    const nextCatalog = catalogs.find((catalog) => catalog.id !== selectedCatalog.id);
     await run(async () => {
-      const result = await api.planMenuShortages(token, selectedCatalog.id, {
-        siteId: selectedCatalog.siteId || undefined,
-      });
-      setAvailability(result.report);
-    }, 'Les besoins manquants ont été préparés en brouillon dans Production.');
+      await api.changeMenuStatus(token, selectedCatalog.id, 'ARCHIVED');
+      setSelectedMenuId(nextCatalog?.id);
+      await refresh();
+    }, `La carte « ${selectedCatalog.name} » a été supprimée.`);
   }
 
   async function createMenu(event: React.FormEvent<HTMLFormElement>) {
@@ -909,48 +920,32 @@ export function MenusApp({
           {tab === 'dashboard' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               {settings?.catalogEnabled ? (
-                <div
-                  className="card-modern"
-                  style={{
-                    padding: '1.5rem',
-                    background: 'linear-gradient(135deg, #ecfdf5, #ffffff)',
-                    border: '1px solid #a7f3d0',
-                  }}
+                <details
+                  className="card-modern menus-operation-accordion"
+                  open={dashboardOverviewOpen}
+                  onToggle={(event) => setDashboardOverviewOpen(event.currentTarget.open)}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '1.5rem',
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div>
-                      <span
-                        style={{
-                          color: '#047857',
-                          fontSize: '0.75rem',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        Vue opérationnelle
-                      </span>
-                      <h2 style={{ margin: '0.25rem 0', color: '#0f172a', fontSize: '1.3rem' }}>
-                        {selectedCatalog?.name ?? 'Créez votre première carte'}
-                      </h2>
-                      <span className="muted">
-                        {availability
-                          ? `${availability.summary.ready} article(s) disponibles · ${availability.summary.toProduce} à produire · ${availability.summary.blocked} bloqué(s)`
-                          : 'Suivez le stock de vos produits finis et de leurs préparations.'}
-                      </span>
-                    </div>
+                  <summary>
+                    <span className="menus-operation-accordion-icon">
+                      <LayoutDashboard size={19} />
+                    </span>
+                    <span>
+                      <small>Vue opérationnelle</small>
+                      <strong>{selectedCatalog?.name ?? 'Créez votre première carte'}</strong>
+                    </span>
+                    <ChevronDown className="menus-operation-accordion-chevron" size={19} />
+                  </summary>
+                  <div className="menus-operation-accordion-content">
+                    <p>
+                      {availability
+                        ? `${availability.summary.ready} article(s) disponibles · ${availability.summary.toProduce} à produire · ${availability.summary.blocked} bloqué(s)`
+                        : 'Suivez le stock de vos produits finis et de leurs préparations.'}
+                    </p>
                     <button className="btn btn-primary" onClick={() => onNavigate('catalog')}>
                       <BookOpen size={16} /> Ouvrir la carte
                     </button>
                   </div>
-                </div>
+                </details>
               ) : null}
               <div className="menus-grid">
                 <MetricCard
@@ -1040,82 +1035,60 @@ export function MenusApp({
                 </div>
               ) : (
                 <>
-                  <div className="card-modern" style={{ padding: '1.25rem 1.5rem' }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '1rem',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                        <div
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 13,
-                            background: '#ecfdf5',
-                            color: '#047857',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
+                  <div className="card-modern menus-catalog-header">
+                    <div className="menus-catalog-identity">
+                      <span className="menus-catalog-icon">
+                        <BookOpen size={23} />
+                      </span>
+                      <div className="menus-catalog-select-wrap">
+                        <small>Carte active</small>
+                        <select
+                          value={selectedCatalog?.id ?? ''}
+                          onChange={(event) => setSelectedMenuId(event.target.value)}
+                          aria-label="Choisir la carte active"
                         >
-                          <BookOpen size={23} />
-                        </div>
-                        <div>
-                          <select
-                            value={selectedCatalog?.id ?? ''}
-                            onChange={(event) => setSelectedMenuId(event.target.value)}
-                            style={{
-                              border: 0,
-                              fontSize: '1.15rem',
-                              fontWeight: 800,
-                              padding: 0,
-                              color: '#0f172a',
-                              background: 'transparent',
-                            }}
-                          >
-                            {catalogs.map((catalog) => (
-                              <option key={catalog.id} value={catalog.id}>
-                                {catalog.name}
-                              </option>
-                            ))}
-                          </select>
-                          <div
-                            className="muted"
-                            style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}
-                          >
-                            {selectedCatalog?.site?.name ?? primarySite?.name ?? 'Site non défini'}{' '}
-                            · disponibilité en temps réel
-                          </div>
+                          {catalogs.map((catalog) => (
+                            <option key={catalog.id} value={catalog.id}>
+                              {catalog.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="muted menus-catalog-site">
+                          {selectedCatalog?.site?.name ?? primarySite?.name ?? 'Site non défini'} ·
+                          disponibilité en temps réel
                         </div>
                       </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '0.6rem',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                        }}
+                    </div>
+                    <div className="menus-catalog-summary" aria-label="Disponibilité de la carte">
+                      <span className="ready">
+                        <strong>{availability?.summary.ready ?? '—'}</strong>
+                        <small>Disponibles</small>
+                      </span>
+                      <span className="produce">
+                        <strong>{availability?.summary.toProduce ?? '—'}</strong>
+                        <small>À produire</small>
+                      </span>
+                      <span className="blocked">
+                        <strong>{availability?.summary.blocked ?? '—'}</strong>
+                        <small>Bloqués</small>
+                      </span>
+                    </div>
+                    <div className="menus-catalog-actions">
+                      <button
+                        className="btn btn-secondary"
+                        disabled={!canManage}
+                        onClick={openCatalogWizard}
                       >
-                        <button
-                          className="btn btn-secondary"
-                          disabled={!canManage}
-                          onClick={openCatalogWizard}
-                        >
-                          <Plus size={15} /> Nouvelle carte
-                        </button>
-                        <button
-                          className="btn btn-primary"
-                          disabled={saving || !canManage || !availability?.summary.toProduce}
-                          onClick={planCatalogShortages}
-                        >
-                          <Factory size={16} /> Planifier les manquants
-                        </button>
-                      </div>
+                        <Plus size={15} /> Nouvelle carte
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger"
+                        disabled={saving || !canManage}
+                        onClick={deleteCatalog}
+                      >
+                        <Trash2 size={15} /> Supprimer
+                      </button>
                     </div>
                   </div>
 
@@ -3515,7 +3488,7 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
               <div className="head">
                 <span>Valeur</span>
                 <span>Par portion</span>
-                <span>Total fiche</span>
+                <span>Pour 100 g</span>
               </div>
               {nutritionFields.map(([field, label, unit]) => {
                 const coverage =
@@ -3533,9 +3506,9 @@ function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items
                         : `${partialPrefix}${nutrition.perPortion[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
                     </strong>
                     <strong>
-                      {nutrition?.total[field] == null
+                      {nutrition?.per100Grams?.[field] == null
                         ? 'Non calculable'
-                        : `${partialPrefix}${nutrition.total[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
+                        : `${partialPrefix}${nutrition.per100Grams[field]!.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} ${unit}`}
                     </strong>
                   </div>
                 );

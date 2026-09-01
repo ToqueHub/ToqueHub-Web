@@ -737,7 +737,17 @@ export function CatererMenusApp({
   );
 }
 
-export function ClientsApp({ token, canManage }: { token: string; canManage: boolean }) {
+export function ClientsApp({
+  token,
+  canManage,
+  openClientId,
+  onOpenClientHandled,
+}: {
+  token: string;
+  canManage: boolean;
+  openClientId?: string;
+  onOpenClientHandled?: () => void;
+}) {
   const [clients, setClients] = useState<CatererClient[]>([]);
   const [clientSearch, setClientSearch] = useState('');
   const [clientDirectoryTab, setClientDirectoryTab] = useState<'individuals' | 'businesses'>(
@@ -763,7 +773,9 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
     try {
       setClients(await api.catererClients(token));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Chargement des clients impossible.');
+      setError(
+        nextError instanceof Error ? nextError.message : 'Chargement des clients impossible.',
+      );
     } finally {
       setLoading(false);
     }
@@ -844,6 +856,13 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
     setClientModalOpen(true);
   };
 
+  useEffect(() => {
+    if (!openClientId || loading) return;
+    const client = clients.find((candidate) => candidate.id === openClientId);
+    if (client) startEditClient(client);
+    onOpenClientHandled?.();
+  }, [clients, loading, openClientId, onOpenClientHandled]);
+
   const saveClient = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -858,7 +877,9 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
       setClientForm(emptyClient());
       await refreshClients();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Enregistrement du client impossible.');
+      setError(
+        nextError instanceof Error ? nextError.message : 'Enregistrement du client impossible.',
+      );
     } finally {
       setSaving(false);
     }
@@ -948,7 +969,9 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
       );
       await refreshClients();
     } catch (nextError) {
-      setImportError(nextError instanceof Error ? nextError.message : 'Import des clients impossible.');
+      setImportError(
+        nextError instanceof Error ? nextError.message : 'Import des clients impossible.',
+      );
     } finally {
       setImportSaving(false);
     }
@@ -968,8 +991,8 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
           </span>
           <h1 className="welcome-title">Clients</h1>
           <p className="welcome-desc">
-            Centralisez les coordonnées, informations de facturation, factures, paiements et
-            encours de tous vos clients dans un répertoire unique.
+            Centralisez les coordonnées, informations de facturation, factures, paiements et encours
+            de tous vos clients dans un répertoire unique.
           </p>
         </div>
         <div className="hr-hero-actions toquehub-hero-actions">
@@ -1089,9 +1112,6 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
                 <div className="caterer-client-identity">
                   <div>
                     <strong>{client.name}</strong>
-                    {client.source?.includes('FENNOA') ? (
-                      <span className="caterer-client-source">Synchronisé</span>
-                    ) : null}
                   </div>
                   <small>
                     {[client.customerNumber, client.businessId, client.city]
@@ -1152,7 +1172,11 @@ export function ClientsApp({ token, canManage }: { token: string; canManage: boo
           ) : null}
           {!loading && clients.length > 0 && !clientsInSelectedTab.length ? (
             <Empty
-              title={clientDirectoryTab === 'individuals' ? 'Aucun client particulier' : 'Aucune entreprise'}
+              title={
+                clientDirectoryTab === 'individuals'
+                  ? 'Aucun client particulier'
+                  : 'Aucune entreprise'
+              }
               text={
                 clientDirectoryTab === 'individuals'
                   ? 'Les clients définis comme particuliers apparaîtront dans cet onglet.'
@@ -1227,16 +1251,13 @@ function CatererClientImportModal({
   saving: boolean;
   error?: string;
   onFile: (file: File) => void | Promise<void>;
-  onUpdateRow: (
-    id: string,
-    field: keyof CatererClientImportRow['fields'],
-    value: string,
-  ) => void;
+  onUpdateRow: (id: string, field: keyof CatererClientImportRow['fields'], value: string) => void;
   onToggleRow: (id: string, selected: boolean) => void;
   onCommit: () => void | Promise<void>;
   onClose: () => void;
 }) {
-  const selected = preview?.rows.filter((row) => row.selected && row.status !== 'error').length ?? 0;
+  const selected =
+    preview?.rows.filter((row) => row.selected && row.status !== 'error').length ?? 0;
   const summary = preview
     ? {
         ready: preview.rows.filter((row) => row.status === 'ready').length,
@@ -1271,9 +1292,7 @@ function CatererClientImportModal({
         <div className="modal-header">
           <div>
             <h2>Importer une base clients</h2>
-            <p className="muted">
-              Prénom, nom, téléphone, e-mail et informations d’allergies.
-            </p>
+            <p className="muted">Prénom, nom, téléphone, e-mail et informations d’allergies.</p>
           </div>
           <button
             type="button"
@@ -1635,8 +1654,7 @@ function CatererClientModal({
                   <BadgeEuro size={18} /> Paramètres de facturation
                 </h3>
                 <p className="muted">
-                  Ces valeurs peuvent être complétées automatiquement par votre logiciel
-                  comptable.
+                  Ces valeurs peuvent être complétées automatiquement par votre logiciel comptable.
                 </p>
               </div>
               <div className="hr-form-grid">
@@ -5007,7 +5025,9 @@ function CatererCalendarView({
                         style={{ fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}
                       >
                         {ev.startsAt
-                          ? new Date(ev.startsAt).toLocaleDateString(activeLocale(), { month: 'short' })
+                          ? new Date(ev.startsAt).toLocaleDateString(activeLocale(), {
+                              month: 'short',
+                            })
                           : 'Date'}
                       </div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 850, lineHeight: 1 }}>

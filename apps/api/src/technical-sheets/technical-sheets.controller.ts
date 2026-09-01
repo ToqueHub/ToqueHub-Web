@@ -169,9 +169,10 @@ export class TechnicalSheetsController {
   async exportRecipePdf(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
+    @Query('locale') locale: string | undefined,
     @Res() res: Response,
   ) {
-    const file = await this.service.exportRecipePdf(this.org(user), this.actor(user), id);
+    const file = await this.service.exportRecipePdf(this.org(user), this.actor(user), id, locale);
     this.sendExport(res, file);
   }
   @Get('recipes/:id') getRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

@@ -89,6 +89,7 @@ describe('Menu nutrition quantities', () => {
     expect(result.nutrition.complete).toBe(true);
     expect(result.nutrition.total.energyKcal).toBe(200);
     expect(result.nutrition.perPortion.energyKcal).toBe(20);
+    expect(result.nutrition.per100Grams.energyKcal).toBe(100);
     expect(result.nutrition.total.energyKcal).not.toBe(9_999);
     expect(result.allergens.present).toEqual([
       { name: 'Aucun allergène de la sous-recette', products: ['Myrtille'] },
@@ -143,8 +144,10 @@ describe('Menu nutrition quantities', () => {
 
     const partial = calculate();
     expect(partial.nutrition.total.energyKcal).toBe(30);
+    expect(partial.nutrition.per100Grams.energyKcal).toBe(15);
     expect(partial.nutrition.coverage.energyKcal).toBe(100);
     expect(partial.nutrition.total.fiberGrams).toBe(10);
+    expect(partial.nutrition.per100Grams.fiberGrams).toBe(5);
     expect(partial.nutrition.coverage.fiberGrams).toBe(50);
     expect(partial.nutrition.coveragePercent).toBe(94.4);
     expect(partial.nutrition.missingProductsByField.fiberGrams).toEqual([partialProduct.name]);

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { activeLocale } from '../i18n/runtime';
+import { activeLanguage, activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -807,7 +807,6 @@ function MetricCard({
     >
       <div className="metric-header">
         <div className={`metric-icon-wrapper-modern tone-${tone}`}>{icon}</div>
-        <span className="metric-badge-trend">Mise à jour</span>
       </div>
       <div className="metric-body-modern">
         <span className="metric-value-modern" style={{ fontSize: '1.8rem' }}>
@@ -1294,7 +1293,7 @@ export function TechnicalSheetsApp({
   async function exportRecipePdf(recipe: TechnicalSheetRecipe) {
     setError(undefined);
     try {
-      const file = await api.exportTechnicalSheetRecipePdf(token, recipe.id);
+      const file = await api.exportTechnicalSheetRecipePdf(token, recipe.id, activeLanguage());
       const url = URL.createObjectURL(file.blob);
       const link = document.createElement('a');
       link.href = url;
@@ -3119,7 +3118,7 @@ function DashboardTab({
         />
       ) : null}
 
-      <div className="stats-grid">
+      <div className="metrics-grid">
         <MetricCard
           label="Fiches techniques"
           value={dashboard?.recipeCount ?? recipes.length}

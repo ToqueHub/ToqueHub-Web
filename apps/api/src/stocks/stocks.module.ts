@@ -7,6 +7,7 @@ import { StocksOcrService } from './stocks-ocr.service';
 import { StocksProductImportService } from './stocks-product-import.service';
 import { StocksReceptionInventoryService } from './stocks-reception-inventory.service';
 import { StocksService } from './stocks.service';
+import { EquipmentFinancingService } from './equipment-financing.service';
 
 @Module({
   imports: [RnmPricesModule],
@@ -18,6 +19,7 @@ import { StocksService } from './stocks.service';
     StocksProductImportService,
     StocksInventoryImportService,
     StocksReceptionInventoryService,
+    EquipmentFinancingService,
   ],
   exports: [StocksService, StocksOcrService, StocksMarginsService, StocksReceptionInventoryService],
 })

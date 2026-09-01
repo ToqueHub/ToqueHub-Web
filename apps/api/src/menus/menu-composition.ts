@@ -27,6 +27,7 @@ export type MenuCompositionResult = {
     referencePortions: number;
     total: Record<NutritionField, number | null>;
     perPortion: Record<NutritionField, number | null>;
+    per100Grams: Record<NutritionField, number | null>;
     coverage: Record<NutritionField, number>;
     coveragePercent: number;
     missingProductsByField: Record<NutritionField, string[]>;
@@ -265,6 +266,7 @@ function serializeComposition(
       .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
   const total = {} as Record<NutritionField, number | null>;
   const perPortion = {} as Record<NutritionField, number | null>;
+  const per100Grams = {} as Record<NutritionField, number | null>;
   const coverage = {} as Record<NutritionField, number>;
   const missingProductsByField = {} as Record<NutritionField, string[]>;
   const missingProducts = new Set<string>(composition.unresolvedIngredients);
@@ -284,6 +286,10 @@ function serializeComposition(
       total[field] != null && referencePortions > 0
         ? Math.round((total[field]! / referencePortions) * 1_000) / 1_000
         : null;
+    per100Grams[field] =
+      total[field] != null && metric.totalWeightGrams > 0
+        ? Math.round(((total[field]! * 100) / metric.totalWeightGrams) * 1_000) / 1_000
+        : null;
   }
   const coveragePercent =
     Math.round(
@@ -301,6 +307,7 @@ function serializeComposition(
       referencePortions,
       total,
       perPortion,
+      per100Grams,
       coverage,
       coveragePercent,
       missingProductsByField,

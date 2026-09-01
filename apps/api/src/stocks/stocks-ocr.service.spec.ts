@@ -1670,4 +1670,53 @@ describe('StocksOcrService reception safeguards', () => {
       ),
     ).rejects.toThrow('déjà été validée');
   });
+
+  it('extracts one quarterly GRENKE contract without triplicating the machine payment', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const contract = (service as any).extractFinancingContractFallback(`
+      GRENKE Customer Portal
+      Contract number #096-59401
+      Contract type Classic lease
+      Term 36 months
+      Instalment 555.76 EUR
+      Payment pattern Quarterly
+      Supplier Kaffecentralen
+      Printed 30.08.2026
+    `);
+
+    expect(contract).toEqual(
+      expect.objectContaining({
+        acquisitionMode: EquipmentAcquisitionMode.LEASING,
+        contractNumber: '096-59401',
+        financingProvider: 'GRENKE',
+        termMonths: 36,
+        installmentAmount: 555.76,
+        paymentFrequency: 'QUARTERLY',
+        monthlyPayment: 185.25,
+        financingStart: null,
+        financingEnd: null,
+      }),
+    );
+  });
+
+  it('calculates the contract end from its explicit start and duration', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const contract = (service as any).cleanFinancingContract({
+      acquisitionMode: EquipmentAcquisitionMode.LEASING,
+      financingStart: '2025-07-30',
+      termMonths: 36,
+    });
+
+    expect(contract.financingEnd).toBe('2028-07-30');
+  });
 });
