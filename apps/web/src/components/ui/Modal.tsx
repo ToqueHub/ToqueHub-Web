@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -6,7 +6,31 @@ import { useLanguage } from '../../i18n';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'product';
 
-const MODAL_TEXT_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'aria-description', 'alt'] as const;
+let bodyScrollLockCount = 0;
+let bodyOverflowBeforeModal = '';
+
+function lockBodyScroll() {
+  if (bodyScrollLockCount === 0) {
+    bodyOverflowBeforeModal = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  bodyScrollLockCount += 1;
+
+  return () => {
+    bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+    if (bodyScrollLockCount === 0) {
+      document.body.style.overflow = bodyOverflowBeforeModal;
+    }
+  };
+}
+
+const MODAL_TEXT_ATTRIBUTES = [
+  'placeholder',
+  'title',
+  'aria-label',
+  'aria-description',
+  'alt',
+] as const;
 
 function translateModalNode(node: ReactNode, t: (value: string) => string): ReactNode {
   if (typeof node === 'string') return t(node);
@@ -48,6 +72,12 @@ export function Modal({
   hideHeader?: boolean;
 }) {
   const { language, t } = useLanguage();
+
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+    return lockBodyScroll();
+  }, [isOpen]);
+
   if (typeof document === 'undefined') return null;
 
   const translatedTitle = translateModalNode(title, t);

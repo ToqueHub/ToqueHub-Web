@@ -404,6 +404,43 @@ describe('PlanningService weekly rotations', () => {
     })]);
   });
 
+  it('does not apply a position-scoped rotation to an incompatible employee', async () => {
+    const prisma = mockPrisma();
+    prisma.planningTemplate.findFirst.mockResolvedValue({
+      id: 'template-barista',
+      organizationId: 'org-1',
+      name: 'Semaine barista',
+      periodType: 'WEEKLY_ROTATION',
+      departmentId: 'dept-cafe',
+      siteId: 'site-1',
+      content: {
+        type: 'WEEKLY_ROTATION',
+        departmentId: 'dept-cafe',
+        positionId: 'pos-barista',
+        siteId: 'site-1',
+        days: [{ dayOfWeek: 1, mode: 'WORK', startTime: '09:00', endTime: '17:00' }],
+      },
+    });
+    prisma.hrEmployee.findMany.mockResolvedValue([{
+      id: 'emp-pastry',
+      departmentId: 'dept-kitchen',
+      positionId: 'pos-pastry',
+      mainSiteId: 'site-1',
+      secondaryPositions: [],
+    }]);
+    const service = new PlanningService(prisma);
+
+    const result = await service.applyWeeklyRotationPreview('org-1', 'template-barista', {
+      employeeId: 'emp-pastry',
+      siteId: 'site-1',
+      startDate: '2026-06-22',
+      endDate: '2026-06-28',
+    });
+
+    expect(result.assignments).toEqual([]);
+    expect(result.diagnostics?.reason).toContain('service ou le poste requis');
+  });
+
   it('reports cross-site replacements in the weekly rotation preview', async () => {
     const prisma = mockPrisma();
     prisma.planningTemplate.findFirst.mockResolvedValue({
@@ -568,6 +605,45 @@ describe('PlanningService planning templates', () => {
     }));
     expect(preset).toEqual(expect.objectContaining({ templateType: 'DAY_PRESET', startTime: '08:00', endTime: '12:00' }));
     expect(prisma.hrEmployee.update).toBeUndefined();
+  });
+
+  it('stores a weekly rotation scope by site, service and position', async () => {
+    const prisma = mockPrisma();
+    prisma.hrDepartment.findFirst.mockResolvedValue({ id: 'dept-1' });
+    prisma.hrPosition.findFirst.mockResolvedValue({ id: 'pos-barista', departmentId: 'dept-1' });
+    prisma.site.findFirst.mockResolvedValue({ id: 'site-1' });
+    prisma.planningTemplate.create.mockImplementation(({ data }: any) => Promise.resolve({ id: 'rotation-1', ...data }));
+    const service = new PlanningService(prisma);
+
+    await service.createWeeklyRotationTemplate('org-1', actor, {
+      name: 'Barista matin',
+      departmentId: 'dept-1',
+      positionId: 'pos-barista',
+      siteId: 'site-1',
+      days: [{ dayOfWeek: 1, mode: 'WORK', startTime: '08:00', endTime: '14:00' }],
+    });
+
+    expect(prisma.planningTemplate.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        departmentId: 'dept-1',
+        siteId: 'site-1',
+        content: expect.objectContaining({
+          type: 'WEEKLY_ROTATION',
+          departmentId: 'dept-1',
+          positionId: 'pos-barista',
+          siteId: 'site-1',
+        }),
+      }),
+    }));
+  });
+
+  it('does not create employee-level missing rotation alerts', () => {
+    const service = new PlanningService(mockPrisma());
+
+    const alerts = (service as any).alerts([], [], []);
+
+    expect(alerts).toEqual([]);
+    expect(alerts.some((alert: any) => alert.code === 'EMPLOYEES_WITHOUT_PLANNING_ROTATION')).toBe(false);
   });
 
   it('stores employee template assignments in planning template content only', async () => {

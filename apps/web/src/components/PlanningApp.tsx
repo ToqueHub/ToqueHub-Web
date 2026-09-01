@@ -42,7 +42,6 @@ import type {
   PlanningCrossSiteReplacement,
   PlanningDashboardResponse,
   PlanningDayPresetPayload,
-  PlanningEmployeeTemplateAssignment,
   PlanningPeriodStatus,
   PlanningRequirement,
   PlanningReplacementProposal,
@@ -71,7 +70,7 @@ type PlanningDashboardConfig = {
 type DashboardPeriodRange = { startDate: string; endDate: string; label: string; mode: DashboardPeriod | PlanningBlockMode };
 type DashboardPeriodData = { range: DashboardPeriodRange; siteId: string; summary: PlanningDashboardResponse | null; assignments: PlanningAssignment[] };
 type PlanningSetupStatus = 'todo' | 'partial' | 'done';
-type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'>;
+type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'positionId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'>;
 type PlanningSetupStep = {
   key: string;
   title: string;
@@ -292,7 +291,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const planningDayPresets = planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets').length ? planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets') : dayPresetTemplates(templates);
   const planningWeeklyRotations = planningSettingsArray<PlanningTemplate>(data?.settings, 'weeklyRotations');
   const effectiveRotations: PlanningRotationOption[] = planningWeeklyRotations;
-  const employeeTemplateAssignments = planningSettingsArray<PlanningEmployeeTemplateAssignment>(data?.settings, 'employeeTemplateAssignments');
   const assignments = data?.assignments ?? [];
   const absences = data?.absences ?? [];
   const requirements = data?.requirements ?? [];
@@ -302,6 +300,10 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const periodStatus = data?.periodStatus ?? data?.planning?.periodStatus as PlanningPeriodStatus | undefined;
   const periodPayload = currentMonthPeriod(selectedDate, siteFilter);
   const selectedEmployee = findCollaborator(effectiveCollaborators, selectedEmployeeId || employeeFilter);
+
+  useEffect(() => {
+    setQuickAssignmentSelection(null);
+  }, [selectedEmployeeId, siteFilter]);
 
   useEffect(() => {
     if (planningSiteInitialized || !primaryPlanningSiteId) return;
@@ -513,17 +515,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     }
   }
 
-  async function saveEmployeeTemplateAssignment(payload: PlanningEmployeeTemplateAssignment) {
-    if (!canWrite) return;
-    try {
-      await api.setPlanningEmployeeTemplates(token, payload);
-      setNotice('Attribution collaborateur enregistrée.');
-      await loadContext({ showLoading: false });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Attribution impossible');
-    }
-  }
-
   async function applyRotation(rotation: PlanningRotationOption, dateOverride?: string) {
     setError(undefined);
     setNotice(undefined);
@@ -723,7 +714,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           templates={templates}
           rotations={planningWeeklyRotations}
           dayPresets={planningDayPresets}
-          employeeTemplateAssignments={employeeTemplateAssignments}
           absences={absences}
           departments={effectiveDepartments}
           positions={effectivePositions}
@@ -735,7 +725,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onDeleteDayPreset={deleteDayPreset}
           onSaveWeeklyRotation={saveWeeklyRotation}
           onDeleteWeeklyRotation={deleteWeeklyRotation}
-          onSaveEmployeeTemplateAssignment={saveEmployeeTemplateAssignment}
         />
       ) : null}
 
@@ -1101,14 +1090,14 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
 
   async function submitRotation(event: FormEvent) {
     event.preventDefault();
-    await props.onSaveWeeklyRotation({ ...rotationForm, departmentId: rotationForm.departmentId || undefined, siteId: rotationForm.siteId || undefined, days: rotationForm.days ?? defaultWeekDays() }, editingRotationId);
+    await props.onSaveWeeklyRotation({ ...rotationForm, departmentId: rotationForm.departmentId || undefined, positionId: rotationForm.positionId || undefined, siteId: rotationForm.siteId || undefined, days: rotationForm.days ?? defaultWeekDays() }, editingRotationId);
     setEditingRotationId(undefined);
     setRotationForm(defaultWeeklyRotationForm(props.departments[0]?.id));
   }
 
   function editRotation(rotation: PlanningTemplate) {
     setEditingRotationId(rotation.id);
-    setRotationForm({ name: rotation.name, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() });
+    setRotationForm({ name: rotation.name, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, positionId: rotation.positionId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() });
   }
 
   function updateRotationDay(dayOfWeek: number, patch: Partial<PlanningTemplateDay>) {
@@ -1174,6 +1163,8 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
         <div className="planning-form-row">
           <label className="planning-field">Statut<select value={form.businessStatus ?? 'work'} onChange={(event) => setForm((current) => ({ ...current, businessStatus: event.target.value }))} style={{ borderRadius: '11px' }}>{planningBusinessStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           <label className="planning-field">Service<select value={form.departmentId ?? ''} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value || undefined, positionId: '' }))} style={{ borderRadius: '11px' }}><option value="">Libre</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Poste<select value={form.positionId ?? ''} onChange={(event) => setForm((current) => ({ ...current, positionId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Libre</option>{props.positions.filter((position) => !form.departmentId || position.departmentId === form.departmentId).map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
+          <label className="planning-field">Site<select value={form.siteId ?? ''} onChange={(event) => setForm((current) => ({ ...current, siteId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
           <label className="planning-field">Pause (min)<input type="number" min="0" max="720" value={form.breakMinutes ?? 30} onChange={(event) => setForm((current) => ({ ...current, breakMinutes: Number(event.target.value) }))} style={{ borderRadius: '11px' }} /></label>
         </div>
         <div style={{ display: 'flex', gap: '.65rem', justifyContent: 'flex-end', marginTop: '.3rem' }}>
@@ -1192,7 +1183,8 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
         <strong style={{ fontSize: '1.02rem', color: '#0f172a' }}>Roulements hebdomadaires</strong>
         <div className="planning-form-row">
           <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required style={{ borderRadius: '11px' }} /></label>
-          <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined, positionId: undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Poste<select value={rotationForm.positionId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, positionId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.positions.filter((position) => !rotationForm.departmentId || position.departmentId === rotationForm.departmentId).map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
           <label className="planning-field">Site<select value={rotationForm.siteId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, siteId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
         </div>
         <div className="planning-week-editor" style={{ border: '1px solid #e2e8f0', borderRadius: '14px', padding: '.75rem', background: '#f8fafc' }}>
@@ -1257,7 +1249,7 @@ function PresetRuleList({ presets, onEdit, onDelete, canWrite }: { presets: Plan
 function RotationRuleList({ rotations, onEdit, onDelete, canWrite }: { rotations: PlanningTemplate[]; onEdit?: (rotation: PlanningTemplate) => void; onDelete: (id: string) => Promise<void>; canWrite: boolean }) {
   return (
     <div className="planning-preset-list">
-      {rotations.slice(0, 8).map((rotation) => <div key={rotation.id} className="planning-preset-list-card"><strong>{rotation.name}</strong><span>{weeklyRotationSummary(rotation)}</span><small>{rotation.employeeIds?.length ?? 0} personne(s) associée(s)</small><div className="setup-actions">{onEdit ? <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(rotation)}>Modifier</button> : null}<button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDelete(rotation.id)}>Supprimer</button></div></div>)}
+      {rotations.slice(0, 8).map((rotation) => <div key={rotation.id} className="planning-preset-list-card"><strong>{rotation.name}</strong><span>{weeklyRotationSummary(rotation)}</span><small>Attribution automatique par périmètre</small><div className="setup-actions">{onEdit ? <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(rotation)}>Modifier</button> : null}<button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDelete(rotation.id)}>Supprimer</button></div></div>)}
       {!rotations.length ? <div className="planning-empty-state"><strong>Aucun roulement encore créé</strong><span>Ajoutez un roulement semaine pour préparer les cycles réguliers.</span></div> : null}
     </div>
   );
@@ -1963,7 +1955,8 @@ function PlanningMonthlyCalendar({ selectedDate, onDayClick, assignments, requir
 }
 
 function QuickAssignmentPanel(props: { selectedDate: string; siteFilter: string; collaborators: HrCollaborator[]; selectedEmployeeId: string; setSelectedEmployeeId: (value: string) => void; selectedEmployee?: HrCollaborator; templates: PlanningTemplate[]; rotations: PlanningRotationOption[]; assignments: PlanningAssignment[]; replacements: PlanningReplacementProposal[]; onOpenSettings: () => void; customStart: string; setCustomStart: (value: string) => void; customEnd: string; setCustomEnd: (value: string) => void; quickBusinessStatus: string; setQuickBusinessStatus: (value: string) => void; saveCustomShift: () => void; createQuickAssignment: (startTime: string, endTime: string, origin?: string, templateId?: string, preset?: Partial<PlanningAssignment>, dateOverride?: string, businessStatusOverride?: string) => Promise<void>; quickAssignmentSelection: QuickAssignmentSelection | null; setQuickAssignmentSelection: (value: QuickAssignmentSelection | null) => void; setQuickPanelOpen: (value: boolean) => void; applyRotation: (rotation: PlanningRotationOption, dateOverride?: string) => Promise<void> }) {
-  const presets = dayPresets(props.templates);
+  const presets = dayPresets(props.templates).filter((preset) => templateMatchesEmployeeScope(preset, props.selectedEmployee, props.siteFilter)).slice(0, 8);
+  const scopedRotations = props.rotations.filter((rotation) => templateMatchesEmployeeScope(rotation, props.selectedEmployee, props.siteFilter));
   const readOnlyAllSites = !props.siteFilter;
   const selectedDay = normalizePlanningDate(props.selectedDate);
   const week = weekDates(selectedDay);
@@ -2012,7 +2005,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; siteFilter: string;
 
       <label className="planning-field">
         Collaborateur
-        <select value={props.selectedEmployeeId} disabled={readOnlyAllSites} onChange={(event) => props.setSelectedEmployeeId(event.target.value)}>
+        <select value={props.selectedEmployeeId} disabled={readOnlyAllSites} onChange={(event) => { props.setSelectedEmployeeId(event.target.value); props.setQuickAssignmentSelection(null); }}>
           <CollaboratorOptions collaborators={props.collaborators} placeholder="Sélectionner..." />
         </select>
       </label>
@@ -2041,9 +2034,9 @@ function QuickAssignmentPanel(props: { selectedDate: string; siteFilter: string;
           <div className="quick-section">
             <strong>Roulements semaine</strong>
             <div className="chip-row">
-              {props.rotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" disabled={readOnlyAllSites} onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
+              {scopedRotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" disabled={readOnlyAllSites} onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
             </div>
-            {props.rotations.length ? <span className="muted tiny">Roulements configurés dans Planning.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
+            {scopedRotations.length ? <span className="muted tiny">Roulements compatibles avec le site, le service et le poste sélectionnés.</span> : <GuidedEmptyState title="Aucun roulement compatible" description="Aucun roulement ne correspond au site, au service et au poste de ce collaborateur." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
           </div>
           <div className="quick-section">
             <strong>Horaire personnalisé</strong>
@@ -2164,7 +2157,7 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PlanningSettings({ selected, setSelected, templates, rotations, dayPresets, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation }: { selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void> }) {
   const activeSetting: SettingKey = selected === 'costs' || selected === 'notifications' ? 'presets' : selected;
 
   useEffect(() => {
@@ -2182,14 +2175,14 @@ function PlanningSettings({ selected, setSelected, templates, rotations, dayPres
           {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${activeSetting === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail selected={activeSetting} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail selected={activeSetting} templates={templates} rotations={rotations} dayPresets={dayPresets} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} />
         </div>
     </div>
   );
 }
 
-function SettingsDetail({ selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
-  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
+function SettingsDetail({ selected, rotations, dayPresets, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation }: { selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void> }) {
+  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} departments={departments} positions={positions} sites={sites} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
@@ -2343,17 +2336,11 @@ function PlanningExportsSettings({ token, selectedDate, siteFilter, serviceFilte
   );
 }
 
-function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PresetsRotationsSettings({ dayPresets, weeklyRotations, departments, positions, sites, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void> }) {
   const [editingPresetId, setEditingPresetId] = useState<string>();
   const [presetForm, setPresetForm] = useState<PlanningDayPresetPayload>(() => defaultDayPresetForm(departments[0]?.id));
   const [editingRotationId, setEditingRotationId] = useState<string>();
   const [rotationForm, setRotationForm] = useState<PlanningWeeklyRotationPayload>(() => defaultWeeklyRotationForm(departments[0]?.id));
-  const [assignmentEmployeeId, setAssignmentEmployeeId] = useState(collaborators[0]?.id ?? '');
-  const selectedAssignment = assignments.find((item) => item.employeeId === assignmentEmployeeId);
-
-  useEffect(() => {
-    if (!assignmentEmployeeId && collaborators[0]?.id) setAssignmentEmployeeId(collaborators[0].id);
-  }, [assignmentEmployeeId, collaborators]);
 
   function editPreset(template: PlanningTemplate) {
     setEditingPresetId(template.id);
@@ -2362,7 +2349,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
 
   function editRotation(template: PlanningTemplate) {
     setEditingRotationId(template.id);
-    setRotationForm({ name: template.name, description: template.description ?? '', departmentId: template.departmentId ?? undefined, siteId: template.siteId ?? undefined, days: template.days?.length ? template.days : defaultWeekDays() });
+    setRotationForm({ name: template.name, description: template.description ?? '', departmentId: template.departmentId ?? undefined, positionId: template.positionId ?? undefined, siteId: template.siteId ?? undefined, days: template.days?.length ? template.days : defaultWeekDays() });
   }
 
   async function submitPreset(event: FormEvent) {
@@ -2374,7 +2361,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
 
   async function submitRotation(event: FormEvent) {
     event.preventDefault();
-    await onSaveWeeklyRotation({ ...rotationForm, departmentId: rotationForm.departmentId || undefined, siteId: rotationForm.siteId || undefined, days: rotationForm.days ?? defaultWeekDays() }, editingRotationId);
+    await onSaveWeeklyRotation({ ...rotationForm, departmentId: rotationForm.departmentId || undefined, positionId: rotationForm.positionId || undefined, siteId: rotationForm.siteId || undefined, days: rotationForm.days ?? defaultWeekDays() }, editingRotationId);
     setEditingRotationId(undefined);
     setRotationForm(defaultWeeklyRotationForm(departments[0]?.id));
   }
@@ -2384,33 +2371,9 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
     setRotationForm((current) => ({ ...current, days: days.map((day) => day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day) }));
   }
 
-  async function submitAssignment(event: FormEvent) {
-    event.preventDefault();
-    if (!assignmentEmployeeId) return;
-    await onSaveEmployeeTemplateAssignment({
-      employeeId: assignmentEmployeeId,
-      dayPresetIds: selectedAssignment?.dayPresetIds ?? [],
-      weeklyRotationIds: selectedAssignment?.weeklyRotationIds ?? [],
-      defaultWeeklyRotationId: selectedAssignment?.defaultWeeklyRotationId ?? undefined,
-    });
-  }
-
-  function toggleAssignment(kind: 'day' | 'rotation', id: string) {
-    const current = selectedAssignment ?? { employeeId: assignmentEmployeeId, dayPresetIds: [], weeklyRotationIds: [], defaultWeeklyRotationId: null };
-    const nextDayIds = kind === 'day' ? toggleId(current.dayPresetIds, id) : current.dayPresetIds;
-    const nextRotationIds = kind === 'rotation' ? toggleId(current.weeklyRotationIds, id) : current.weeklyRotationIds;
-    void onSaveEmployeeTemplateAssignment({ employeeId: assignmentEmployeeId, dayPresetIds: nextDayIds, weeklyRotationIds: nextRotationIds, defaultWeeklyRotationId: current.defaultWeeklyRotationId && nextRotationIds.includes(current.defaultWeeklyRotationId) ? current.defaultWeeklyRotationId : null });
-  }
-
-  function setDefaultRotation(id: string) {
-    const current = selectedAssignment ?? { employeeId: assignmentEmployeeId, dayPresetIds: [], weeklyRotationIds: [], defaultWeeklyRotationId: null };
-    const rotationIds = current.weeklyRotationIds.includes(id) ? current.weeklyRotationIds : [...current.weeklyRotationIds, id];
-    void onSaveEmployeeTemplateAssignment({ employeeId: assignmentEmployeeId, dayPresetIds: current.dayPresetIds, weeklyRotationIds: rotationIds, defaultWeeklyRotationId: current.defaultWeeklyRotationId === id ? null : id });
-  }
-
   return (
     <>
-      <div className="section-header-modern"><span className="card-title">Presets / roulements horaires</span><span className="section-tagline">Horaires types, cycles et affectations par défaut.</span></div>
+      <div className="section-header-modern"><span className="card-title">Presets / roulements horaires</span><span className="section-tagline">Horaires types et cycles attribués par site, service et poste.</span></div>
       <div className="planning-settings-controls planning-settings-split">
         <form className="planning-need-form" onSubmit={(event) => void submitPreset(event)}>
           <strong>Presets horaires</strong>
@@ -2429,7 +2392,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
           <div className="setup-actions"><button className="btn btn-primary" type="submit" disabled={!canWrite}>{editingPresetId ? 'Modifier preset' : 'Créer preset'}</button>{editingPresetId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingPresetId(undefined); setPresetForm(defaultDayPresetForm(departments[0]?.id)); }}>Annuler</button> : null}</div>
         </form>
         <div className="settings-list planning-settings-list">
-          {dayPresets.map((preset) => <div key={preset.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(preset.name)}</strong><span>{presetRangeLabel(preset)} · Pause {preset.breakMinutes ?? preset.lines?.[0]?.breakMinutes ?? 0} min · {businessStatusLabel(presetBusinessStatus(preset) ?? 'work')}</span><small>{presetDefaultScope(preset, departments, positions, sites)} · {preset.employeeIds?.length ?? 0} personne(s) associée(s)</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editPreset(preset)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingPresetId(undefined); setPresetForm({ ...presetForm, name: `${cleanBusinessLabel(preset.name)} copie`, startTime: preset.startTime ?? preset.lines?.[0]?.startTime ?? '10:00', endTime: preset.endTime ?? preset.lines?.[0]?.endTime ?? '17:00', breakMinutes: preset.breakMinutes ?? preset.lines?.[0]?.breakMinutes ?? 30, departmentId: preset.departmentId ?? undefined, positionId: preset.positionId ?? preset.lines?.[0]?.positionId ?? undefined, siteId: preset.siteId ?? undefined, paidBreak: !!preset.paidBreak, businessStatus: presetBusinessStatus(preset) ?? 'work' }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteDayPreset(preset.id)}>Archiver</button></div></div>)}
+          {dayPresets.map((preset) => <div key={preset.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(preset.name)}</strong><span>{presetRangeLabel(preset)} · Pause {preset.breakMinutes ?? preset.lines?.[0]?.breakMinutes ?? 0} min · {businessStatusLabel(presetBusinessStatus(preset) ?? 'work')}</span><small>Périmètre · {presetDefaultScope(preset, departments, positions, sites)}</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editPreset(preset)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingPresetId(undefined); setPresetForm({ ...presetForm, name: `${cleanBusinessLabel(preset.name)} copie`, startTime: preset.startTime ?? preset.lines?.[0]?.startTime ?? '10:00', endTime: preset.endTime ?? preset.lines?.[0]?.endTime ?? '17:00', breakMinutes: preset.breakMinutes ?? preset.lines?.[0]?.breakMinutes ?? 30, departmentId: preset.departmentId ?? undefined, positionId: preset.positionId ?? preset.lines?.[0]?.positionId ?? undefined, siteId: preset.siteId ?? undefined, paidBreak: !!preset.paidBreak, businessStatus: presetBusinessStatus(preset) ?? 'work' }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteDayPreset(preset.id)}>Archiver</button></div></div>)}
           {!dayPresets.length ? <p className="muted">Aucun preset horaire Planning.</p> : null}
         </div>
       </div>
@@ -2438,7 +2401,8 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
           <strong>Roulements horaires</strong>
           <div className="planning-form-row">
             <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required /></label>
-            <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))}><option value="">Tous</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+            <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined, positionId: undefined }))}><option value="">Tous</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+            <label className="planning-field">Poste<select value={rotationForm.positionId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, positionId: event.target.value || undefined }))}><option value="">Tous</option>{positions.filter((position) => !rotationForm.departmentId || position.departmentId === rotationForm.departmentId).map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
             <label className="planning-field">Site<select value={rotationForm.siteId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, siteId: event.target.value || undefined }))}><option value="">Tous</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
           </div>
           <div className="planning-week-editor">
@@ -2447,20 +2411,14 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
           <div className="setup-actions"><button className="btn btn-primary" type="submit" disabled={!canWrite}>{editingRotationId ? 'Modifier roulement' : 'Créer roulement'}</button>{editingRotationId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingRotationId(undefined); setRotationForm(defaultWeeklyRotationForm(departments[0]?.id)); }}>Annuler</button> : null}</div>
         </form>
         <div className="settings-list planning-settings-list">
-          {weeklyRotations.map((rotation) => <div key={rotation.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(rotation.name)}</strong><span>{weeklyRotationSummary(rotation)} · {rotation.employeeIds?.length ?? 0} personne(s) associée(s)</span><small>{presetDefaultScope(rotation, departments, positions, sites)}</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editRotation(rotation)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingRotationId(undefined); setRotationForm({ name: `${cleanBusinessLabel(rotation.name)} copie`, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteWeeklyRotation(rotation.id)}>Archiver</button></div></div>)}
+          {weeklyRotations.map((rotation) => <div key={rotation.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(rotation.name)}</strong><span>{weeklyRotationSummary(rotation)}</span><small>Périmètre · {presetDefaultScope(rotation, departments, positions, sites)}</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editRotation(rotation)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingRotationId(undefined); setRotationForm({ name: `${cleanBusinessLabel(rotation.name)} copie`, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, positionId: rotation.positionId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteWeeklyRotation(rotation.id)}>Archiver</button></div></div>)}
           {!weeklyRotations.length ? <p className="muted">Aucun roulement Planning.</p> : null}
         </div>
       </div>
-      <form className="planning-need-form" onSubmit={(event) => void submitAssignment(event)}>
-        <strong>Affectations par défaut</strong>
-        <label className="planning-field">Collaborateur<select value={assignmentEmployeeId} onChange={(event) => setAssignmentEmployeeId(event.target.value)}><CollaboratorOptions collaborators={collaborators} placeholder="Choisir..." /></select></label>
-        <div className="settings-list">
-          <div><strong>Presets jour attribués</strong><span>{dayPresets.map((preset) => <button key={preset.id} type="button" className={`planning-chip ${selectedAssignment?.dayPresetIds?.includes(preset.id) ? 'active' : ''}`} disabled={!assignmentEmployeeId || !canWrite} onClick={() => toggleAssignment('day', preset.id)}>{preset.name}</button>)}</span></div>
-          <div><strong>Roulements attribués</strong><span>{weeklyRotations.map((rotation) => <button key={rotation.id} type="button" className={`planning-chip ${selectedAssignment?.weeklyRotationIds?.includes(rotation.id) ? 'active' : ''}`} disabled={!assignmentEmployeeId || !canWrite} onClick={() => toggleAssignment('rotation', rotation.id)}>{rotation.name}</button>)}</span></div>
-          <div><strong>Roulement par défaut</strong><span>{weeklyRotations.map((rotation) => <button key={rotation.id} type="button" className={`planning-chip ${selectedAssignment?.defaultWeeklyRotationId === rotation.id ? 'active' : ''}`} disabled={!assignmentEmployeeId || !canWrite} onClick={() => setDefaultRotation(rotation.id)}>{rotation.name}</button>)}</span></div>
-        </div>
-        <p className="muted">Les attributions s’appuient sur les collaborateurs RH existants, sans les recréer dans Planning.</p>
-      </form>
+      <div className="planning-need-form">
+        <strong>Affectation automatique par périmètre</strong>
+        <p className="muted">Les presets et roulements sont proposés selon le site, le service et le poste du collaborateur sélectionné. Aucune attribution individuelle n’est nécessaire.</p>
+      </div>
     </>
   );
 }
@@ -2882,7 +2840,39 @@ function dayPresets(templates: PlanningTemplate[]) {
     breakMinutes: line.breakMinutes,
     businessStatus: presetBusinessStatus(line) ?? presetBusinessStatus(template) ?? 'work',
   })));
-  return templatePresets.filter((preset) => preset.startTime && preset.endTime).slice(0, 8);
+  return templatePresets.filter((preset) => preset.startTime && preset.endTime);
+}
+
+function templateMatchesEmployeeScope(
+  template: Pick<PlanningTemplate, 'siteId' | 'departmentId' | 'positionId'>,
+  collaborator?: HrCollaborator,
+  selectedSiteId?: string,
+) {
+  if (template.siteId && template.siteId !== selectedSiteId) return false;
+  if (!collaborator) return false;
+
+  const secondaryPositions = (collaborator.secondaryPositions ?? []) as Array<
+    HrPosition & { positionId?: string; position?: HrPosition }
+  >;
+  const positionIds = new Set(
+    [
+      collaborator.positionId,
+      ...(collaborator.secondaryPositionIds ?? []),
+      ...secondaryPositions.map((position) => position.position?.id ?? position.positionId ?? position.id),
+    ].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+  if (template.positionId && !positionIds.has(template.positionId)) return false;
+
+  const departmentIds = new Set(
+    [
+      collaborator.departmentId,
+      collaborator.position?.departmentId,
+      ...secondaryPositions.map((position) => position.position?.departmentId ?? position.departmentId),
+    ].filter((value): value is string => Boolean(value)),
+  );
+  return !template.departmentId || departmentIds.has(template.departmentId);
 }
 
 function normalizeHoursByDepartment(rows?: Array<Record<string, any>>) {

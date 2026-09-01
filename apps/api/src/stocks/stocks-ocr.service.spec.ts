@@ -1704,6 +1704,141 @@ describe('StocksOcrService reception safeguards', () => {
     );
   });
 
+  it('recognizes the exact GRENKE portal table without Mistral', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const contract = (service as any).extractFinancingContractFallback(`
+      Contract details :: GRENKE Customer Portal
+      Contract overview
+      Contract number 096-59401
+      Contract type Classic lease
+      Lease term 36
+      Supplier Oy Kaffecentralen Finland Ab
+      Instalment 555,76 €
+      Payment details
+      Payment pattern Quarterly
+      Printed 01/09/2026 10:13
+    `);
+
+    expect((service as any).isCompleteDeterministicGrenkeContract(contract)).toBe(true);
+    expect(contract).toEqual(
+      expect.objectContaining({
+        contractNumber: '096-59401',
+        termMonths: 36,
+        installmentAmount: 555.76,
+        paymentFrequency: 'QUARTERLY',
+        monthlyPayment: 185.25,
+        financingStart: null,
+        financingEnd: null,
+      }),
+    );
+  });
+
+  it('guides Mistral with financing examples from several providers', async () => {
+    const chatJson = jest.fn().mockResolvedValue({
+      acquisitionMode: EquipmentAcquisitionMode.LEASING,
+      contractNumber: 'OTHER-42',
+      financingProvider: 'OTHER FINANCE',
+      termMonths: 24,
+      installmentAmount: 300,
+      paymentFrequency: 'MONTHLY',
+      monthlyPayment: 300,
+    });
+    const mistralClient = mockMistralClient();
+    mistralClient.chatJson = chatJson;
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mistralClient,
+      mockStocksService(),
+    );
+
+    await (service as any).extractFinancingContract(
+      'org-1',
+      'New provider contract OTHER-42 with a monthly instalment of 300 EUR.',
+    );
+
+    const messages = chatJson.mock.calls[0][1] as Array<{ role: string; content: string }>;
+    expect(messages.filter((message) => message.role === 'assistant')).toHaveLength(3);
+    expect(messages.some((message) => message.content.includes('096-59401'))).toBe(true);
+    expect(messages.some((message) => message.content.includes('NF-22091'))).toBe(true);
+    expect(messages.some((message) => message.content.includes('DLL-76-AB12'))).toBe(true);
+    expect(messages.at(-1)?.content).toContain('OTHER-42');
+  });
+
+  it('applies one global contract only to the three equipment lines', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const lines = (service as any).applyFinancingContractToEquipmentLines(
+      [
+        { label: 'La Marzocco', productKind: ProductKind.EQUIPMENT, lineType: 'equipment' },
+        {
+          label: 'Bestmax waterfiltration system',
+          productKind: ProductKind.EQUIPMENT,
+          lineType: 'accessory',
+        },
+        { label: 'Mazzer Major', productKind: ProductKind.EQUIPMENT, lineType: 'equipment' },
+        { label: 'Pipe fitting', productKind: ProductKind.EQUIPMENT, lineType: 'accessory' },
+        { label: 'Installation', productKind: ProductKind.EQUIPMENT, lineType: 'service' },
+        { label: 'Drive, km', productKind: ProductKind.EQUIPMENT, lineType: 'transport' },
+      ],
+      {
+        acquisitionMode: EquipmentAcquisitionMode.LEASING,
+        contractNumber: '096-59401',
+        financingProvider: 'GRENKE',
+        termMonths: 36,
+        installmentAmount: 555.76,
+        paymentFrequency: 'QUARTERLY',
+      },
+    );
+
+    expect(
+      lines.filter((line: any) => line.acquisitionMode === EquipmentAcquisitionMode.LEASING),
+    ).toHaveLength(3);
+    expect(lines.slice(0, 3)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ financingProvider: 'GRENKE', monthlyPayment: null }),
+      ]),
+    );
+    expect(
+      lines
+        .slice(3)
+        .every((line: any) => line.acquisitionMode !== EquipmentAcquisitionMode.LEASING),
+    ).toBe(true);
+  });
+
+  it('rejects a financing PDF already attached to the same dossier', async () => {
+    const prisma: any = mockPrisma();
+    prisma.document = {
+      findFirst: jest.fn().mockResolvedValue({ originalName: 'grenke.pdf' }),
+    };
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+
+    await expect(
+      (service as any).assertUniqueFinancingDocuments('org-1', 'extraction-1', [
+        {
+          originalname: 'grenke.pdf',
+          mimetype: 'application/pdf',
+          size: 4,
+          buffer: Buffer.from('same'),
+        },
+      ]),
+    ).rejects.toThrow('déjà été importé');
+  });
+
   it('calculates the contract end from its explicit start and duration', () => {
     const service = new StocksOcrService(
       mockPrisma(),

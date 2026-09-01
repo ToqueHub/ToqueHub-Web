@@ -96,7 +96,7 @@ export class PlanningService {
     const employeeTemplateAssignments = this.employeeTemplateAssignments(normalizedTemplates, employees);
     const hrReady = !!org?.hrInstalledAt && employees.length > 0 && departments.length > 0 && positions.length > 0;
     const coverage = await this.coverage(organizationId, period.start, period.end);
-    const alerts = this.alerts(conflicts, absences, coverage, weeklyRotations, employees);
+    const alerts = this.alerts(conflicts, absences, coverage);
     const dashboard = this.dashboardFrom(assignments, departments, conflicts, alerts, coverage, replacements, period);
     const month = this.monthView(period, assignments, normalizedNeeds);
     const attendance = this.attendanceService ? await this.attendanceService.list(organizationId, { month: q.month, year: q.year, startDate: q.startDate, endDate: q.endDate, employeeId: q.employeeId, departmentId: q.departmentId, siteId: q.siteId, pageSize: q.pageSize }) : this.attendancePlaceholder(assignments);
@@ -403,7 +403,7 @@ export class PlanningService {
   }
   async createWeeklyRotationTemplate(organizationId: string, actor: Actor, dto: UpsertWeeklyRotationDto) {
     this.assertWrite(actor);
-    await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId);
+    await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId, dto.positionId);
     const content = this.weeklyRotationContent(dto);
     this.assertWeeklyRotationHasWorkDay(content.days);
     const template = await this.prisma.planningTemplate.create({ data: { organizationId, name: dto.name, description: dto.description, periodType: 'WEEKLY_ROTATION', departmentId: dto.departmentId, siteId: dto.siteId, content: content as Prisma.InputJsonValue, createdById: actor.id }, include: { department: true, site: true } });
@@ -413,7 +413,7 @@ export class PlanningService {
     this.assertWrite(actor);
     const existing = await this.getPlanningTemplate(organizationId, id);
     if (this.templateKind(existing) !== 'WEEKLY_ROTATION') throw new BadRequestException('Ce modèle Planning n’est pas un roulement semaine');
-    await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId);
+    await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId, dto.positionId);
     const previous = this.contentObject(existing.content);
     const nextContent = this.weeklyRotationContent(dto);
     this.assertWeeklyRotationHasWorkDay(nextContent.days);
@@ -833,7 +833,7 @@ export class PlanningService {
     };
   }
   private weeklyRotationContent(dto: UpsertWeeklyRotationDto) {
-    return { type: 'WEEKLY_ROTATION', departmentId: dto.departmentId ?? null, siteId: dto.siteId ?? null, days: this.normalizeWeeklyRotationDays(dto.days), employeeIds: [], defaultEmployeeIds: [] };
+    return { type: 'WEEKLY_ROTATION', departmentId: dto.departmentId ?? null, positionId: dto.positionId ?? null, siteId: dto.siteId ?? null, days: this.normalizeWeeklyRotationDays(dto.days), employeeIds: [], defaultEmployeeIds: [] };
   }
   private normalizeWeeklyRotationDays(days: unknown) {
     const source = this.contentObject(days);
@@ -893,7 +893,11 @@ export class PlanningService {
   }
   private async validateTemplateRefs(organizationId: string, departmentId?: string | null, siteId?: string | null, positionId?: string | null) {
     if (departmentId && !(await this.prisma.hrDepartment.findFirst({ where: { id: departmentId, organizationId, isArchived: false } }))) throw new NotFoundException('Service RH introuvable');
-    if (positionId && !(await this.prisma.hrPosition.findFirst({ where: { id: positionId, organizationId, isArchived: false } }))) throw new NotFoundException('Poste RH introuvable');
+    if (positionId) {
+      const position = await this.prisma.hrPosition.findFirst({ where: { id: positionId, organizationId, isArchived: false } });
+      if (!position) throw new NotFoundException('Poste RH introuvable');
+      if (departmentId && position.departmentId && position.departmentId !== departmentId) throw new BadRequestException('Le poste sélectionné n’appartient pas au service choisi');
+    }
     if (siteId && !(await this.prisma.site.findFirst({ where: { id: siteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable');
   }
   private period(q: PlanningQueryDto = {}): Period {
@@ -1446,14 +1450,11 @@ export class PlanningService {
   private employeeContractMinutes(employee: AnyEmployee) { return Number(employee?.contracts?.[0]?.weeklyHours ?? employee?.contractWeeklyMinutes ?? 0) || 0; }
   private iso(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`; }
   private alertLevel(severity: string) { return severity === 'BLOCKING' ? 'critical' : severity === 'STRONG_WARNING' ? 'warning' : 'info'; }
-  private alerts(conflicts: any[], absences: any[], coverage: any[], rotations: any[], employees: any[]) {
-    const employeesWithRotation = new Set(rotations.flatMap((rotation: any) => this.stringArray(rotation.employeeIds ?? rotation.content?.employeeIds)));
-    const missingRotations = employees.filter(employee => !employeesWithRotation.has(employee.id)).length;
+  private alerts(conflicts: any[], absences: any[], coverage: any[]) {
     return [
       ...conflicts.map(conflict => ({ id: conflict.id, level: this.alertLevel(conflict.severity), title: conflict.label, message: conflict.label, code: conflict.code, entityType: 'PlanningConflict', entityId: conflict.id, details: conflict.details, createdAt: conflict.createdAt })),
       ...coverage.filter(item => ['UNDERSTAFFED', 'PARTIAL', 'UNPLANNED'].includes(item.status)).map(item => ({ id: `coverage-${item.need.id}`, level: item.status === 'UNPLANNED' ? 'warning' : 'info', title: 'Besoin a traiter', message: `${item.need.label}: ${item.plannedCount}/${item.requiredCount} couvert(s)`, code: item.status, entityType: 'PlanningOperationalNeed', entityId: item.need.id })),
       ...absences.map(absence => ({ id: `absence-${absence.id}`, level: 'info', title: 'Absence RH a prendre en compte', message: `${absence.employee?.firstName ?? ''} ${absence.employee?.lastName ?? ''}`.trim(), code: 'HR_ABSENCE_READONLY', entityType: 'HrAbsence', entityId: absence.id })),
-      ...(missingRotations ? [{ id: 'employees-without-rotation', level: 'info', title: 'Roulements Planning incomplets', message: `${missingRotations} collaborateur(s) sans roulement Planning attribué`, code: 'EMPLOYEES_WITHOUT_PLANNING_ROTATION', entityType: 'PlanningTemplate' }] : []),
     ];
   }
   private dashboardFrom(assignments: any[], departments: any[], conflicts: any[], alerts: any[], coverage: any[], replacements: any[], period: Period) {
@@ -1510,6 +1511,7 @@ export class PlanningService {
     const byWeekDay = new Map(days.map((day: any) => [Number(day.dayOfWeek), day]));
     const previews: any[] = [];
     for (const employee of employees) {
+      if (!this.employeeMatchesTemplateScope(employee, template, siteId)) continue;
       for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
         const dayOfWeek = cursor.getDay() || 7;
         const day = byWeekDay.get(dayOfWeek);
@@ -1533,6 +1535,29 @@ export class PlanningService {
       }
     }
     return previews;
+  }
+  private employeeMatchesTemplateScope(employee: any, template: any, siteId?: string) {
+    const content = this.contentObject(template.content);
+    const scopedSiteId = template.siteId ?? content.siteId ?? null;
+    const scopedDepartmentId = template.departmentId ?? content.departmentId ?? null;
+    const scopedPositionId = template.positionId ?? content.positionId ?? null;
+    if (scopedSiteId && siteId && scopedSiteId !== siteId) return false;
+
+    const secondaryPositions = Array.isArray(employee.secondaryPositions) ? employee.secondaryPositions : [];
+    const positionIds = new Set<string>([
+      employee.positionId,
+      employee.position?.id,
+      ...secondaryPositions.map((entry: any) => entry.positionId ?? entry.position?.id ?? entry.id),
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0));
+    if (scopedPositionId && !positionIds.has(scopedPositionId)) return false;
+
+    const departmentIds = new Set<string>([
+      employee.departmentId,
+      employee.department?.id,
+      employee.position?.departmentId,
+      ...secondaryPositions.map((entry: any) => entry.position?.departmentId ?? entry.departmentId),
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0));
+    return !scopedDepartmentId || departmentIds.has(scopedDepartmentId);
   }
   private rotationDayIsRest(day: any) {
     const value = String(day.mode ?? day.type ?? day.status ?? '').toUpperCase();

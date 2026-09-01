@@ -1489,7 +1489,6 @@ export function TechnicalSheetsApp({
           <button
             type="button"
             className="btn btn-secondary btn-outline"
-            disabled={loading}
             onClick={() => setOnboardingVisible(true)}
           >
             <Sparkles size={16} /> Guide de configuration
@@ -1497,8 +1496,7 @@ export function TechnicalSheetsApp({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={loading}
-            onClick={() => queueFirstRecipeAction('manual')}
+            onClick={() => onNavigate('recipes')}
           >
             <Plus size={16} /> Ajouter une fiche technique
           </button>
@@ -1532,23 +1530,35 @@ export function TechnicalSheetsApp({
         </div>
       ) : null}
 
-      <div className="hr-tabs technical-sheets-tabs">
-        {(
-          [
-            ['dashboard', 'Tableau de bord'],
-            ['recipes', 'Fiches techniques'],
-            ['categories', 'Catégories recettes'],
-            ['costs', 'Coûts'],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            className={tab === value ? 'active' : ''}
-            onClick={() => onNavigate(value)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="technical-sheets-tabs-row">
+        <div className="hr-tabs technical-sheets-tabs">
+          {(
+            [
+              ['dashboard', 'Tableau de bord'],
+              ['recipes', 'Fiches techniques'],
+              ['categories', 'Catégories recettes'],
+              ['costs', 'Coûts'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={tab === value ? 'active' : ''}
+              onClick={() => onNavigate(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === 'recipes' ? (
+          <div className="technical-sheets-list-actions">
+            <button className="btn btn-primary" onClick={() => openRecipe()}>
+              <Plus size={16} /> Créer une fiche
+            </button>
+            <button className="btn btn-secondary" onClick={() => setImportOpen(true)}>
+              <Upload size={16} /> Importer des fiches
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <AnimatePresence mode="wait">
@@ -1583,7 +1593,6 @@ export function TechnicalSheetsApp({
                 setCategoryFilter('');
                 setStatusFilter('');
               }}
-              onCreate={() => openRecipe()}
               importStatuses={importStatuses}
               onImport={() => setImportOpen(true)}
               onOpenImportedRecipe={openImportedRecipe}
@@ -3542,7 +3551,6 @@ function RecipesTab(props: {
   onCategoryFilter: (v: string) => void;
   onStatusFilter: (v: string) => void;
   onClearFilters: () => void;
-  onCreate: () => void;
   importStatuses: TechnicalSheetRecipeImportStatus[];
   onImport: () => void;
   onOpenImportedRecipe: (status: TechnicalSheetRecipeImportStatus) => void;
@@ -3622,15 +3630,6 @@ function RecipesTab(props: {
           </div>
         </div>
       </div>
-      <div className="technical-sheets-list-actions">
-        <button className="btn btn-primary" onClick={props.onCreate}>
-          <Plus size={16} /> Créer une fiche
-        </button>
-        <button className="btn btn-secondary" onClick={props.onImport}>
-          <Upload size={16} /> Importer des fiches
-        </button>
-      </div>
-
       {filtered.length ? (
         <div className="recipe-grid">
           {filtered.map((recipe) => (

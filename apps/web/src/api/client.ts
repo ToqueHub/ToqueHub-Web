@@ -3598,8 +3598,29 @@ export const api = {
       token,
     );
   },
-  categories(token: string) {
-    return request<Category[]>('/categories', {}, token);
+  async categories(
+    token: string,
+    params: { search?: string; page?: number; pageSize?: number; includeArchived?: boolean } = {},
+  ) {
+    const pageSize = params.pageSize ?? 250;
+    const fetchPage = (page: number) => {
+      const qs = new URLSearchParams();
+      if (params.search) qs.set('search', params.search);
+      qs.set('page', String(page));
+      qs.set('pageSize', String(pageSize));
+      if (params.includeArchived) qs.set('includeArchived', 'true');
+      return request<Category[]>(`/categories?${qs.toString()}`, {}, token);
+    };
+    if (params.page) return fetchPage(params.page);
+
+    const categories: Category[] = [];
+    let page = 1;
+    while (true) {
+      const batch = await fetchPage(page);
+      categories.push(...batch);
+      if (batch.length < pageSize) return categories;
+      page += 1;
+    }
   },
   equipmentCategories(token: string) {
     return request<Category[]>('/equipment/categories', {}, token);

@@ -126,6 +126,7 @@ import { DocumentOcrAnalysisPanel } from './ui/DocumentOcrAnalysisPanel';
 import { GuidedWelcome } from './ui/GuidedWelcome';
 import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
+import { EquipmentFinancingContractsPanel } from './stocks/EquipmentFinancingContractsPanel';
 import { InventoryImportWizard } from './stocks/InventoryImportWizard';
 import {
   addMonthsToIsoDate,
@@ -144,6 +145,7 @@ const FinanceApp = lazy(() =>
 );
 const loadHaccpApp = () => import('./HaccpApp');
 const HaccpApp = lazy(() => loadHaccpApp().then((module) => ({ default: module.HaccpApp })));
+const STOCK_CATEGORIES_PAGE_SIZE = 12;
 
 import { ApiError, api } from '../api/client';
 import { formatVatRate, stockCategoryVatPolicy } from '../stock-category-vat-policy';
@@ -684,6 +686,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [pendingClientId, setPendingClientId] = useState<string>();
+  const [pendingFinanceFocus, setPendingFinanceFocus] = useState<'equipment-financing'>();
   const [siteAddressModalHint, setSiteAddressModalHint] = useState(false);
   const [stocksMenuExpanded, setStocksMenuExpanded] = useState(false);
   const [rnmMenuExpanded, setRnmMenuExpanded] = useState(() => false);
@@ -696,8 +699,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [purchasingMenuExpanded, setPurchasingMenuExpanded] = useState(() => false);
   const [financeMenuExpanded, setFinanceMenuExpanded] = useState(() => false);
   const [technicalSheetsMenuExpanded, setTechnicalSheetsMenuExpanded] = useState(() => false);
-  const [appSearchQuery, setAppSearchQuery] = useState('');
-  const [showAppSearch, setShowAppSearch] = useState(false);
   const [pinnedApps, setPinnedApps] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem('toquehub_pinned_apps');
@@ -778,6 +779,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [selectedProductSiteId, setSelectedProductSiteId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categoriesSearch, setCategoriesSearch] = useState('');
+  const [categoriesPage, setCategoriesPage] = useState(1);
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null);
   const [ocrPollingActive, setOcrPollingActive] = useState(false);
   const [productPrefillName, setProductPrefillName] = useState('');
@@ -1961,13 +1964,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   );
 
   const installedAppsList = useMemo(() => allApps.filter((app) => app.installed), [allApps]);
-
-  const filteredInstalledApps = useMemo(() => {
-    if (!appSearchQuery.trim()) return installedAppsList;
-    return installedAppsList.filter((app) =>
-      app.title.toLowerCase().includes(appSearchQuery.toLowerCase()),
-    );
-  }, [installedAppsList, appSearchQuery]);
 
   const favoriteAppsList = useMemo(() => {
     return installedAppsList.filter((app) => pinnedApps.includes(app.id));
@@ -3641,6 +3637,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     () => sortCategoriesWithUncategorizedLast(categories),
     [categories],
   );
+  const filteredCategories = useMemo(() => {
+    const search = normalizeSearchText(categoriesSearch);
+    if (!search) return categoriesWithUncategorizedLast;
+    return categoriesWithUncategorizedLast.filter((category) =>
+      normalizeSearchText(`${category.name} ${category.description ?? ''}`).includes(search),
+    );
+  }, [categoriesSearch, categoriesWithUncategorizedLast]);
+  const categoriesTotalPages = Math.max(
+    1,
+    Math.ceil(filteredCategories.length / STOCK_CATEGORIES_PAGE_SIZE),
+  );
+  const paginatedCategories = useMemo(
+    () =>
+      filteredCategories.slice(
+        (categoriesPage - 1) * STOCK_CATEGORIES_PAGE_SIZE,
+        categoriesPage * STOCK_CATEGORIES_PAGE_SIZE,
+      ),
+    [categoriesPage, filteredCategories],
+  );
+  useEffect(() => setCategoriesPage(1), [categoriesSearch]);
+  useEffect(() => {
+    if (categoriesPage > categoriesTotalPages) setCategoriesPage(categoriesTotalPages);
+  }, [categoriesPage, categoriesTotalPages]);
   const activeCategories = useMemo(
     () =>
       sortCategoriesWithUncategorizedLast(categories.filter((c) => showArchived || !isArchived(c))),
@@ -4144,51 +4163,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <div className="sidebar-section-title" style={{ margin: 0 }}>
               Applications installées
             </div>
-            <button
-              className={`sidebar-search-toggle-btn ${showAppSearch || appSearchQuery ? 'active' : ''}`}
-              onClick={() => {
-                setShowAppSearch(!showAppSearch);
-                if (showAppSearch) {
-                  setAppSearchQuery('');
-                }
-              }}
-              title="Rechercher une application"
-            >
-              <Search size={13} />
-            </button>
           </div>
-
-          <AnimatePresence>
-            {(showAppSearch || appSearchQuery) && (
-              <motion.div
-                className="sidebar-search"
-                initial={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: 'auto', marginTop: 4, marginBottom: 8 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
-                transition={{ duration: 0.15 }}
-                style={{ overflow: 'hidden' }}
-              >
-                <input
-                  type="text"
-                  placeholder="Rechercher…"
-                  value={appSearchQuery}
-                  onChange={(e) => setAppSearchQuery(e.target.value)}
-                  className="sidebar-search-input"
-                  autoFocus
-                />
-                {appSearchQuery && (
-                  <button className="search-clear-btn" onClick={() => setAppSearchQuery('')}>
-                    <X size={12} />
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           {/* Dynamic Installed Apps */}
           <div className="sidebar-group-installed" data-tour="installed-apps">
-            {filteredInstalledApps.length > 0 ? (
-              filteredInstalledApps.map((app) => {
+            {installedAppsList.length > 0 ? (
+              installedAppsList.map((app) => {
                 const IconComponent = app.icon;
                 return (
                   <div key={app.id} className="sidebar-app-group">
@@ -4241,7 +4221,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               })
             ) : (
               <div className="sidebar-no-apps">
-                {appSearchQuery ? 'Aucune application trouvée' : 'Aucune application installée'}
+                Aucune application installée
               </div>
             )}
           </div>
@@ -4545,6 +4525,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       onOpenReceivableClient={(clientId) => {
                         setPendingClientId(clientId);
                         goToTab('clients-directory');
+                      }}
+                      onOpenEquipmentFinancing={() => {
+                        setPendingFinanceFocus('equipment-financing');
+                        goToTab('finance-cockpit');
                       }}
                       onRefresh={() => void refresh()}
                       collaborators={hrCollaborators}
@@ -5262,6 +5246,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 >
                   <FinanceApp
                     token={token}
+                    focusSection={pendingFinanceFocus}
+                    onFocusSectionHandled={() => setPendingFinanceFocus(undefined)}
                     tab={
                       activeTab === 'finance-annual'
                         ? 'annual'
@@ -5518,17 +5504,39 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <Plus size={16} /> Ajouter une catégorie
                       </button>
                     </div>
+                    <div className="stocks-categories-toolbar">
+                      <div className="search-input-wrapper stocks-categories-search">
+                        <Search />
+                        <input
+                          type="search"
+                          className="search-input"
+                          value={categoriesSearch}
+                          onChange={(event) => setCategoriesSearch(event.target.value)}
+                          placeholder="Rechercher une catégorie…"
+                          aria-label="Rechercher une catégorie"
+                        />
+                      </div>
+                      <span className="stocks-categories-summary" role="status">
+                        {filteredCategories.length} catégorie
+                        {filteredCategories.length > 1 ? 's' : ''} affichée
+                        {filteredCategories.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
                     <div className="apps-grid compact-grid">
-                      {categories.length === 0 ? (
+                      {filteredCategories.length === 0 ? (
                         <div className="empty-state app-empty">
                           <div className="empty-state-icon">🏷️</div>
-                          <span className="empty-state-title">Aucune catégorie</span>
+                          <span className="empty-state-title">
+                            {categories.length ? 'Aucune catégorie trouvée' : 'Aucune catégorie'}
+                          </span>
                           <span className="empty-state-desc">
-                            Créez vos familles de produits dès que Stocks est installé.
+                            {categories.length
+                              ? 'Modifiez ou effacez votre recherche pour retrouver une catégorie.'
+                              : 'Créez vos familles de produits dès que Stocks est installé.'}
                           </span>
                         </div>
                       ) : (
-                        categoriesWithUncategorizedLast.map((category) => (
+                        paginatedCategories.map((category) => (
                           <motion.div
                             key={category.id}
                             className="app-card compact-card"
@@ -5555,6 +5563,39 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         ))
                       )}
                     </div>
+                    {filteredCategories.length > STOCK_CATEGORIES_PAGE_SIZE ? (
+                      <nav
+                        className="stocks-categories-pagination"
+                        aria-label="Pagination des catégories"
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={categoriesPage <= 1}
+                          onClick={() => setCategoriesPage((current) => Math.max(1, current - 1))}
+                        >
+                          <ChevronLeft size={16} /> Précédent
+                        </button>
+                        <span>
+                          <strong>{categoriesPage}</strong> / {categoriesTotalPages}
+                          <small>
+                            Page {categoriesPage} sur {categoriesTotalPages}
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={categoriesPage >= categoriesTotalPages}
+                          onClick={() =>
+                            setCategoriesPage((current) =>
+                              Math.min(categoriesTotalPages, current + 1),
+                            )
+                          }
+                        >
+                          Suivant <ChevronRight size={16} />
+                        </button>
+                      </nav>
+                    ) : null}
                   </div>
                 </>
               )}
@@ -7205,151 +7246,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 // REUSABLE SUB-COMPONENTS
 // =========================================================================
 
-function EquipmentFinancingContractsPanel({
-  data,
-}: {
-  data: EquipmentFinancingContractsResponse | null;
-}) {
-  const money = (value: number | null | undefined, currency = 'EUR') =>
-    new Intl.NumberFormat(activeLocale(), {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(Number(value ?? 0));
-  const date = (value?: string | null) =>
-    value ? new Date(value).toLocaleDateString(activeLocale()) : '—';
-
-  if (!data) {
-    return (
-      <div className="cockpit-receivables-empty">
-        <WalletCards size={30} />
-        <strong>Financements indisponibles</strong>
-        <span>Actualisez la page pour recharger les contrats.</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="equipment-financing-contracts-panel">
-      <div className="equipment-financing-summary-grid">
-        <div>
-          <span>Contrats</span>
-          <strong>{data.summary.contractCount}</strong>
-        </div>
-        <div>
-          <span>Contrats actifs</span>
-          <strong>{data.summary.activeContractCount}</strong>
-        </div>
-        <div>
-          <span>Mensualités</span>
-          <strong>{money(data.summary.monthlyTotal)}</strong>
-        </div>
-        <div>
-          <span>Montant financé</span>
-          <strong>{money(data.summary.financedTotal)}</strong>
-        </div>
-      </div>
-
-      {data.items.length ? (
-        <div className="equipment-financing-contract-list">
-          {data.items.map((contract) => (
-            <article className="equipment-financing-contract" key={contract.id}>
-              <header>
-                <div>
-                  <span
-                    className={`stocks-financing-source ${contract.source === 'FENNOA' ? 'fennoa' : ''}`}
-                  >
-                    {contract.source === 'FENNOA' ? 'Source Fennoa prioritaire' : 'Source ToqueHub'}
-                  </span>
-                  <h4>
-                    {contract.acquisitionMode === 'LEASING' ? 'Leasing' : 'Crédit'}
-                    {contract.contractNumber ? ` · ${contract.contractNumber}` : ''}
-                  </h4>
-                  <p>
-                    {contract.financingProvider ||
-                      contract.supplier?.name ||
-                      'Organisme à compléter'}
-                  </p>
-                </div>
-                <div className="equipment-financing-contract-main-amount">
-                  <strong>{money(contract.monthlyPayment, contract.currency)}</strong>
-                  <span>par mois</span>
-                </div>
-              </header>
-
-              <div className="equipment-financing-contract-facts">
-                <div>
-                  <span>Début</span>
-                  <strong>{date(contract.financingStart)}</strong>
-                </div>
-                <div>
-                  <span>Échéance</span>
-                  <strong>{date(contract.financingEnd)}</strong>
-                </div>
-                <div>
-                  <span>Durée</span>
-                  <strong>{contract.termMonths ? `${contract.termMonths} mois` : '—'}</strong>
-                </div>
-                <div>
-                  <span>Montant financé</span>
-                  <strong>{money(contract.financedAmount, contract.currency)}</strong>
-                </div>
-                <div>
-                  <span>Valeur de rachat</span>
-                  <strong>{money(contract.buyoutValue, contract.currency)}</strong>
-                </div>
-              </div>
-
-              {contract.fennoa ? (
-                <div className="equipment-financing-fennoa-proof">
-                  <Landmark size={16} />
-                  <span>
-                    Écriture Fennoa {contract.fennoa.accountCode} ·{' '}
-                    {date(contract.fennoa.entryDate)} ·{' '}
-                    {money(contract.fennoa.bookedAmount, contract.currency)}
-                  </span>
-                </div>
-              ) : null}
-
-              <div className="equipment-financing-assets">
-                <span>Matériel rattaché</span>
-                <div>
-                  {contract.equipment.length ? (
-                    contract.equipment.map((item) => (
-                      <span className="equipment-financing-asset-chip" key={item.id}>
-                        <Boxes size={13} /> {item.name}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="muted">Aucun matériel rapproché.</span>
-                  )}
-                </div>
-              </div>
-
-              <footer>
-                <span>
-                  {contract.documents.length} document{contract.documents.length > 1 ? 's' : ''}
-                </span>
-                {contract.documents.map((document) => (
-                  <span className="equipment-financing-asset-chip" key={document.id}>
-                    <FileText size={13} /> {document.originalName}
-                  </span>
-                ))}
-              </footer>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="cockpit-receivables-empty">
-          <CheckCircle2 size={30} />
-          <strong>Aucun financement enregistré</strong>
-          <span>Les contrats importés avec les documents matériel apparaîtront ici.</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function formatInstanceBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 o';
   const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
@@ -8651,6 +8547,7 @@ function DashboardCockpitOverview({
   firstName,
   onNavigate,
   onOpenReceivableClient,
+  onOpenEquipmentFinancing,
   onRefresh,
   collaborators = [],
   movements = [],
@@ -8663,6 +8560,7 @@ function DashboardCockpitOverview({
   firstName: string;
   onNavigate: (tab: ActiveTab) => void;
   onOpenReceivableClient: (clientId: string) => void;
+  onOpenEquipmentFinancing: () => void;
   onRefresh: () => void;
   collaborators?: HrCollaborator[];
   movements?: StockMovement[];
@@ -8943,6 +8841,9 @@ function DashboardCockpitOverview({
               key={card.id}
               card={card}
               onNavigate={onNavigate}
+              onOpen={
+                card.id === 'finance.monthly-financing' ? onOpenEquipmentFinancing : undefined
+              }
               sectionType="overview"
               collaborators={collaborators}
               movements={movements}
@@ -26317,6 +26218,8 @@ function StocksOcrReviewPanel({
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [reanalyzingAi, setReanalyzingAi] = useState(false);
   const [uploadingFinancingDocuments, setUploadingFinancingDocuments] = useState(false);
+  const [financingImportNotice, setFinancingImportNotice] = useState<string>();
+  const financingContractRef = useRef<HTMLDivElement>(null);
   const [lineFilter, setLineFilter] = useState<
     'all' | 'review' | 'ready' | 'missing' | 'price' | 'ignored'
   >('all');
@@ -26425,6 +26328,22 @@ function StocksOcrReviewPanel({
     (sum, line) => sum + numeric(line.lineTotal ?? line.total),
     0,
   );
+  const financedEquipmentCount = draft.financingContract
+    ? draft.lines.filter(
+        (line) =>
+          isFinancingEquipmentOcrLine(line) &&
+          line.acquisitionMode === draft.financingContract?.acquisitionMode,
+      ).length
+    : 0;
+  const financingInstallmentLabel =
+    draft.financingContract?.installmentAmount != null
+      ? `${new Intl.NumberFormat(activeLocale(), {
+          style: 'currency',
+          currency: draft.financingContract.currency || 'EUR',
+        }).format(numeric(draft.financingContract.installmentAmount))} / ${financingFrequencyLabel(
+          draft.financingContract.paymentFrequency,
+        )}`
+      : null;
 
   function updateLine(index: number, patch: Partial<StocksOcrLine>) {
     setDraft((current) => ({
@@ -26437,14 +26356,29 @@ function StocksOcrReviewPanel({
     if (!files.length) return;
     setUploadingFinancingDocuments(true);
     setError(undefined);
+    setFinancingImportNotice(undefined);
     try {
       const updated = await api.uploadStocksOcrFinancingDocuments(token, extraction.id, files);
-      setDraft(
-        enrichOcrProductMatches(
-          resolveOcrReceptionUnits(normalizeDraft(updated.data), units),
-          products,
-        ),
+      const nextDraft = enrichOcrProductMatches(
+        resolveOcrReceptionUnits(normalizeDraft(updated.data), units),
+        products,
       );
+      setDraft(nextDraft);
+      const equipmentCount = nextDraft.financingContract
+        ? nextDraft.lines.filter(
+            (line) =>
+              isFinancingEquipmentOcrLine(line) &&
+              line.acquisitionMode === nextDraft.financingContract?.acquisitionMode,
+          ).length
+        : 0;
+      setFinancingImportNotice(
+        `Financement importé : 1 contrat global — ${equipmentCount} matériel${equipmentCount > 1 ? 's' : ''}.`,
+      );
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          financingContractRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -26767,6 +26701,11 @@ function StocksOcrReviewPanel({
             <AlertCircle size={16} /> {error}
           </div>
         ) : null}
+        {financingImportNotice ? (
+          <div className="alert-modern success ocr-financing-import-confirmation" role="status">
+            <CheckCircle2 size={16} /> {financingImportNotice}
+          </div>
+        ) : null}
 
         <div className="ocr-dossier">
           <div className="ocr-dossier-header">
@@ -26851,7 +26790,7 @@ function StocksOcrReviewPanel({
           </div>
 
           {isEquipmentImport && draft.financingContract ? (
-            <div className="ocr-financing-contract-card">
+            <div className="ocr-financing-contract-card" ref={financingContractRef}>
               <div className="ocr-financing-contract-heading">
                 <div>
                   <span className="ocr-dossier-kicker">Financement rattaché au dossier</span>
@@ -26862,10 +26801,22 @@ function StocksOcrReviewPanel({
                       : ''}
                   </h4>
                 </div>
-                <span className="ocr-financing-documents-count">
-                  <FileText size={13} /> {draft.financingContract.documentIds?.length ?? 0} document
-                  {(draft.financingContract.documentIds?.length ?? 0) > 1 ? 's' : ''}
-                </span>
+                <div className="ocr-financing-contract-badges">
+                  <span className="ocr-financing-scope-count">
+                    <Boxes size={13} /> 1 contrat global — {financedEquipmentCount} matériel
+                    {financedEquipmentCount > 1 ? 's' : ''}
+                  </span>
+                  {financingInstallmentLabel ? (
+                    <span className="ocr-financing-installment-count">
+                      <Repeat2 size={13} /> {financingInstallmentLabel}
+                    </span>
+                  ) : null}
+                  <span className="ocr-financing-documents-count">
+                    <FileText size={13} /> {draft.financingContract.documentIds?.length ?? 0}{' '}
+                    document
+                    {(draft.financingContract.documentIds?.length ?? 0) > 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
               <div className="ocr-financing-contract-grid">
                 <label>
@@ -26926,6 +26877,71 @@ function StocksOcrReviewPanel({
                       }));
                     }}
                   />
+                </label>
+                <label>
+                  <span>Montant de l’échéance</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draft.financingContract.installmentAmount ?? ''}
+                    onChange={(event) => {
+                      const installmentAmount = event.target.value
+                        ? Number(event.target.value)
+                        : null;
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              installmentAmount,
+                              monthlyPayment:
+                                installmentAmount == null
+                                  ? null
+                                  : Math.round(
+                                      (installmentAmount /
+                                        financingFrequencyMonths(
+                                          current.financingContract.paymentFrequency,
+                                        )) *
+                                        100,
+                                    ) / 100,
+                            }
+                          : null,
+                      }));
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>Fréquence de paiement</span>
+                  <select
+                    value={draft.financingContract.paymentFrequency || 'OTHER'}
+                    onChange={(event) => {
+                      const paymentFrequency = event.target.value;
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              paymentFrequency,
+                              monthlyPayment:
+                                current.financingContract.installmentAmount == null
+                                  ? null
+                                  : Math.round(
+                                      (numeric(current.financingContract.installmentAmount) /
+                                        financingFrequencyMonths(paymentFrequency)) *
+                                        100,
+                                    ) / 100,
+                            }
+                          : null,
+                      }));
+                    }}
+                  >
+                    <option value="MONTHLY">Mensuelle</option>
+                    <option value="QUARTERLY">Trimestrielle</option>
+                    <option value="SEMIANNUAL">Semestrielle</option>
+                    <option value="ANNUAL">Annuelle</option>
+                    <option value="OTHER">Autre</option>
+                  </select>
                 </label>
                 <label>
                   <span>Date de début</span>
@@ -28411,6 +28427,31 @@ function ocrMatchLabel(status?: string | null) {
 
 function ocrLineStatus(line: StocksOcrLine) {
   return String(line.lineStatus || '').toLowerCase();
+}
+
+function isFinancingEquipmentOcrLine(line: StocksOcrLine) {
+  if (line.ignored || line.productKind !== 'EQUIPMENT') return false;
+  const lineType = String(line.lineType || '').toLowerCase();
+  if (['service', 'transport', 'consumable'].includes(lineType)) return false;
+  if (lineType !== 'accessory') return true;
+  return /\b(?:water\s*filtration|waterfiltration|filtration\s+system|syst[eè]me\s+de\s+filtration|vedensuodatus|suodatusj[aä]rjestelm[aä])\b/i.test(
+    [line.ocrLabel, line.label, line.nameOriginal, line.descriptionOriginal].filter(Boolean).join(' '),
+  );
+}
+
+function financingFrequencyMonths(value?: string | null) {
+  if (value === 'QUARTERLY') return 3;
+  if (value === 'SEMIANNUAL') return 6;
+  if (value === 'ANNUAL') return 12;
+  return 1;
+}
+
+function financingFrequencyLabel(value?: string | null) {
+  if (value === 'QUARTERLY') return 'trimestre';
+  if (value === 'SEMIANNUAL') return 'semestre';
+  if (value === 'ANNUAL') return 'an';
+  if (value === 'MONTHLY') return 'mois';
+  return 'échéance';
 }
 
 function hasOcrPriceMismatch(line: StocksOcrLine) {

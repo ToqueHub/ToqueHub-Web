@@ -1184,6 +1184,7 @@ export interface PlanningWeeklyRotationPayload {
   name: string;
   description?: string;
   departmentId?: string;
+  positionId?: string;
   siteId?: string;
   days?: PlanningTemplateDay[] | Record<string, PlanningTemplateDay>;
 }
@@ -1512,6 +1513,8 @@ export interface RnmProduct {
   latestQuotationDate?: string | null;
   lastQuotationDate?: string | null;
   averagePrice?: number | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
   variation?: number | null;
   unit?: string | null;
   market?: string | null;

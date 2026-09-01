@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   AlertCircle,
   CalendarDays,
-  Check,
   ChefHat,
   ChevronDown,
   ClipboardList,
@@ -15,7 +14,6 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
-  UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
@@ -84,24 +82,6 @@ function employeeMatchesSite(
   return (employee.secondarySites ?? []).some((secondarySite) =>
     'siteId' in secondarySite ? secondarySite.siteId === siteId : secondarySite.id === siteId,
   );
-}
-
-function groupEmployeesByPosition(employees: OperationalTaskPresetOptions['employees']) {
-  const groups = new Map<string, OperationalTaskPresetOptions['employees']>();
-  for (const employee of employees) {
-    const position = employee.position?.name?.trim() || 'Poste non renseigné';
-    groups.set(position, [...(groups.get(position) ?? []), employee]);
-  }
-  return [...groups.entries()]
-    .map(([position, members]) => ({
-      position,
-      members: members.sort((left, right) =>
-        employeeName(left).localeCompare(employeeName(right), activeLocale(), {
-          sensitivity: 'base',
-        }),
-      ),
-    }))
-    .sort((left, right) => left.position.localeCompare(right.position, activeLocale()));
 }
 
 function presetEmployeeIds(preset: OperationalTaskPreset) {
@@ -541,7 +521,6 @@ export function OperationalPresetsApp({ token }: Props) {
   const [initialDraft, setInitialDraft] = useState<Draft>(emptyDraft);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [editorNotice, setEditorNotice] = useState('');
-  const [employeeSearch, setEmployeeSearch] = useState('');
   const advancedRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -586,9 +565,6 @@ export function OperationalPresetsApp({ token }: Props) {
   const selectedSheet = options.technicalSheets.find(
     (sheet) => sheet.id === draft.technicalSheetId,
   );
-  const selectedEmployee = options.employees.find(
-    (employee) => employee.id === draft.assignedEmployeeId,
-  );
   const selectedEmployees = draft.assignedEmployeeIds
     .map((employeeId) => options.employees.find((employee) => employee.id === employeeId))
     .filter((employee): employee is OperationalTaskPresetOptions['employees'][number] =>
@@ -617,24 +593,24 @@ export function OperationalPresetsApp({ token }: Props) {
   const selectedSite = options.sites.find((site) => site.id === draft.siteId);
   const hasMultipleSites = options.sites.length > 1;
   const siteHasBeenChosen = !hasMultipleSites || Boolean(draft.siteId);
-  const effectiveSiteChoice = options.sites.length <= 1 ? ANY_SITE : draft.siteId;
-  const eligibleEmployees = options.employees.filter(
-    (employee) =>
-      employeeMatchesSite(employee, effectiveSiteChoice) &&
-      (!draft.departmentId ||
-        employee.departmentId === draft.departmentId ||
-        draft.assignedEmployeeIds.includes(employee.id)),
+  const effectiveSiteChoice = draft.siteId || options.sites[0]?.id || ANY_SITE;
+  const siteEmployees = options.employees.filter((employee) =>
+    employeeMatchesSite(employee, effectiveSiteChoice),
   );
-  const employeeQuery = normalizeSearch(employeeSearch);
-  const visibleEmployeeGroups = groupEmployeesByPosition(
-    eligibleEmployees.filter((employee) =>
-      employeeQuery
-        ? normalizeSearch(
-            `${employee.firstName} ${employee.lastName} ${employee.position?.name ?? ''} ${employee.department?.name ?? ''}`,
-          ).includes(employeeQuery)
-        : true,
-    ),
+  const availableDepartments = options.departments.filter((department) =>
+    siteEmployees.some((employee) => employee.departmentId === department.id),
   );
+  const departmentEmployees = siteEmployees.filter(
+    (employee) => employee.departmentId === draft.departmentId,
+  );
+  const availablePositions = [
+    ...new Map(
+      departmentEmployees
+        .filter((employee) => employee.position?.id)
+        .map((employee) => [employee.position!.id, employee.position!]),
+    ).values(),
+  ].sort((left, right) => left.name.localeCompare(right.name, activeLocale()));
+  const selectedPosition = availablePositions.find((position) => position.id === draft.positionId);
   const selectedStep = selectedSheet?.steps.find((step) => step.id === draft.technicalSheetStepId);
   const selectedCategory = CATEGORIES.find((category) => category.value === draft.category);
   const timeRangeInvalid = Boolean(
@@ -655,6 +631,24 @@ export function OperationalPresetsApp({ token }: Props) {
     !draft.isActive ? 'En pause' : '',
   ].filter(Boolean);
 
+  function employeesForScope(siteId: string, departmentId: string, positionId = '') {
+    if (!siteId || !departmentId) return [];
+    return options.employees.filter(
+      (employee) =>
+        employeeMatchesSite(employee, siteId) &&
+        employee.departmentId === departmentId &&
+        (!positionId || employee.positionId === positionId),
+    );
+  }
+
+  function assignmentForScope(siteId: string, departmentId: string, positionId = '') {
+    const employees = employeesForScope(siteId, departmentId, positionId);
+    return {
+      assignedEmployeeId: employees[0]?.id ?? '',
+      assignedEmployeeIds: employees.map((employee) => employee.id),
+    };
+  }
+
   function createDraftFromFilters() {
     const next = emptyDraft();
     next.siteId =
@@ -662,11 +656,13 @@ export function OperationalPresetsApp({ token }: Props) {
     if (departmentFilter) next.departmentId = departmentFilter;
     if (employeeFilter) {
       const employee = options.employees.find((item) => item.id === employeeFilter);
-      next.assignedEmployeeId = employeeFilter;
-      next.assignedEmployeeIds = [employeeFilter];
       next.departmentId = employee?.departmentId ?? next.departmentId;
+      next.positionId = employee?.positionId ?? '';
       next.siteId =
-        options.sites.length === 1 ? options.sites[0].id : employee?.mainSiteId || ANY_SITE;
+        options.sites.length === 1 ? options.sites[0].id : employee?.mainSiteId || '';
+      Object.assign(next, assignmentForScope(next.siteId, next.departmentId, next.positionId));
+    } else if (next.departmentId && next.siteId) {
+      Object.assign(next, assignmentForScope(next.siteId, next.departmentId));
     }
     return next;
   }
@@ -679,7 +675,6 @@ export function OperationalPresetsApp({ token }: Props) {
     setAdvancedOpen(false);
     setEditorOpen(true);
     setEditorNotice('');
-    setEmployeeSearch('');
     setError('');
   }
 
@@ -687,87 +682,51 @@ export function OperationalPresetsApp({ token }: Props) {
     const next = presetToDraft(preset);
     if (options.sites.length === 1) next.siteId = options.sites[0].id;
     if (!options.sites.length) next.siteId = ANY_SITE;
+    if (hasMultipleSites && next.siteId === ANY_SITE) next.siteId = '';
+    Object.assign(
+      next,
+      assignmentForScope(next.siteId, next.departmentId, next.positionId),
+    );
     setEditing(preset);
     setDraft(next);
     setInitialDraft(next);
     setAdvancedOpen(false);
     setEditorOpen(true);
     setEditorNotice('');
-    setEmployeeSearch('');
     setError('');
   }
 
   function chooseSite(siteId: string) {
-    setDraft((current) => {
-      const retainedIds = current.assignedEmployeeIds.filter((employeeId) => {
-        const employee = options.employees.find((item) => item.id === employeeId);
-        return employee ? employeeMatchesSite(employee, siteId) : false;
-      });
-      const leadId = retainedIds.includes(current.assignedEmployeeId)
-        ? current.assignedEmployeeId
-        : (retainedIds[0] ?? '');
-      const lead = options.employees.find((employee) => employee.id === leadId);
-      const taskPositionStillSelected = retainedIds.some(
-        (employeeId) =>
-          options.employees.find((employee) => employee.id === employeeId)?.positionId ===
-          current.positionId,
-      );
-      return {
-        ...current,
-        siteId,
-        assignedEmployeeId: leadId,
-        assignedEmployeeIds: retainedIds,
-        departmentId: lead?.departmentId ?? '',
-        ...(!taskPositionStillSelected && current.positionTaskPresetId
-          ? {
-              positionId: '',
-              positionTaskPresetId: '',
-              technicalSheetId: '',
-              technicalSheetStepId: '',
-              name: '',
-              quantity: '',
-              unitLabel: '',
-            }
-          : {}),
-      };
-    });
-    setEmployeeSearch('');
+    setDraft((current) => ({
+      ...current,
+      siteId,
+      departmentId: '',
+      positionId: '',
+      assignedEmployeeId: '',
+      assignedEmployeeIds: [],
+      positionTaskPresetId: '',
+    }));
   }
 
-  function toggleEmployee(employeeId: string) {
-    const employee = options.employees.find((item) => item.id === employeeId);
-    if (!employee) return;
+  function chooseDepartment(departmentId: string) {
     setDraft((current) => {
-      const selected = current.assignedEmployeeIds.includes(employeeId);
-      const assignedEmployeeIds = selected
-        ? current.assignedEmployeeIds.filter((id) => id !== employeeId)
-        : [...current.assignedEmployeeIds, employeeId];
-      const assignedEmployeeId =
-        selected && current.assignedEmployeeId === employeeId
-          ? (assignedEmployeeIds[0] ?? '')
-          : current.assignedEmployeeId || employeeId;
-      const lead = options.employees.find((item) => item.id === assignedEmployeeId);
-      const taskPositionStillSelected = assignedEmployeeIds.some(
-        (id) => options.employees.find((item) => item.id === id)?.positionId === current.positionId,
-      );
       return {
         ...current,
-        assignedEmployeeId,
-        assignedEmployeeIds,
-        departmentId: lead?.departmentId ?? '',
-        ...(!taskPositionStillSelected && current.positionTaskPresetId
-          ? {
-              positionId: '',
-              positionTaskPresetId: '',
-              technicalSheetId: '',
-              technicalSheetStepId: '',
-              name: '',
-              quantity: '',
-              unitLabel: '',
-            }
-          : {}),
+        departmentId,
+        positionId: '',
+        positionTaskPresetId: '',
+        ...assignmentForScope(current.siteId || effectiveSiteChoice, departmentId),
       };
     });
+  }
+
+  function choosePosition(positionId: string) {
+    setDraft((current) => ({
+      ...current,
+      positionId,
+      positionTaskPresetId: '',
+      ...assignmentForScope(current.siteId || effectiveSiteChoice, current.departmentId, positionId),
+    }));
   }
 
   function selectContentMode(contentMode: Exclude<PresetContentMode, '' | 'MANUAL'>) {
@@ -780,7 +739,6 @@ export function OperationalPresetsApp({ token }: Props) {
             name: '',
             description: '',
             category: contentMode === 'TECHNICAL_SHEET' ? 'KITCHEN' : current.category,
-            positionId: '',
             positionTaskPresetId: '',
             technicalSheetId: '',
             technicalSheetStepId: '',
@@ -802,6 +760,10 @@ export function OperationalPresetsApp({ token }: Props) {
         ...current,
         positionId: '',
         positionTaskPresetId: '',
+        ...assignmentForScope(
+          current.siteId || options.sites[0]?.id || ANY_SITE,
+          current.departmentId,
+        ),
         technicalSheetId: '',
         technicalSheetStepId: '',
         name: '',
@@ -815,6 +777,11 @@ export function OperationalPresetsApp({ token }: Props) {
       contentMode: 'POSITION_TASK',
       positionId: task.positionId,
       positionTaskPresetId: task.id,
+      ...assignmentForScope(
+        current.siteId || options.sites[0]?.id || ANY_SITE,
+        current.departmentId,
+        task.positionId,
+      ),
       category: task.category,
       name: task.title,
       description: task.description ?? '',
@@ -877,11 +844,11 @@ export function OperationalPresetsApp({ token }: Props) {
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const createAnother = submitter?.value === 'create-another';
     if (hasMultipleSites && !draft.siteId) {
-      setError('Choisissez d’abord le site concerné, ou « Tous les sites / peu importe ».');
+      setError('Choisissez d’abord le site concerné.');
       return;
     }
     if (!draft.assignedEmployeeIds.length || !draft.assignedEmployeeId || !draft.departmentId) {
-      setError('Choisissez au moins un collaborateur rattaché à un service.');
+      setError('Choisissez un service contenant au moins un collaborateur actif pour ce périmètre.');
       return;
     }
     if (!draft.contentMode) {
@@ -985,7 +952,7 @@ export function OperationalPresetsApp({ token }: Props) {
             </div>
             <h2 className="production-hero-title">Planning opérationnel automatique</h2>
             <p className="production-hero-desc">
-              Attribuez les préparations récurrentes par service et collaborateur. Elles sont
+              Attribuez les préparations récurrentes par site, service et poste. Elles sont
               déposées automatiquement au bon jour et à la bonne heure dans le planning.
             </p>
           </div>
@@ -1179,24 +1146,31 @@ export function OperationalPresetsApp({ token }: Props) {
           }}
         >
           <form
-            className="modal-content operational-preset-modal"
+            className="modal-card hr-modal hr-collaborator-modal operational-preset-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="operational-preset-title"
             onSubmit={save}
           >
-            <div className="modal-header">
+            <div className="modal-header hr-modal-sticky">
               <div>
                 <span className="operational-preset-modal-kicker">Récurrence opérationnelle</span>
                 <h2 id="operational-preset-title">
                   {editing ? 'Modifier le preset' : 'Nouveau preset'}
                 </h2>
+                <p>Définissez le périmètre, le contenu et la récurrence de cette opération.</p>
               </div>
-              <button type="button" aria-label="Fermer" onClick={closeEditor} disabled={saving}>
+              <button
+                type="button"
+                className="modal-close-btn"
+                aria-label="Fermer"
+                onClick={closeEditor}
+                disabled={saving}
+              >
                 <X size={20} />
               </button>
             </div>
-            <div className="modal-body operational-preset-form">
+            <div className="hr-collaborator-body operational-preset-form">
               {error && (
                 <div className="operational-presets-error" role="alert">
                   <AlertCircle size={18} /> {error}
@@ -1215,11 +1189,7 @@ export function OperationalPresetsApp({ token }: Props) {
                   </span>
                   <div>
                     <h3>Qui s’en charge ?</h3>
-                    <p>
-                      {hasMultipleSites
-                        ? 'Choisissez le site, puis une ou plusieurs personnes.'
-                        : 'Sélectionnez toutes les personnes nécessaires à cette tâche.'}
-                    </p>
+                    <p>Choisissez le site, le service, puis tous les postes ou un poste précis.</p>
                   </div>
                 </div>
 
@@ -1236,7 +1206,6 @@ export function OperationalPresetsApp({ token }: Props) {
                           {site.name}
                         </option>
                       ))}
-                      <option value={ANY_SITE}>Tous les sites / peu importe</option>
                     </select>
                   </label>
                 ) : options.sites[0] ? (
@@ -1250,131 +1219,74 @@ export function OperationalPresetsApp({ token }: Props) {
                 ) : null}
 
                 {siteHasBeenChosen ? (
-                  <div className="operational-preset-team-picker">
-                    <div className="operational-preset-team-picker-header">
-                      <span>
-                        <strong>Collaborateurs</strong>
-                        <small>
-                          {draft.assignedEmployeeIds.length
-                            ? `${draft.assignedEmployeeIds.length} personne${draft.assignedEmployeeIds.length > 1 ? 's' : ''} sélectionnée${draft.assignedEmployeeIds.length > 1 ? 's' : ''}`
-                            : 'Sélection multiple possible'}
-                        </small>
-                      </span>
-                      {eligibleEmployees.length > 5 ? (
-                        <div className="operational-preset-employee-search">
-                          <Search size={15} aria-hidden="true" />
-                          <input
-                            type="search"
-                            value={employeeSearch}
-                            placeholder="Rechercher…"
-                            aria-label="Rechercher un collaborateur"
-                            onChange={(event) => setEmployeeSearch(event.target.value)}
-                          />
-                        </div>
-                      ) : null}
+                  <div className="operational-preset-scope-picker">
+                    <div className="operational-preset-scope-grid">
+                      <label>
+                        <span>Service</span>
+                        <select
+                          value={draft.departmentId}
+                          onChange={(event) => chooseDepartment(event.target.value)}
+                        >
+                          <option value="">Choisir un service…</option>
+                          {availableDepartments.map((department) => (
+                            <option key={department.id} value={department.id}>
+                              {department.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Poste</span>
+                        <select
+                          value={draft.positionId}
+                          disabled={!draft.departmentId}
+                          onChange={(event) => choosePosition(event.target.value)}
+                        >
+                          <option value="">Libre — tous les postes du service</option>
+                          {availablePositions.map((position) => (
+                            <option key={position.id} value={position.id}>
+                              {position.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
 
-                    {selectedEmployees.length ? (
-                      <div
-                        className="operational-preset-selected-team"
-                        aria-label="Équipe sélectionnée"
-                      >
-                        {selectedEmployees.map((employee) => (
-                          <button
-                            type="button"
-                            key={employee.id}
-                            onClick={() => toggleEmployee(employee.id)}
-                            title={`Retirer ${employeeName(employee)}`}
-                          >
-                            <span>{employeeName(employee)}</span>
-                            {employee.id === draft.assignedEmployeeId ? (
-                              <small>Référent</small>
-                            ) : null}
-                            <X size={13} />
-                          </button>
-                        ))}
+                    {draft.departmentId ? (
+                      <div className="operational-preset-scope-summary" aria-live="polite">
+                        <span>
+                          <MapPin size={15} />
+                          {selectedSite?.name ?? options.sites[0]?.name ?? 'Site'}
+                        </span>
+                        <span>
+                          <UsersRound size={15} />
+                          {selectedDepartment?.name ?? 'Service'}
+                        </span>
+                        <span>
+                          <ClipboardList size={15} />
+                          {selectedPosition?.name ?? 'Tous les postes du service'}
+                        </span>
+                        <strong>
+                          {selectedEmployees.length} collaborateur
+                          {selectedEmployees.length > 1 ? 's' : ''} concerné
+                          {selectedEmployees.length > 1 ? 's' : ''}
+                        </strong>
                       </div>
                     ) : null}
 
-                    <div className="operational-preset-employee-groups">
-                      {visibleEmployeeGroups.map((group) => (
-                        <div key={group.position} className="operational-preset-employee-group">
-                          <strong>{group.position}</strong>
-                          <div>
-                            {group.members.map((employee) => {
-                              const selected = draft.assignedEmployeeIds.includes(employee.id);
-                              return (
-                                <label
-                                  key={employee.id}
-                                  className={`operational-preset-employee-option${selected ? ' is-selected' : ''}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selected}
-                                    onChange={() => toggleEmployee(employee.id)}
-                                  />
-                                  <span
-                                    className="operational-preset-employee-avatar"
-                                    aria-hidden="true"
-                                  >
-                                    {employee.firstName.slice(0, 1)}
-                                    {employee.lastName.slice(0, 1)}
-                                  </span>
-                                  <span>
-                                    <strong>{employeeName(employee)}</strong>
-                                    <small>
-                                      {employee.department?.name ?? 'Service non renseigné'}
-                                    </small>
-                                  </span>
-                                  <Check size={16} aria-hidden="true" />
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                      {!visibleEmployeeGroups.length ? (
-                        <p className="operational-preset-team-empty">
-                          Aucun collaborateur disponible pour ce site et ce service.
-                        </p>
-                      ) : null}
-                    </div>
+                    {draft.departmentId && !selectedEmployees.length ? (
+                      <p className="operational-preset-team-empty" role="alert">
+                        Aucun collaborateur actif ne correspond à ce site, ce service et ce poste.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="operational-preset-site-required">
                     <MapPin size={18} />
                     <span>
-                      Le choix du site permet d’afficher uniquement les collaborateurs concernés.
+                      Choisissez d’abord un site pour afficher ses services et ses postes.
                     </span>
                   </div>
-                )}
-
-                {selectedEmployee ? (
-                  <div
-                    className={`operational-preset-assignment-summary${
-                      draft.departmentId ? '' : ' is-warning'
-                    }`}
-                  >
-                    <span>
-                      <UserRound size={15} />
-                      {selectedDepartment?.name ??
-                        selectedEmployee.department?.name ??
-                        'Service non renseigné'}
-                    </span>
-                    <span>
-                      <MapPin size={15} />
-                      {draft.siteId === ANY_SITE
-                        ? 'Tous les sites / peu importe'
-                        : (selectedSite?.name ??
-                          selectedEmployee.mainSite?.name ??
-                          'Site non renseigné')}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="operational-preset-section-hint">
-                    La première personne sélectionnée devient le référent. Les suivantes sont
-                    affectées à la même occurrence.
-                  </p>
                 )}
               </section>
 
@@ -1388,14 +1300,14 @@ export function OperationalPresetsApp({ token }: Props) {
                     <p>
                       {selectedEmployees.length
                         ? 'Choisissez une fiche technique ou une tâche liée au poste.'
-                        : 'Commencez par sélectionner les collaborateurs concernés.'}
+                        : 'Définissez d’abord le site, le service et le poste.'}
                     </p>
                   </div>
                 </div>
                 {!selectedEmployees.length ? (
                   <div className="operational-preset-content-required">
                     <UsersRound size={18} />
-                    <span>Le contenu proposé dépend du poste des personnes sélectionnées.</span>
+                    <span>Le contenu proposé dépend du périmètre sélectionné.</span>
                   </div>
                 ) : (
                   <>
@@ -1752,8 +1664,8 @@ export function OperationalPresetsApp({ token }: Props) {
                 )}
               </div>
             </div>
-            <div className="modal-footer">
-              {!editing && (
+            <div className="modal-actions hr-modal-footer operational-preset-footer">
+              {!editing ? (
                 <button
                   type="submit"
                   className="btn btn-secondary operational-preset-footer-more"
@@ -1763,25 +1675,29 @@ export function OperationalPresetsApp({ token }: Props) {
                 >
                   Créer et en ajouter un autre
                 </button>
+              ) : (
+                <span className="muted">Modifiez le périmètre ou la récurrence du preset.</span>
               )}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={closeEditor}
-                disabled={saving}
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                name="saveMode"
-                value="save"
-                disabled={saving}
-              >
-                {saving ? <Loader2 size={16} className="spin" /> : <Repeat2 size={16} />}
-                {editing ? 'Enregistrer' : 'Créer le preset'}
-              </button>
+              <div className="row-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeEditor}
+                  disabled={saving}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  name="saveMode"
+                  value="save"
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 size={16} className="spin" /> : <Repeat2 size={16} />}
+                  {editing ? 'Enregistrer' : 'Créer le preset'}
+                </button>
+              </div>
             </div>
           </form>
         </div>
