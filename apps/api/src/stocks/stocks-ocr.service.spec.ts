@@ -1839,6 +1839,112 @@ describe('StocksOcrService reception safeguards', () => {
     ).rejects.toThrow('déjà été importé');
   });
 
+  it('keeps a successfully analyzed financing document when the next document fails', async () => {
+    const source = {
+      lines: [
+        {
+          label: 'Machine à café',
+          productKind: ProductKind.EQUIPMENT,
+          lineType: 'equipment',
+        },
+      ],
+    };
+    const extraction = {
+      id: 'extraction-1',
+      status: 'DRAFT',
+      correctedJson: source,
+      extractedJson: source,
+      ocrDocument: { document: { id: 'invoice-1' } },
+    };
+    const prisma: any = mockPrisma();
+    prisma.document = {
+      update: jest.fn().mockResolvedValue({}),
+    };
+    prisma.ocrDocument = {
+      create: jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'ocr-financing-1' })
+        .mockResolvedValueOnce({ id: 'ocr-financing-2' }),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    prisma.ocrBusinessExtraction = {
+      findFirst: jest.fn().mockResolvedValue(extraction),
+      update: jest.fn().mockImplementation(async ({ data }: any) => ({
+        ...extraction,
+        status: data.status,
+        correctedJson: data.correctedJson,
+      })),
+    };
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation(async (operations: Promise<unknown>[]) => Promise.all(operations));
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    jest.spyOn(service as any, 'assertUniqueFinancingDocuments').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'uploadDocumentsForSource').mockResolvedValue({
+      documents: [
+        { id: 'financing-1', storagePath: 'one.pdf', mimeType: 'application/pdf', sizeBytes: 1 },
+        { id: 'financing-2', storagePath: 'two.pdf', mimeType: 'application/pdf', sizeBytes: 1 },
+      ],
+    });
+    jest
+      .spyOn(service as any, 'extractEmbeddedPdfText')
+      .mockResolvedValue({ text: '', pageCount: 0 });
+    jest
+      .spyOn(service as any, 'callMistral')
+      .mockResolvedValueOnce({ rawJson: {}, markdown: 'first contract', pageCount: 1 })
+      .mockRejectedValueOnce(new Error('OCR unavailable'));
+    jest.spyOn(service as any, 'rawTextFromOcr').mockReturnValue('first contract');
+    jest.spyOn(service as any, 'extractFinancingContract').mockResolvedValue({
+      acquisitionMode: EquipmentAcquisitionMode.LEASING,
+      financingProvider: 'GRENKE',
+      contractNumber: '096-59401',
+      termMonths: 36,
+      monthlyPayment: 185.25,
+    });
+
+    const files = [
+      {
+        originalname: 'one.pdf',
+        mimetype: 'application/pdf',
+        size: 1,
+        buffer: Buffer.from('1'),
+      },
+      {
+        originalname: 'two.pdf',
+        mimetype: 'application/pdf',
+        size: 1,
+        buffer: Buffer.from('2'),
+      },
+    ];
+    await expect(
+      service.uploadFinancingDocuments(
+        'org-1',
+        { id: 'user-1', role: 'ADMIN' },
+        'extraction-1',
+        files,
+      ),
+    ).rejects.toThrow('OCR unavailable');
+
+    expect(prisma.ocrBusinessExtraction.update).toHaveBeenCalledTimes(1);
+    expect(prisma.ocrBusinessExtraction.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          correctedJson: expect.objectContaining({
+            financingContract: expect.objectContaining({
+              contractNumber: '096-59401',
+              documentIds: ['financing-1'],
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('calculates the contract end from its explicit start and duration', () => {
     const service = new StocksOcrService(
       mockPrisma(),
