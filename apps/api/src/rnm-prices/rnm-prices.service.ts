@@ -15,7 +15,11 @@ type RnmProduct = {
   sector?: string | null;
   latestQuotationDate?: string | null;
   averagePrice?: number | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
   variation?: number | null;
+  unit?: string | null;
+  market?: string | null;
   raw?: unknown;
 };
 
@@ -253,7 +257,11 @@ export class RnmPricesService {
       sector: this.restoreFrenchAccents(this.cleanLabel(item.category?.sector?.label ?? item.sector?.label ?? item.sectorLabel ?? item.sector ?? item.secteur ?? item.filiere ?? null)),
       latestQuotationDate: item.latestQuotationDate ?? item.lastQuotationDate ?? item.derniereCotation ?? item.date ?? item.dateCotation ?? null,
       averagePrice: this.num(item.averagePrice ?? item.avgPrice ?? item.prixMoyen ?? item.moyenne ?? item.price),
+      minPrice: this.num(item.minPrice ?? item.prixMin ?? item.minimum),
+      maxPrice: this.num(item.maxPrice ?? item.prixMax ?? item.maximum),
       variation: this.num(item.variation ?? item.evolution ?? item.var),
+      unit: this.cleanLabel(item.unit ?? item.unite ?? item.priceUnit ?? null),
+      market: this.restoreFrenchAccents(item.market ?? item.marche ?? null),
       raw: item,
     };
   }
@@ -277,6 +285,7 @@ export class RnmPricesService {
       minPrice: this.num(q?.minPrice ?? q?.prixMin ?? q?.minimum),
       maxPrice: this.num(q?.maxPrice ?? q?.prixMax ?? q?.maximum),
       variation: this.num(q?.variation ?? q?.evolution ?? q?.var),
+      unit: this.cleanLabel(q?.unit ?? q?.unite ?? q?.priceUnit ?? null),
       raw: q,
     };
   }
@@ -301,12 +310,18 @@ export class RnmPricesService {
 
   private withPriceSnapshot(product: RnmProduct, quotations: ReturnType<RnmPricesService['normalizeQuotation']>[]): RnmProduct {
     const validPrices = quotations.map((q) => q.averagePrice).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const validMinimums = quotations.map((q) => q.minPrice).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const validMaximums = quotations.map((q) => q.maxPrice).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     const validVariations = quotations.map((q) => q.variation).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     const latestQuotationDate = quotations.map((q) => q.date).filter(Boolean).sort().at(-1) ?? product.latestQuotationDate;
     return {
       ...product,
       averagePrice: product.averagePrice ?? (validPrices.length ? validPrices.reduce((sum, value) => sum + value, 0) / validPrices.length : null),
+      minPrice: product.minPrice ?? (validMinimums.length ? Math.min(...validMinimums) : null),
+      maxPrice: product.maxPrice ?? (validMaximums.length ? Math.max(...validMaximums) : null),
       variation: product.variation ?? (validVariations.length ? validVariations.reduce((sum, value) => sum + value, 0) / validVariations.length : null),
+      unit: product.unit ?? quotations.find((quotation) => quotation.unit)?.unit ?? null,
+      market: product.market ?? quotations.find((quotation) => quotation.market)?.market ?? null,
       latestQuotationDate,
       raw: product.raw,
     };

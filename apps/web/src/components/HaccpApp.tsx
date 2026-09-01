@@ -1453,6 +1453,10 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           </div>
         </motion.section>
 
+        {activeTab === 'dashboard' && readiness.progress < 100 ? (
+          <HaccpSetupCard readiness={readiness} onStart={() => setShowOnboarding(true)} />
+        ) : null}
+
         <nav className="hr-tabs haccp-tabs haccp-module-nav" aria-label="Navigation du module HACCP">
           {HACCP_NAV_ITEMS.map(({ id, label, icon: Icon, target }) => (
             <button
@@ -1490,9 +1494,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         {activeTab === 'dashboard' ? (
         <HaccpDashboardSummary
           dashboard={dashboard}
-          readiness={readiness}
           loading={loading}
-          onStartOnboarding={() => setShowOnboarding(true)}
           onSelectTab={(nextTab) => {
             const target = nextTab === 'temperature' ? 'temperatures' : nextTab;
             if (isHaccpTab(target)) navigateToHaccpTab(target);
@@ -3494,15 +3496,11 @@ function HaccpDailyMetric({
 
 function HaccpDashboardSummary({
   dashboard,
-  readiness,
   loading,
-  onStartOnboarding,
   onSelectTab,
 }: {
   dashboard: HaccpDashboard | null;
-  readiness: HaccpReadiness;
   loading: boolean;
-  onStartOnboarding: () => void;
   onSelectTab: (tabName: string) => void;
 }) {
   if (loading && !dashboard) return <div className="empty-state">Chargement HACCP...</div>;
@@ -3580,10 +3578,6 @@ function HaccpDashboardSummary({
           onClick={() => onSelectTab('temperatures')}
         />
       </div>
-
-      {readiness.progress < 100 ? (
-        <HaccpSetupCard readiness={readiness} onStart={onStartOnboarding} />
-      ) : null}
 
       <section className="card-modern haccp-action-overview">
         <div className="haccp-priority-layout">

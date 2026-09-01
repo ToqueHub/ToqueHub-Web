@@ -61,6 +61,8 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Chargement des encaissements…': 'Loading outstanding invoices…',
   'Données momentanément indisponibles': 'Data temporarily unavailable',
   'Leasing et crédits du matériel': 'Equipment leases and loans',
+  'Contrats rattachés aux équipements, avec priorité aux montants comptables':
+    'Contracts linked to equipment, prioritising accounting amounts',
   'Une seule mensualité par contrat, avec priorité aux écritures comptables Fennoa rapprochées.':
     'One monthly amount per contract, prioritising matched Fennoa accounting entries.',
   'Leasing / crédit': 'Lease / loan',
@@ -112,6 +114,17 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Produits de la carte': 'Menu products',
   'Presets opérationnels': 'Operational presets',
   'Presets récurrents': 'Recurring presets',
+  'Horaires types et cycles attribués par site, service et poste.':
+    'Typical schedules and cycles assigned by site, department and position.',
+  'Affectation automatique par périmètre': 'Automatic scope-based assignment',
+  'Attribution automatique par périmètre': 'Automatic scope-based assignment',
+  'Les presets et roulements sont proposés selon le site, le service et le poste du collaborateur sélectionné. Aucune attribution individuelle n’est nécessaire.':
+    'Presets and rotations are suggested according to the selected employee’s site, department and position. No individual assignment is required.',
+  'Roulements compatibles avec le site, le service et le poste sélectionnés.':
+    'Rotations compatible with the selected site, department and position.',
+  'Aucun roulement compatible': 'No compatible rotation',
+  'Aucun roulement ne correspond au site, au service et au poste de ce collaborateur.':
+    'No rotation matches this employee’s site, department and position.',
   'Planning opérationnel automatique': 'Automatic operational planning',
   'Nouveau preset': 'New preset',
   'Nouveau preset opérationnel': 'New operational preset',
@@ -404,6 +417,14 @@ export const englishOverrides: Readonly<Record<string, string>> = {
   'Enregistrer et continuer': 'Save and continue',
   'Enregistrer et valider': 'Save and validate',
   'Aucun service pour le moment': 'No service for now',
+  'Rechercher une catégorie…': 'Search for a category…',
+  'Rechercher une catégorie': 'Search for a category',
+  'Aucune catégorie trouvée': 'No category found',
+  'Modifiez ou effacez votre recherche pour retrouver une catégorie.':
+    'Change or clear your search to find a category.',
+  'Pagination des catégories': 'Category pagination',
+  'catégorie affichée': 'category displayed',
+  'catégories affichées': 'categories displayed',
   Caisses: 'POS services',
   'Assistant Finance': 'Finance Assistant',
   'Utilisateur / alias API': 'API user / alias',

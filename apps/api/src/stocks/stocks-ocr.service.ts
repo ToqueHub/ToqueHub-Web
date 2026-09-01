@@ -8,6 +8,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
+import { PDFParse } from 'pdf-parse';
 import {
   DocumentStatus,
   EquipmentAcquisitionMode,
@@ -1016,7 +1017,6 @@ export class StocksOcrService {
     files: UploadedFile[],
   ) {
     this.assertOcr(actor);
-    await this.assertOcrConfigured(organizationId);
     const extraction = await this.prisma.ocrBusinessExtraction.findFirst({
       where: { id: extractionId, organizationId },
       include: { ocrDocument: { include: { document: true } } },
@@ -1027,6 +1027,7 @@ export class StocksOcrService {
         'Un document de financement ne peut être ajouté qu’à un dossier matériel.',
       );
     }
+    await this.assertUniqueFinancingDocuments(organizationId, extraction.id, files);
     const uploaded = await this.uploadDocumentsForSource(
       organizationId,
       actor,
@@ -1037,14 +1038,21 @@ export class StocksOcrService {
     let financingContract = this.cleanFinancingContract(
       ((extraction.correctedJson || extraction.extractedJson) as any)?.financingContract,
     );
-    for (const document of uploaded.documents) {
+    for (const [index, document] of uploaded.documents.entries()) {
       const started = Date.now();
+      const embeddedPdf = await this.extractEmbeddedPdfText(files[index]);
+      const deterministicContract = embeddedPdf.text
+        ? this.extractFinancingContractFallback(embeddedPdf.text)
+        : null;
+      const useDeterministicGrenke = this.isCompleteDeterministicGrenkeContract(
+        deterministicContract,
+      );
       const ocr = await this.prisma.ocrDocument.create({
         data: {
           organizationId,
           documentId: document.id,
-          provider: OCR_PROVIDER,
-          model: OCR_MODEL,
+          provider: useDeterministicGrenke ? 'toquehub' : OCR_PROVIDER,
+          model: useDeterministicGrenke ? 'embedded-pdf-text-v1' : OCR_MODEL,
           status: OcrProcessingStatus.PROCESSING,
         },
       });
@@ -1053,10 +1061,28 @@ export class StocksOcrService {
         data: { status: DocumentStatus.PROCESSING },
       });
       try {
-        const result = await this.callMistral(organizationId, document, ProductKind.EQUIPMENT);
-        const rawText = this.rawTextFromOcr(result.rawJson);
-        const markdown = result.markdown || rawText;
-        const detected = await this.extractFinancingContract(organizationId, markdown);
+        let rawText: string;
+        let markdown: string;
+        let rawJson: Prisma.InputJsonValue;
+        let pageCount: number;
+        let detected: ReturnType<StocksOcrService['cleanFinancingContract']>;
+        if (useDeterministicGrenke) {
+          rawText = embeddedPdf.text;
+          markdown = embeddedPdf.text;
+          rawJson = {
+            source: 'embedded-pdf-text',
+            parser: 'toquehub-grenke-v1',
+          };
+          pageCount = embeddedPdf.pageCount;
+          detected = deterministicContract;
+        } else {
+          const result = await this.callMistral(organizationId, document, ProductKind.EQUIPMENT);
+          rawText = this.rawTextFromOcr(result.rawJson);
+          markdown = result.markdown || rawText;
+          rawJson = result.rawJson as Prisma.InputJsonValue;
+          pageCount = result.pageCount;
+          detected = await this.extractFinancingContract(organizationId, markdown);
+        }
         financingContract = this.mergeFinancingContracts(financingContract, detected, document.id);
         await this.prisma.$transaction([
           this.prisma.ocrDocument.update({
@@ -1065,8 +1091,8 @@ export class StocksOcrService {
               status: OcrProcessingStatus.COMPLETED,
               rawText,
               rawMarkdown: markdown,
-              rawJson: result.rawJson as Prisma.InputJsonValue,
-              pageCount: result.pageCount,
+              rawJson,
+              pageCount,
               processingDurationMs: Date.now() - started,
             },
           }),
@@ -1095,18 +1121,73 @@ export class StocksOcrService {
       }
     }
     const source = (extraction.correctedJson || extraction.extractedJson) as any;
+    const lines = this.applyFinancingContractToEquipmentLines(
+      Array.isArray(source?.lines) ? source.lines : [],
+      financingContract,
+    );
     const updated = await this.prisma.ocrBusinessExtraction.update({
       where: { id: extraction.id },
       data: {
         correctedJson: {
           ...source,
           financingContract,
+          lines,
         } as Prisma.InputJsonValue,
         status: OcrBusinessExtractionStatus.DRAFT,
       },
       include: { ocrDocument: { include: { document: true } } },
     });
     return this.formatExtraction(updated);
+  }
+
+  private async assertUniqueFinancingDocuments(
+    organizationId: string,
+    extractionId: string,
+    files: UploadedFile[],
+  ) {
+    const hashes = files.map((file) => createHash('sha256').update(file.buffer).digest('hex'));
+    if (new Set(hashes).size !== hashes.length) {
+      throw new BadRequestException('Le même document de financement est présent plusieurs fois.');
+    }
+    const duplicate = await this.prisma.document.findFirst({
+      where: {
+        organizationId,
+        sourceType: 'equipment-financing-document',
+        sourceId: extractionId,
+        contentSha256: { in: hashes },
+        status: { not: DocumentStatus.FAILED },
+      },
+      select: { originalName: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        `Le document « ${duplicate.originalName} » a déjà été importé dans ce dossier.`,
+      );
+    }
+  }
+
+  private async extractEmbeddedPdfText(file?: UploadedFile) {
+    if (
+      !file ||
+      (file.mimetype !== 'application/pdf' && extname(file.originalname).toLowerCase() !== '.pdf')
+    ) {
+      return { text: '', pageCount: 0 };
+    }
+    const parser = new PDFParse({ data: file.buffer });
+    try {
+      const parsed = await parser.getText();
+      return {
+        text: String(parsed.text || '').replace(/\u00a0/g, ' ').trim(),
+        pageCount: Number(parsed.total || 0),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Lecture locale du PDF de financement impossible: ${error instanceof Error ? error.message : error}`,
+      );
+      return { text: '', pageCount: 0 };
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
   }
 
   async uploadPurchasingDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
@@ -1652,11 +1733,7 @@ export class StocksOcrService {
         if (!product)
           throw new BadRequestException('Produit introuvable sur une ligne de réception.');
         await this.upsertEquipmentProfileFromOcrLineTx(tx, organizationId, product.id, line);
-        if (
-          corrected.financingContract &&
-          line.productKind === ProductKind.EQUIPMENT &&
-          !['service', 'transport'].includes(String(line.lineType || '').toLowerCase())
-        ) {
+        if (corrected.financingContract && this.isFinancingEquipmentLine(line)) {
           financedProductIds.add(product.id);
         }
         const unit = line.unitId
@@ -5011,6 +5088,7 @@ export class StocksOcrService {
             role: 'system',
             content: [
               'Tu extrais uniquement les conditions d’un contrat de financement de matériel.',
+              'Les exemples suivants servent de référence, quel que soit le nom de l’organisme de financement ou la langue du document.',
               'Ne répartis jamais la mensualité entre les machines : le montant appartient au contrat complet.',
               'installmentAmount est le montant réellement prélevé à chaque échéance.',
               'monthlyPayment est installmentAmount divisé par 3 si le paiement est trimestriel, par 6 s’il est semestriel et par 12 s’il est annuel.',
@@ -5019,6 +5097,98 @@ export class StocksOcrService {
               'Un contrat nommé Classic lease ou leasing est LEASING. Un financement à crédit est CREDIT.',
               'Retourne null pour toute information absente et n’invente rien.',
             ].join(' '),
+          },
+          {
+            role: 'user',
+            content: [
+              'EXEMPLE GRENKE',
+              'Contract number 096-59401',
+              'Contract type Classic lease',
+              'Lease term 36',
+              'Instalment 555,76 EUR',
+              'Payment pattern Quarterly',
+              'Printed 01/09/2026 10:13',
+            ].join('\n'),
+          },
+          {
+            role: 'assistant',
+            content: JSON.stringify({
+              acquisitionMode: 'LEASING',
+              contractNumber: '096-59401',
+              financingProvider: 'GRENKE',
+              termMonths: 36,
+              installmentAmount: 555.76,
+              paymentFrequency: 'QUARTERLY',
+              monthlyPayment: 185.25,
+              financingStart: null,
+              financingEnd: null,
+              financedAmount: null,
+              buyoutValue: null,
+              currency: 'EUR',
+              sourceConfidence: 0.98,
+              notes: null,
+            }),
+          },
+          {
+            role: 'user',
+            content: [
+              'EXEMPLE NORDEA FINANCE',
+              'Agreement no NF-22091',
+              'Finance product Equipment loan',
+              'Contract duration 48 months',
+              'Contract start date 15.02.2026',
+              'Monthly instalment 420.00 EUR',
+              'Financed principal 18000.00 EUR',
+            ].join('\n'),
+          },
+          {
+            role: 'assistant',
+            content: JSON.stringify({
+              acquisitionMode: 'CREDIT',
+              contractNumber: 'NF-22091',
+              financingProvider: 'NORDEA FINANCE',
+              termMonths: 48,
+              installmentAmount: 420,
+              paymentFrequency: 'MONTHLY',
+              monthlyPayment: 420,
+              financingStart: '2026-02-15',
+              financingEnd: null,
+              financedAmount: 18000,
+              buyoutValue: null,
+              currency: 'EUR',
+              sourceConfidence: 0.97,
+              notes: null,
+            }),
+          },
+          {
+            role: 'user',
+            content: [
+              'EXEMPLE DLL',
+              'Lessor DLL',
+              'Agreement number DLL-76-AB12',
+              'Lease period 60 months',
+              'Semiannual lease payment 1200.00 EUR',
+              'Purchase option 250.00 EUR',
+            ].join('\n'),
+          },
+          {
+            role: 'assistant',
+            content: JSON.stringify({
+              acquisitionMode: 'LEASING',
+              contractNumber: 'DLL-76-AB12',
+              financingProvider: 'DLL',
+              termMonths: 60,
+              installmentAmount: 1200,
+              paymentFrequency: 'SEMIANNUAL',
+              monthlyPayment: 200,
+              financingStart: null,
+              financingEnd: null,
+              financedAmount: null,
+              buyoutValue: 250,
+              currency: 'EUR',
+              sourceConfidence: 0.96,
+              notes: null,
+            }),
           },
           { role: 'user', content: markdown.slice(0, 100_000) },
         ],
@@ -5042,11 +5212,16 @@ export class StocksOcrService {
       : this.extractAfter(text, /(?:financing provider|finance provider|lessor|rahoittaja)\s*[:#]?\s*([^\n]+)/i, 1);
     const contractNumber = this.extractAfter(
       text,
-      /(?:contract|agreement|sopimus)(?:\s+(?:number|no\.?|nro))?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})/i,
+      /(?:contract|agreement|sopimus)\s+(?:number|no\.?|nro)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})/i,
       1,
     );
     const termMonths = this.numberFromMatch(
-      text.match(/(?:term|duration|contract period|sopimuskausi)[^\d]{0,30}(\d{1,3})\s*(?:months?|kk|kuukautta)/i)?.[1],
+      text.match(
+        /(?:lease\s+term|contract\s+term|sopimuskausi)[^\d]{0,30}(\d{1,3})(?:\s*(?:months?|kk|kuukautta))?/i,
+      )?.[1] ??
+        text.match(
+          /(?:term|duration|contract period)[^\d]{0,30}(\d{1,3})\s*(?:months?|kk|kuukautta)/i,
+        )?.[1],
     );
     const paymentFrequency = /\b(quarterly|quarter|kvartaali|3\s*months?)\b/i.test(text)
       ? 'QUARTERLY'
@@ -5168,6 +5343,70 @@ export class StocksOcrService {
         documentId,
       ],
     });
+  }
+
+  private isCompleteDeterministicGrenkeContract(value: any) {
+    const contract = this.cleanFinancingContract(value);
+    return Boolean(
+      contract?.financingProvider === 'GRENKE' &&
+        contract.contractNumber &&
+        contract.termMonths &&
+        contract.installmentAmount != null &&
+        contract.paymentFrequency &&
+        contract.monthlyPayment != null,
+    );
+  }
+
+  private isFinancingEquipmentLine(line: {
+    ignored?: boolean;
+    productKind?: ProductKind | string | null;
+    lineType?: ExtractedLine['lineType'] | string | null;
+    label?: string | null;
+    ocrLabel?: string | null;
+    nameOriginal?: string | null;
+    descriptionOriginal?: string | null;
+  }) {
+    if (line.ignored || line.productKind !== ProductKind.EQUIPMENT) return false;
+    const lineType = String(line.lineType || '').toLowerCase();
+    if (['service', 'transport', 'consumable'].includes(lineType)) return false;
+    return lineType !== 'accessory' || this.isStandaloneFinancingEquipment(line);
+  }
+
+  private isStandaloneFinancingEquipment(line: {
+    label?: string | null;
+    ocrLabel?: string | null;
+    nameOriginal?: string | null;
+    descriptionOriginal?: string | null;
+  }) {
+    const label = [line.label, line.ocrLabel, line.nameOriginal, line.descriptionOriginal]
+      .filter(Boolean)
+      .join(' ');
+    return /\b(?:water\s*filtration|waterfiltration|filtration\s+system|syst[eè]me\s+de\s+filtration|vedensuodatus|suodatusj[aä]rjestelm[aä])\b/i.test(
+      label,
+    );
+  }
+
+  private applyFinancingContractToEquipmentLines(lines: any[], value: any) {
+    const contract = this.cleanFinancingContract(value);
+    if (!contract) return lines;
+    return lines.map((line) =>
+      this.isFinancingEquipmentLine(line)
+        ? {
+            ...line,
+            lineType:
+              String(line.lineType || '').toLowerCase() === 'accessory' &&
+              this.isStandaloneFinancingEquipment(line)
+                ? 'equipment'
+                : line.lineType,
+            acquisitionMode: contract.acquisitionMode,
+            financingProvider: contract.financingProvider,
+            financingStart: contract.financingStart,
+            financingEnd: contract.financingEnd,
+            monthlyPayment: null,
+            financedAmount: null,
+          }
+        : line,
+    );
   }
 
   private normalizeFinancingFrequency(value: unknown) {

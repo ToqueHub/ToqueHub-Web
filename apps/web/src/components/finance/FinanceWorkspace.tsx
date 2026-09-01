@@ -43,8 +43,10 @@ import type {
   FinanceSourceStatus,
   FinanceExportReport,
   FinanceSalesExportPeriod,
+  EquipmentFinancingContractsResponse,
 } from '../../types';
 import './styles/FinanceApp.css';
+import { EquipmentFinancingContractsPanel } from '../stocks/EquipmentFinancingContractsPanel';
 import {
   clearFinanceSalesInsightsCache,
   FinanceSalesInsightsView,
@@ -62,7 +64,15 @@ export type FinanceTab =
   | 'budget'
   | 'sources';
 
-type Props = { token: string; tab: FinanceTab; onNavigate: (tab: FinanceTab) => void };
+export type FinanceFocusSection = 'equipment-financing';
+
+type Props = {
+  token: string;
+  tab: FinanceTab;
+  onNavigate: (tab: FinanceTab) => void;
+  focusSection?: FinanceFocusSection;
+  onFocusSectionHandled?: () => void;
+};
 type HistoryMetricId = keyof FinanceDashboardPeriod['comparison']['periods'][number]['metrics'];
 
 const ACCOUNTING_RESULT_KPI_IDS = new Set([
@@ -269,7 +279,13 @@ function posConnectionForSite(
   );
 }
 
-export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
+export function FinanceWorkspace({
+  token,
+  tab,
+  onNavigate,
+  focusSection,
+  onFocusSectionHandled,
+}: Props) {
   const initialCache = useRef(cachedFinanceWorkspace(token)).current;
   const initialCacheUsed = useRef(false);
   const [selectedSiteId, setSelectedSiteId] = useState('');
@@ -624,6 +640,8 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
           currency={currency}
           siteId={selectedSiteId || undefined}
           onNavigate={onNavigate}
+          focusSection={focusSection}
+          onFocusSectionHandled={onFocusSectionHandled}
         />
       )}
       {data && tab === 'sales' && (
@@ -787,14 +805,51 @@ function Cockpit({
   currency,
   siteId,
   onNavigate,
+  focusSection,
+  onFocusSectionHandled,
 }: {
   token: string;
   data: FinanceBootstrap;
   currency: string;
   siteId?: string;
   onNavigate: (tab: FinanceTab) => void;
+  focusSection?: FinanceFocusSection;
+  onFocusSectionHandled?: () => void;
 }) {
   const context = data.dashboard.context;
+  const financingSectionRef = useRef<HTMLElement>(null);
+  const [equipmentFinancing, setEquipmentFinancing] =
+    useState<EquipmentFinancingContractsResponse | null>(null);
+  const [equipmentFinancingLoading, setEquipmentFinancingLoading] = useState(true);
+  const [equipmentFinancingError, setEquipmentFinancingError] = useState<string>();
+
+  const loadEquipmentFinancing = useCallback(async () => {
+    setEquipmentFinancingLoading(true);
+    setEquipmentFinancingError(undefined);
+    try {
+      setEquipmentFinancing(await api.equipmentFinancingContracts(token));
+    } catch (nextError) {
+      setEquipmentFinancingError(
+        messageOf(nextError, 'Impossible de charger les contrats de leasing et de crédit.'),
+      );
+    } finally {
+      setEquipmentFinancingLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadEquipmentFinancing();
+  }, [loadEquipmentFinancing]);
+
+  useEffect(() => {
+    if (focusSection !== 'equipment-financing') return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      financingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      onFocusSectionHandled?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusSection, onFocusSectionHandled]);
+
   return (
     <motion.div
       className="finance-page"
@@ -864,6 +919,33 @@ function Cockpit({
           icon={LineChart}
         />
         <ComparisonChart series={data.dashboard.annual.series} currency={currency} />
+      </section>
+      <section
+        ref={financingSectionRef}
+        id="finance-equipment-financing"
+        className="finance-panel finance-equipment-financing-panel"
+      >
+        <div className="finance-equipment-financing-heading">
+          <PanelHeader
+            title="Leasing et crédits du matériel"
+            subtitle="Contrats rattachés aux équipements, avec priorité aux montants comptables"
+            icon={WalletCards}
+          />
+        </div>
+        {equipmentFinancingError ? (
+          <div className="alert-modern error">
+            <AlertTriangle size={18} />
+            <span>{equipmentFinancingError}</span>
+          </div>
+        ) : null}
+        {equipmentFinancingLoading && !equipmentFinancing ? (
+          <div className="finance-equipment-financing-loading">
+            <LoaderCircle size={24} className="spin" />
+            <span>Chargement des contrats et des écritures Fennoa…</span>
+          </div>
+        ) : (
+          <EquipmentFinancingContractsPanel data={equipmentFinancing} />
+        )}
       </section>
       <MistralPanel
         token={data.dashboard.mistral.configured ? token : undefined}
