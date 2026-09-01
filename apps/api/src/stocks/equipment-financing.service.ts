@@ -198,7 +198,9 @@ export class EquipmentFinancingService {
         profile.financingEnd?.toISOString().slice(0, 10) ?? '',
         String(profile.monthlyPayment ?? ''),
       ].join('|');
-      groups.set(key, [...(groups.get(key) ?? []), profile]);
+      const group = groups.get(key);
+      if (group) group.push(profile);
+      else groups.set(key, [profile]);
     }
     return [...groups.values()].map((group) => {
       const first = group[0];
@@ -267,9 +269,10 @@ export class EquipmentFinancingService {
       const previous = unique.get(key);
       if (!previous || Number(entry.debit) > Number(previous.debit)) unique.set(key, entry);
     }
-    const latest = [...unique.values()].sort(
-      (a, b) => b.entryDate.getTime() - a.entryDate.getTime(),
-    )[0];
+    let latest: (typeof candidates)[number] | undefined;
+    for (const entry of unique.values()) {
+      if (!latest || entry.entryDate > latest.entryDate) latest = entry;
+    }
     if (!latest) return null;
     const divisor = this.frequencyMonths(paymentFrequency);
     return {

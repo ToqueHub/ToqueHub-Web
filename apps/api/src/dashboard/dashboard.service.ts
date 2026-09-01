@@ -1674,30 +1674,31 @@ export class DashboardService {
   private async equipmentFinancingSummary(organizationId: string) {
     const now = new Date();
     const [contracts, legacyProfiles] = await Promise.all([
-      this.prisma.equipmentFinancingContract.findMany({
+      this.prisma.equipmentFinancingContract.aggregate({
         where: {
           organizationId,
           OR: [{ financingEnd: null }, { financingEnd: { gte: now } }],
         },
-        select: { monthlyPayment: true, acquisitionMode: true },
+        _sum: { monthlyPayment: true },
+        _count: true,
       }),
-      this.prisma.equipmentProfile.findMany({
+      this.prisma.equipmentProfile.aggregate({
         where: {
           organizationId,
           financingContractId: null,
           acquisitionMode: { not: 'CASH' },
           OR: [{ financingEnd: null }, { financingEnd: { gte: now } }],
         },
-        select: { monthlyPayment: true },
+        _sum: { monthlyPayment: true },
+        _count: true,
       }),
     ]);
-    const monthlyTotal = [...contracts, ...legacyProfiles].reduce(
-      (sum, item) => sum + Number(item.monthlyPayment ?? 0),
-      0,
-    );
+    const monthlyTotal =
+      Number(contracts._sum.monthlyPayment ?? 0) +
+      Number(legacyProfiles._sum.monthlyPayment ?? 0);
     return {
       monthlyTotal: Math.round((monthlyTotal + Number.EPSILON) * 100) / 100,
-      activeContractCount: contracts.length + legacyProfiles.length,
+      activeContractCount: contracts._count + legacyProfiles._count,
     };
   }
 
