@@ -270,7 +270,8 @@ export class HrService {
       this.prisma.hrEmployee.groupBy({ by: ['departmentId'], where: { organizationId, isArchived: false }, _count: { _all: true } }),
     ]);
     const departments = await this.prisma.hrDepartment.findMany({ where: { id: { in: grouped.map((g) => g.departmentId) } } });
-    return { employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, departmentDistribution: grouped.map((g) => ({ department: departments.find((d) => d.id === g.departmentId), count: g._count._all })) };
+    const departmentsById = new Map(departments.map((department) => [department.id, department]));
+    return { employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, departmentDistribution: grouped.map((g) => ({ department: departmentsById.get(g.departmentId), count: g._count._all })) };
   }
 
   listDepartments(organizationId: string, q: HrListQueryDto = {}) { return this.prisma.hrDepartment.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, orderBy: { name: 'asc' }, ...this.page(q) }); }

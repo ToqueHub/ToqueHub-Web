@@ -1602,6 +1602,7 @@ export class StocksService {
       where: { id: { in: consumed.map((c) => c.productId) } },
       include: { unit: true },
     });
+    const productsById = new Map(products.map((product) => [product.id, product]));
     return {
       productCount,
       supplierCount,
@@ -1612,7 +1613,7 @@ export class StocksService {
       movementsThisMonth,
       latestMovements,
       topConsumedProducts: consumed.map((c) => ({
-        product: products.find((p) => p.id === c.productId),
+        product: productsById.get(c.productId),
         quantity: Math.abs(Number(c._sum.quantity ?? 0)),
       })),
     };

@@ -1428,9 +1428,10 @@ export class DashboardService {
       where: { id: { in: consumed.map((row) => row.productId) } },
       include: { unit: true },
     });
+    const productsById = new Map(products.map((product) => [product.id, product]));
     return {
       items: consumed.map((row) => ({
-        product: products.find((product) => product.id === row.productId),
+        product: productsById.get(row.productId),
         quantity: Math.abs(Number(row._sum.quantity ?? 0)),
       })),
     };
@@ -1559,9 +1560,10 @@ export class DashboardService {
       where: { id: { in: used.map((row) => row.productId) } },
       include: { unit: true },
     });
+    const productsById = new Map(products.map((product) => [product.id, product]));
     return {
       items: used.map((row) => ({
-        product: products.find((product) => product.id === row.productId),
+        product: productsById.get(row.productId),
         count: row._count.productId,
       })),
     };
