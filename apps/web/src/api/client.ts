@@ -3602,7 +3602,7 @@ export const api = {
     token: string,
     params: { search?: string; page?: number; pageSize?: number; includeArchived?: boolean } = {},
   ) {
-    const pageSize = params.pageSize ?? 250;
+    const pageSize = Math.min(params.pageSize ?? 200, 200);
     const fetchPage = (page: number) => {
       const qs = new URLSearchParams();
       if (params.search) qs.set('search', params.search);
