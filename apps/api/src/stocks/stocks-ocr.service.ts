@@ -1038,6 +1038,8 @@ export class StocksOcrService {
     let financingContract = this.cleanFinancingContract(
       ((extraction.correctedJson || extraction.extractedJson) as any)?.financingContract,
     );
+    const source = (extraction.correctedJson || extraction.extractedJson) as any;
+    let updatedExtraction = extraction;
     for (const [index, document] of uploaded.documents.entries()) {
       const started = Date.now();
       const embeddedPdf = await this.extractEmbeddedPdfText(files[index]);
@@ -1084,7 +1086,11 @@ export class StocksOcrService {
           detected = await this.extractFinancingContract(organizationId, markdown);
         }
         financingContract = this.mergeFinancingContracts(financingContract, detected, document.id);
-        await this.prisma.$transaction([
+        const lines = this.applyFinancingContractToEquipmentLines(
+          Array.isArray(source?.lines) ? source.lines : [],
+          financingContract,
+        );
+        const [, , persistedExtraction] = await this.prisma.$transaction([
           this.prisma.ocrDocument.update({
             where: { id: ocr.id },
             data: {
@@ -1100,7 +1106,20 @@ export class StocksOcrService {
             where: { id: document.id },
             data: { status: DocumentStatus.PROCESSED },
           }),
+          this.prisma.ocrBusinessExtraction.update({
+            where: { id: extraction.id },
+            data: {
+              correctedJson: {
+                ...source,
+                financingContract,
+                lines,
+              } as Prisma.InputJsonValue,
+              status: OcrBusinessExtractionStatus.DRAFT,
+            },
+            include: { ocrDocument: { include: { document: true } } },
+          }),
         ]);
+        updatedExtraction = persistedExtraction;
       } catch (error: any) {
         await this.prisma.$transaction([
           this.prisma.ocrDocument.update({
@@ -1120,24 +1139,7 @@ export class StocksOcrService {
         throw error;
       }
     }
-    const source = (extraction.correctedJson || extraction.extractedJson) as any;
-    const lines = this.applyFinancingContractToEquipmentLines(
-      Array.isArray(source?.lines) ? source.lines : [],
-      financingContract,
-    );
-    const updated = await this.prisma.ocrBusinessExtraction.update({
-      where: { id: extraction.id },
-      data: {
-        correctedJson: {
-          ...source,
-          financingContract,
-          lines,
-        } as Prisma.InputJsonValue,
-        status: OcrBusinessExtractionStatus.DRAFT,
-      },
-      include: { ocrDocument: { include: { document: true } } },
-    });
-    return this.formatExtraction(updated);
+    return this.formatExtraction(updatedExtraction);
   }
 
   private async assertUniqueFinancingDocuments(
