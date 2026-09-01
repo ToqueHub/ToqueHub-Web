@@ -113,6 +113,53 @@ describe('DashboardService preferences', () => {
 });
 
 describe('DashboardService finance cockpit KPI', () => {
+  it('agrège les mensualités actives en base sans charger les contrats', async () => {
+    const prisma = {
+      equipmentFinancingContract: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { monthlyPayment: 1250.255 },
+          _count: 3,
+        }),
+      },
+      equipmentProfile: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { monthlyPayment: 249.745 },
+          _count: 2,
+        }),
+      },
+    };
+    const service = new DashboardService(prisma as never, {} as never);
+
+    const result = await (
+      service as unknown as {
+        equipmentFinancingSummary: (organizationId: string) => Promise<{
+          monthlyTotal: number;
+          activeContractCount: number;
+        }>;
+      }
+    ).equipmentFinancingSummary('organization-1');
+
+    expect(result).toEqual({ monthlyTotal: 1500, activeContractCount: 5 });
+    expect(prisma.equipmentFinancingContract.aggregate).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'organization-1',
+        OR: [{ financingEnd: null }, { financingEnd: { gte: expect.any(Date) } }],
+      },
+      _sum: { monthlyPayment: true },
+      _count: true,
+    });
+    expect(prisma.equipmentProfile.aggregate).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'organization-1',
+        financingContractId: null,
+        acquisitionMode: { not: 'CASH' },
+        OR: [{ financingEnd: null }, { financingEnd: { gte: expect.any(Date) } }],
+      },
+      _sum: { monthlyPayment: true },
+      _count: true,
+    });
+  });
+
   it('sépare les établissements, additionne leurs POS et déduplique une source renommée', async () => {
     const prisma = {
       site: {
