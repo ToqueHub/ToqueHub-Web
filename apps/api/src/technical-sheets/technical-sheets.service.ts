@@ -36,9 +36,16 @@ import {
   technicalSheetSalesTaxPolicy,
   type TechnicalSheetSalesTaxPolicy,
 } from './technical-sheet-tax-policy';
+import {
+  calculateSheetComposition,
+  MENU_NUTRITION_FIELDS,
+  menuSheetReferenceYield,
+  type MenuCompositionResult,
+} from '../menus/menu-composition';
 
 type Actor = { id: string; role: string };
 type Tx = Prisma.TransactionClient;
+type RecipePdfLanguage = 'fr' | 'en';
 type UploadedRecipePdf = { originalname: string; mimetype: string; size: number; buffer: Buffer };
 type ImportedRecipeIngredient = {
   name?: string | null;
@@ -96,6 +103,44 @@ const TECHNICAL_SHEETS_UPLOAD_ROOT = resolve(
   'technical-sheets',
 );
 const RECIPE_IMPORT_SOURCE = 'recipe-import';
+const RECIPE_PDF_NUTRITION_LABELS: Record<
+  (typeof MENU_NUTRITION_FIELDS)[number],
+  { fr: string; en: string; unit: string }
+> = {
+  energyKj: { fr: 'Énergie', en: 'Energy', unit: 'kJ' },
+  energyKcal: { fr: 'Énergie', en: 'Energy', unit: 'kcal' },
+  fatGrams: { fr: 'Matières grasses', en: 'Fat', unit: 'g' },
+  saturatedFatGrams: { fr: 'dont saturés', en: 'of which saturates', unit: 'g' },
+  carbohydratesGrams: { fr: 'Glucides', en: 'Carbohydrate', unit: 'g' },
+  sugarsGrams: { fr: 'dont sucres', en: 'of which sugars', unit: 'g' },
+  fiberGrams: { fr: 'Fibres', en: 'Fibre', unit: 'g' },
+  proteinGrams: { fr: 'Protéines', en: 'Protein', unit: 'g' },
+  saltGrams: { fr: 'Sel', en: 'Salt', unit: 'g' },
+};
+const RECIPE_PDF_ALLERGEN_TRANSLATIONS = [
+  {
+    patterns: ['gluteenia sisaltavat viljat', 'cereales contenant du gluten', 'gluten cereals'],
+    fr: 'Céréales contenant du gluten',
+    en: 'Cereals containing gluten',
+  },
+  { patterns: ['ayriaiset', 'crustaces', 'crustaceans'], fr: 'Crustacés', en: 'Crustaceans' },
+  { patterns: ['kananmuna', 'oeuf', 'eggs'], fr: 'Œufs', en: 'Eggs' },
+  { patterns: ['kala', 'poisson', 'fish'], fr: 'Poisson', en: 'Fish' },
+  { patterns: ['maapahkina', 'arachide', 'peanuts'], fr: 'Arachides', en: 'Peanuts' },
+  { patterns: ['soija', 'soja', 'soy'], fr: 'Soja', en: 'Soybeans' },
+  { patterns: ['maito', 'lait', 'milk'], fr: 'Lait', en: 'Milk' },
+  { patterns: ['pahkinat', 'fruits a coque', 'nuts'], fr: 'Fruits à coque', en: 'Nuts' },
+  { patterns: ['selleri', 'celeri', 'celery'], fr: 'Céleri', en: 'Celery' },
+  { patterns: ['sinappi', 'moutarde', 'mustard'], fr: 'Moutarde', en: 'Mustard' },
+  { patterns: ['seesaminsiemen', 'sesame'], fr: 'Sésame', en: 'Sesame' },
+  {
+    patterns: ['rikkidioksidi', 'sulfiit', 'sulfite', 'sulphite'],
+    fr: 'Anhydride sulfureux et sulfites',
+    en: 'Sulphur dioxide and sulphites',
+  },
+  { patterns: ['lupiini', 'lupin'], fr: 'Lupin', en: 'Lupin' },
+  { patterns: ['nilviaiset', 'mollusques', 'molluscs'], fr: 'Mollusques', en: 'Molluscs' },
+];
 const RECIPE_IMPORT_ACCEPTED_EXTENSIONS = new Set([
   '.pdf',
   '.png',
@@ -832,18 +877,20 @@ export class TechnicalSheetsService {
     return { id, deleted: true };
   }
 
-  async exportRecipePdf(organizationId: string, actor: Actor, id: string) {
+  async exportRecipePdf(organizationId: string, actor: Actor, id: string, locale?: string) {
     await this.assertInstalled(organizationId);
     const recipe = (await this.getRecipe(organizationId, id)) as any;
+    const language: RecipePdfLanguage = locale?.toLowerCase().startsWith('en') ? 'en' : 'fr';
+    const composition = await this.recipeComposition(organizationId, id);
     const filename = `fiche-technique-${this.slug(recipe.name)}-${this.dateSlug()}.pdf`;
-    const body = await this.recipePdf(recipe);
+    const body = await this.recipePdf(recipe, composition, language);
     await this.prisma.technicalSheetExport.create({
       data: {
         organizationId,
         technicalSheetId: id,
         format: TechnicalSheetExportFormat.PDF,
         filename,
-        payload: { type: 'TECHNICAL_SHEET', recipeName: recipe.name },
+        payload: { type: 'TECHNICAL_SHEET', recipeName: recipe.name, language },
         createdById: actor.id,
       },
     });
@@ -2549,14 +2596,123 @@ export class TechnicalSheetsService {
     return `\ufeff${rows.map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n')}`;
   }
 
-  private async recipePdf(recipe: any) {
+  private async recipeComposition(
+    organizationId: string,
+    technicalSheetId: string,
+  ): Promise<MenuCompositionResult> {
+    const [sheets, conversions] = await Promise.all([
+      this.prisma.technicalSheet.findMany({
+        where: { organizationId },
+        include: this.recipeInclude(),
+      }),
+      this.prisma.unitConversion.findMany({ where: { organizationId } }),
+    ]);
+    const root = sheets.find((sheet) => sheet.id === technicalSheetId);
+    if (!root) throw new NotFoundException('Fiche technique introuvable');
+    const conversionByPair = new Map<string, number>(
+      conversions.map((conversion) => [
+        `${conversion.fromUnitId}:${conversion.toUnitId}`,
+        Number(conversion.factor),
+      ]),
+    );
+    return calculateSheetComposition({
+      sheetsById: new Map(sheets.map((sheet) => [sheet.id, sheet])),
+      convert: (quantity, fromUnitId, toUnitId) => {
+        if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) return quantity;
+        const direct = conversionByPair.get(`${fromUnitId}:${toUnitId}`);
+        if (direct != null) return quantity * direct;
+        const reverse = conversionByPair.get(`${toUnitId}:${fromUnitId}`);
+        return reverse ? quantity / reverse : null;
+      },
+      sheetId: technicalSheetId,
+      requiredOutput: menuSheetReferenceYield(root),
+      referencePortions: Math.max(Number(root.referencePortions ?? 1), 1),
+    });
+  }
+
+  private recipePdfAllergenLabel(value: string, language: RecipePdfLanguage) {
+    const normalized = String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+    const translated = RECIPE_PDF_ALLERGEN_TRANSLATIONS.find((entry) =>
+      entry.patterns.some((pattern) => normalized.includes(pattern)),
+    );
+    return translated?.[language] ?? value;
+  }
+
+  private async recipePdf(
+    recipe: any,
+    composition: MenuCompositionResult,
+    language: RecipePdfLanguage,
+  ) {
     const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
     const steps = Array.isArray(recipe.steps) ? recipe.steps : [];
+    const copy =
+      language === 'en'
+        ? {
+            documentTitle: 'Technical sheet',
+            category: 'CATEGORY',
+            noCategory: 'No category',
+            yield: 'YIELD',
+            portions: 'portions',
+            totalCost: 'TOTAL COST',
+            description: 'Description',
+            ingredients: 'Ingredients',
+            ingredient: 'INGREDIENT',
+            quantity: 'QUANTITY',
+            cost: 'COST',
+            noIngredient: 'No ingredient provided.',
+            notCalculable: 'Not calculable',
+            allergens: 'Allergens',
+            present: 'PRESENT',
+            traces: 'POSSIBLE TRACES',
+            noneReported: 'None reported',
+            incompleteComposition: 'Incomplete composition',
+            nutrition: 'Nutritional values',
+            portionPer100g: 'PORTION / 100 G',
+            partialData: 'Partial data',
+            preparation: 'Preparation steps',
+            noStep: 'No step provided.',
+            step: 'Step',
+            generated: 'Generated by ToqueHub on',
+            locale: 'en-GB',
+          }
+        : {
+            documentTitle: 'Fiche technique',
+            category: 'CATÉGORIE',
+            noCategory: 'Sans catégorie',
+            yield: 'RENDEMENT',
+            portions: 'portions',
+            totalCost: 'COÛT TOTAL',
+            description: 'Description',
+            ingredients: 'Ingrédients',
+            ingredient: 'INGRÉDIENT',
+            quantity: 'QUANTITÉ',
+            cost: 'COÛT',
+            noIngredient: 'Aucun ingrédient renseigné.',
+            notCalculable: 'Non calculable',
+            allergens: 'Allergènes',
+            present: 'PRÉSENTS',
+            traces: 'TRACES POSSIBLES',
+            noneReported: 'Aucun renseigné',
+            incompleteComposition: 'Composition incomplète',
+            nutrition: 'Valeurs nutritionnelles',
+            portionPer100g: 'PORTION / 100 G',
+            partialData: 'Données partielles',
+            preparation: 'Étapes de préparation',
+            noStep: 'Aucune étape renseignée.',
+            step: 'Étape',
+            generated: 'Généré par ToqueHub le',
+            locale: 'fr-FR',
+          };
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
         margin: 42,
-        info: { Title: `Fiche technique - ${recipe.name}`, Author: 'ToqueHub' },
+        bufferPages: true,
+        info: { Title: `${copy.documentTitle} - ${recipe.name}`, Author: 'ToqueHub' },
       });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
@@ -2586,7 +2742,7 @@ export class TechnicalSheetsService {
         .fillColor('#a7f3d0')
         .fontSize(7.5)
         .font('Helvetica-Bold')
-        .text('FICHE TECHNIQUE', 42, 50, { characterSpacing: 0.6 });
+        .text(copy.documentTitle.toUpperCase(), 42, 50, { characterSpacing: 0.6 });
       const recipeTitleSize = recipe.name.length > 58 ? 20 : recipe.name.length > 36 ? 24 : 28;
       doc
         .fillColor('#ffffff')
@@ -2603,11 +2759,11 @@ export class TechnicalSheetsService {
       const yieldLabel =
         recipe.yieldMode === TechnicalSheetYieldMode.MASS
           ? `${this.formatNumber(Number(recipe.totalMassGrams ?? 0) / 1000)} kg`
-          : `${this.formatNumber(recipe.referencePortions ?? 0)} portions`;
+          : `${this.formatNumber(recipe.referencePortions ?? 0)} ${copy.portions}`;
       const summary = [
-        ['CATÉGORIE', recipe.category?.name ?? 'Sans catégorie'],
-        ['RENDEMENT', yieldLabel],
-        ['COÛT TOTAL', this.formatMoney(recipe.totalCost ?? recipe.costTotal ?? 0)],
+        [copy.category, recipe.category?.name ?? copy.noCategory],
+        [copy.yield, yieldLabel],
+        [copy.totalCost, this.formatMoney(recipe.totalCost ?? recipe.costTotal ?? 0)],
       ];
       const cardWidth = (contentWidth - 20) / 3;
       summary.forEach(([label, value], index) => {
@@ -2627,7 +2783,7 @@ export class TechnicalSheetsService {
       y += 82;
 
       if (recipe.description) {
-        doc.fillColor('#0f172a').fontSize(12).font('Helvetica-Bold').text('Description', 42, y);
+        doc.fillColor('#0f172a').fontSize(12).font('Helvetica-Bold').text(copy.description, 42, y);
         y += 19;
         doc
           .fillColor('#475569')
@@ -2638,23 +2794,19 @@ export class TechnicalSheetsService {
       }
 
       y = ensureSpace(y, 82);
-      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text('Ingrédients', 42, y);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text(copy.ingredients, 42, y);
       y += 23;
       const drawIngredientHeader = (top: number) => {
         doc.roundedRect(42, top, contentWidth, 23, 5).fill('#ecfdf5');
         doc.fillColor('#065f46').fontSize(7.5).font('Helvetica-Bold');
-        doc.text('INGRÉDIENT', 50, top + 8, { width: 245 });
-        doc.text('QUANTITÉ', 300, top + 8, { width: 95, align: 'right' });
-        doc.text('COÛT', 405, top + 8, { width: 95, align: 'right' });
+        doc.text(copy.ingredient, 50, top + 8, { width: 245 });
+        doc.text(copy.quantity, 300, top + 8, { width: 95, align: 'right' });
+        doc.text(copy.cost, 405, top + 8, { width: 95, align: 'right' });
         return top + 29;
       };
       y = drawIngredientHeader(y);
       if (!ingredients.length) {
-        doc
-          .fillColor('#64748b')
-          .fontSize(9)
-          .font('Helvetica')
-          .text('Aucun ingrédient renseigné.', 50, y);
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text(copy.noIngredient, 50, y);
         y += 28;
       } else {
         ingredients.forEach((line: any) => {
@@ -2673,7 +2825,7 @@ export class TechnicalSheetsService {
             width: 95,
             align: 'right',
           });
-          doc.text(line.cost == null ? 'Non calculable' : this.formatMoney(line.cost), 405, y, {
+          doc.text(line.cost == null ? copy.notCalculable : this.formatMoney(line.cost), 405, y, {
             width: 95,
             align: 'right',
           });
@@ -2686,33 +2838,126 @@ export class TechnicalSheetsService {
         });
       }
 
-      const allergens = Array.isArray(recipe.allergens)
-        ? recipe.allergens.map((allergen: any) => allergen.name).filter(Boolean)
-        : [];
-      if (allergens.length) {
-        y = ensureSpace(y + 8, 45);
-        doc.fillColor('#92400e').fontSize(8).font('Helvetica-Bold').text('ALLERGÈNES', 42, y);
+      const allergenGap = 10;
+      const allergenWidth = (contentWidth - allergenGap) / 2;
+      const presentNames = composition.allergens.present.map((entry) =>
+        this.recipePdfAllergenLabel(entry.name, language),
+      );
+      const traceNames = composition.allergens.traces.map((entry) =>
+        this.recipePdfAllergenLabel(entry.name, language),
+      );
+      const presentText = presentNames.length ? presentNames.join(', ') : copy.noneReported;
+      const tracesText = traceNames.length ? traceNames.join(', ') : copy.noneReported;
+      const presentHeight = Math.max(
+        58,
+        doc.heightOfString(presentText, { width: allergenWidth - 20 }) + 34,
+      );
+      const tracesHeight = Math.max(
+        58,
+        doc.heightOfString(tracesText, { width: allergenWidth - 20 }) + 34,
+      );
+      const allergenHeight = Math.max(presentHeight, tracesHeight);
+      const allergenWarning = composition.allergens.unresolvedIngredients.length
+        ? `${copy.incompleteComposition}: ${composition.allergens.unresolvedIngredients.join(', ')}`
+        : '';
+      const allergenWarningHeight = allergenWarning
+        ? doc.heightOfString(allergenWarning, { width: contentWidth }) + 12
+        : 0;
+      y = ensureSpace(y + 10, 23 + allergenHeight + 10 + allergenWarningHeight);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text(copy.allergens, 42, y);
+      y += 23;
+      doc.roundedRect(42, y, allergenWidth, allergenHeight, 7).fillAndStroke('#fff7f7', '#fecaca');
+      doc
+        .fillColor('#b91c1c')
+        .fontSize(7.5)
+        .font('Helvetica-Bold')
+        .text(copy.present, 52, y + 10, { width: allergenWidth - 20 });
+      doc
+        .fillColor('#7f1d1d')
+        .fontSize(8.5)
+        .font('Helvetica')
+        .text(presentText, 52, y + 27, { width: allergenWidth - 20, lineGap: 1.5 });
+      const tracesX = 42 + allergenWidth + allergenGap;
+      doc
+        .roundedRect(tracesX, y, allergenWidth, allergenHeight, 7)
+        .fillAndStroke('#fffbeb', '#fde68a');
+      doc
+        .fillColor('#a16207')
+        .fontSize(7.5)
+        .font('Helvetica-Bold')
+        .text(copy.traces, tracesX + 10, y + 10, { width: allergenWidth - 20 });
+      doc
+        .fillColor('#78350f')
+        .fontSize(8.5)
+        .font('Helvetica')
+        .text(tracesText, tracesX + 10, y + 27, { width: allergenWidth - 20, lineGap: 1.5 });
+      y += allergenHeight + 10;
+      if (allergenWarning) {
         doc
-          .fillColor('#78350f')
-          .fontSize(9)
+          .fillColor('#9a3412')
+          .fontSize(7.5)
           .font('Helvetica')
-          .text(allergens.join(', '), 42, y + 16, { width: contentWidth });
-        y = doc.y + 18;
+          .text(allergenWarning, 42, y, { width: contentWidth });
+        y = doc.y + 12;
       }
 
-      y = ensureSpace(y + 8, 62);
+      y = ensureSpace(y + 8, 178);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text(copy.nutrition, 42, y);
       doc
-        .fillColor('#0f172a')
-        .fontSize(13)
+        .fillColor(composition.nutrition.complete ? '#047857' : '#a16207')
+        .fontSize(7.2)
         .font('Helvetica-Bold')
-        .text('Étapes de préparation', 42, y);
+        .text(
+          composition.nutrition.complete
+            ? copy.portionPer100g
+            : `${copy.portionPer100g} · ${copy.partialData} ${composition.nutrition.coveragePercent} %`,
+          260,
+          y + 3,
+          { width: contentWidth - 218, align: 'right' },
+        );
       y += 24;
-      if (!steps.length) {
+      const nutritionGap = 7;
+      const nutritionColumns = 3;
+      const nutritionCardWidth =
+        (contentWidth - nutritionGap * (nutritionColumns - 1)) / nutritionColumns;
+      MENU_NUTRITION_FIELDS.forEach((field, index) => {
+        if (index > 0 && index % nutritionColumns === 0) y += 48 + nutritionGap;
+        const column = index % nutritionColumns;
+        const x = 42 + column * (nutritionCardWidth + nutritionGap);
+        const label = RECIPE_PDF_NUTRITION_LABELS[field];
+        const coverage = composition.nutrition.coverage[field] ?? 0;
+        const prefix = coverage > 0 && coverage < 100 ? '~' : '';
+        const formatValue = (value: number | null) =>
+          value == null
+            ? '—'
+            : `${prefix}${this.formatNumber(value)}${label.unit === 'g' ? ' g' : ` ${label.unit}`}`;
+        doc.roundedRect(x, y, nutritionCardWidth, 48, 6).fillAndStroke('#f8fafc', '#e2e8f0');
         doc
           .fillColor('#64748b')
-          .fontSize(9)
-          .font('Helvetica')
-          .text('Aucune étape renseignée.', 42, y);
+          .fontSize(6.7)
+          .font('Helvetica-Bold')
+          .text(label[language].toUpperCase(), x + 8, y + 8, {
+            width: nutritionCardWidth - 16,
+            height: 10,
+          });
+        doc
+          .fillColor('#0f172a')
+          .fontSize(8.4)
+          .font('Helvetica-Bold')
+          .text(
+            `${formatValue(composition.nutrition.perPortion[field])} / ${formatValue(composition.nutrition.per100Grams[field])}`,
+            x + 8,
+            y + 25,
+            { width: nutritionCardWidth - 16, height: 14 },
+          );
+      });
+      y += 48 + 18;
+
+      y = ensureSpace(y + 8, 62);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text(copy.preparation, 42, y);
+      y += 24;
+      if (!steps.length) {
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text(copy.noStep, 42, y);
       } else {
         steps.forEach((step: any, index: number) => {
           const description = String(step.description ?? '');
@@ -2731,7 +2976,9 @@ export class TechnicalSheetsService {
             .fillColor('#0f172a')
             .fontSize(10)
             .font('Helvetica-Bold')
-            .text(step.title || `Étape ${index + 1}`, 82, y + 2, { width: contentWidth - 40 });
+            .text(step.title || `${copy.step} ${index + 1}`, 82, y + 2, {
+              width: contentWidth - 40,
+            });
           const duration = step.estimatedMinutes ?? step.estimatedTimeMinutes;
           if (duration) {
             doc
@@ -2749,19 +2996,32 @@ export class TechnicalSheetsService {
         });
       }
 
-      doc
-        .fillColor('#94a3b8')
-        .fontSize(7.5)
-        .font('Helvetica')
-        .text(
-          `Généré par ToqueHub le ${new Date().toLocaleDateString('fr-FR')}`,
-          42,
-          doc.page.height - 38,
-          {
-            width: contentWidth,
-            align: 'center',
-          },
-        );
+      const pageRange = doc.bufferedPageRange();
+      for (
+        let pageIndex = pageRange.start;
+        pageIndex < pageRange.start + pageRange.count;
+        pageIndex += 1
+      ) {
+        doc.switchToPage(pageIndex);
+        const previousBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
+        doc
+          .fillColor('#94a3b8')
+          .fontSize(7.5)
+          .font('Helvetica')
+          .text(
+            `${copy.generated} ${new Date().toLocaleDateString(copy.locale)} · ${pageIndex + 1}/${pageRange.count}`,
+            42,
+            doc.page.height - 28,
+            {
+              width: contentWidth,
+              height: 10,
+              align: 'center',
+              lineBreak: false,
+            },
+          );
+        doc.page.margins.bottom = previousBottomMargin;
+      }
       doc.end();
     });
   }

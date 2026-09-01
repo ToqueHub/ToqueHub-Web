@@ -17,6 +17,7 @@ import type {
   Lot,
   Product,
   EquipmentDocument,
+  EquipmentFinancingContractsResponse,
   ProductLabelOcrBatchStatus,
   ProductLabelOcrResult,
   ProductImportCommitResult,
@@ -420,6 +421,25 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
     warnings: payload.warnings ?? payload.aiAnalysis?.warnings ?? undefined,
     suggestedActions: payload.suggestedActions ?? payload.aiAnalysis?.suggestedActions ?? undefined,
     aiAnalysis: payload.aiAnalysis ?? undefined,
+    financingContract: payload.financingContract
+      ? {
+          acquisitionMode: payload.financingContract.acquisitionMode,
+          contractNumber: payload.financingContract.contractNumber || undefined,
+          financingProvider: payload.financingContract.financingProvider || undefined,
+          termMonths: payload.financingContract.termMonths || undefined,
+          installmentAmount: payload.financingContract.installmentAmount ?? undefined,
+          paymentFrequency: payload.financingContract.paymentFrequency || undefined,
+          monthlyPayment: payload.financingContract.monthlyPayment ?? undefined,
+          financingStart: payload.financingContract.financingStart || undefined,
+          financingEnd: payload.financingContract.financingEnd || undefined,
+          financedAmount: payload.financingContract.financedAmount ?? undefined,
+          buyoutValue: payload.financingContract.buyoutValue ?? undefined,
+          currency: payload.financingContract.currency || 'EUR',
+          sourceConfidence: payload.financingContract.sourceConfidence ?? undefined,
+          notes: payload.financingContract.notes || undefined,
+          documentIds: payload.financingContract.documentIds ?? undefined,
+        }
+      : undefined,
     lines: (payload.lines || []).map((line) => ({
       id: line.id,
       ignored: Boolean(line.ignored),
@@ -434,11 +454,25 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       reference: line.reference || undefined,
       nameOriginal: line.nameOriginal || undefined,
       descriptionOriginal: line.descriptionOriginal || undefined,
+      productKind: line.productKind || undefined,
+      lineType: line.lineType || undefined,
+      brand: line.brand || undefined,
+      model: line.model || undefined,
       quantity: line.quantity ?? undefined,
       unit: line.unit || undefined,
       unitPrice: line.unitPrice ?? undefined,
+      listUnitPrice: line.listUnitPrice ?? undefined,
+      discountPercent: line.discountPercent ?? undefined,
       lineTotal: line.lineTotal ?? line.total ?? undefined,
       vatRate: line.vatRate ?? undefined,
+      acquisitionMode: line.acquisitionMode || undefined,
+      financingProvider: line.financingProvider || undefined,
+      financingStart: line.financingStart || undefined,
+      financingEnd: line.financingEnd || undefined,
+      monthlyPayment: line.monthlyPayment ?? undefined,
+      financedAmount: line.financedAmount ?? undefined,
+      buyoutValue: line.buyoutValue ?? undefined,
+      equipmentNotes: line.equipmentNotes || undefined,
       lotNumber: line.lotNumber || undefined,
       bestBeforeDate: line.bestBeforeDate || undefined,
       lineStatus: line.lineStatus || undefined,
@@ -2884,10 +2918,11 @@ export const api = {
       token,
     );
   },
-  async exportTechnicalSheetRecipePdf(token: string, id: string) {
-    const response = await fetch(`${API_URL}/api/technical-sheets/recipes/${id}/export.pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  async exportTechnicalSheetRecipePdf(token: string, id: string, language: 'fr' | 'en' = 'fr') {
+    const response = await fetch(
+      `${API_URL}/api/technical-sheets/recipes/${id}/export.pdf?locale=${language}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     return {
       blob: await response.blob(),
@@ -4001,6 +4036,9 @@ export const api = {
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);
   },
+  equipmentFinancingContracts(token: string) {
+    return request<EquipmentFinancingContractsResponse>('/equipment/financing/contracts', {}, token);
+  },
   marginsDashboard(
     token: string,
     params: {
@@ -4163,6 +4201,21 @@ export const api = {
   },
   stocksOcrExtraction(token: string, extractionId: string) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
+  },
+  uploadStocksOcrFinancingDocuments(token: string, extractionId: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    return fetch(
+      `${API_URL}/api/stocks/ocr/extractions/${encodeURIComponent(extractionId)}/financing-documents`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      },
+    ).then(async (response) => {
+      if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+      return response.json() as Promise<StocksOcrExtraction>;
+    });
   },
   reanalyzeStocksOcrWithAi(token: string, extractionId: string, kind?: 'EQUIPMENT') {
     return request<StocksOcrExtraction>(

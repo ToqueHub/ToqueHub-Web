@@ -1009,6 +1009,106 @@ export class StocksOcrService {
     return this.uploadDocumentsForSource(organizationId, actor, files, 'ocr-reception');
   }
 
+  async uploadFinancingDocuments(
+    organizationId: string,
+    actor: Actor,
+    extractionId: string,
+    files: UploadedFile[],
+  ) {
+    this.assertOcr(actor);
+    await this.assertOcrConfigured(organizationId);
+    const extraction = await this.prisma.ocrBusinessExtraction.findFirst({
+      where: { id: extractionId, organizationId },
+      include: { ocrDocument: { include: { document: true } } },
+    });
+    if (!extraction) throw new NotFoundException('Extraction introuvable');
+    if (this.ocrExtractionProductKind(extraction) !== ProductKind.EQUIPMENT) {
+      throw new BadRequestException(
+        'Un document de financement ne peut être ajouté qu’à un dossier matériel.',
+      );
+    }
+    const uploaded = await this.uploadDocumentsForSource(
+      organizationId,
+      actor,
+      files,
+      'equipment-financing-document',
+      extraction.id,
+    );
+    let financingContract = this.cleanFinancingContract(
+      ((extraction.correctedJson || extraction.extractedJson) as any)?.financingContract,
+    );
+    for (const document of uploaded.documents) {
+      const started = Date.now();
+      const ocr = await this.prisma.ocrDocument.create({
+        data: {
+          organizationId,
+          documentId: document.id,
+          provider: OCR_PROVIDER,
+          model: OCR_MODEL,
+          status: OcrProcessingStatus.PROCESSING,
+        },
+      });
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocumentStatus.PROCESSING },
+      });
+      try {
+        const result = await this.callMistral(organizationId, document, ProductKind.EQUIPMENT);
+        const rawText = this.rawTextFromOcr(result.rawJson);
+        const markdown = result.markdown || rawText;
+        const detected = await this.extractFinancingContract(organizationId, markdown);
+        financingContract = this.mergeFinancingContracts(financingContract, detected, document.id);
+        await this.prisma.$transaction([
+          this.prisma.ocrDocument.update({
+            where: { id: ocr.id },
+            data: {
+              status: OcrProcessingStatus.COMPLETED,
+              rawText,
+              rawMarkdown: markdown,
+              rawJson: result.rawJson as Prisma.InputJsonValue,
+              pageCount: result.pageCount,
+              processingDurationMs: Date.now() - started,
+            },
+          }),
+          this.prisma.document.update({
+            where: { id: document.id },
+            data: { status: DocumentStatus.PROCESSED },
+          }),
+        ]);
+      } catch (error: any) {
+        await this.prisma.$transaction([
+          this.prisma.ocrDocument.update({
+            where: { id: ocr.id },
+            data: {
+              status: OcrProcessingStatus.FAILED,
+              errorCode: error?.code || 'FINANCING_OCR_FAILED',
+              errorMessage: error?.message || 'Analyse du financement impossible',
+              processingDurationMs: Date.now() - started,
+            },
+          }),
+          this.prisma.document.update({
+            where: { id: document.id },
+            data: { status: DocumentStatus.FAILED },
+          }),
+        ]);
+        throw error;
+      }
+    }
+    const source = (extraction.correctedJson || extraction.extractedJson) as any;
+    const updated = await this.prisma.ocrBusinessExtraction.update({
+      where: { id: extraction.id },
+      data: {
+        correctedJson: {
+          ...source,
+          financingContract,
+        } as Prisma.InputJsonValue,
+        status: OcrBusinessExtractionStatus.DRAFT,
+      },
+      include: { ocrDocument: { include: { document: true } } },
+    });
+    return this.formatExtraction(updated);
+  }
+
   async uploadPurchasingDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
     return this.uploadDocumentsForSource(organizationId, actor, files, 'purchasing-delivery-note');
   }
@@ -1034,7 +1134,12 @@ export class StocksOcrService {
     organizationId: string,
     actor: Actor,
     files: UploadedFile[],
-    sourceType: 'ocr-reception' | 'product-csv-creator' | 'purchasing-delivery-note',
+    sourceType:
+      | 'ocr-reception'
+      | 'product-csv-creator'
+      | 'purchasing-delivery-note'
+      | 'equipment-financing-document',
+    sourceId?: string,
   ) {
     this.assertOcr(actor);
     if (!files?.length) throw new BadRequestException('Aucun fichier fourni');
@@ -1061,6 +1166,7 @@ export class StocksOcrService {
           contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
           sourceModule: sourceType === 'purchasing-delivery-note' ? 'purchasing' : 'stocks',
           sourceType,
+          sourceId,
           status: DocumentStatus.UPLOADED,
         },
       });
@@ -1530,6 +1636,7 @@ export class StocksOcrService {
         corrected.supplierId,
         corrected.supplierIdentifiers,
       );
+      const financedProductIds = new Set<string>();
       for (const line of lines) {
         const product = line.productId
           ? await tx.product.findFirst({
@@ -1545,6 +1652,13 @@ export class StocksOcrService {
         if (!product)
           throw new BadRequestException('Produit introuvable sur une ligne de réception.');
         await this.upsertEquipmentProfileFromOcrLineTx(tx, organizationId, product.id, line);
+        if (
+          corrected.financingContract &&
+          line.productKind === ProductKind.EQUIPMENT &&
+          !['service', 'transport'].includes(String(line.lineType || '').toLowerCase())
+        ) {
+          financedProductIds.add(product.id);
+        }
         const unit = line.unitId
           ? await tx.unit.findFirst({ where: { id: line.unitId, organizationId } })
           : product.unit;
@@ -1643,6 +1757,16 @@ export class StocksOcrService {
           actorId: actor.id,
           priceMode: 'replace',
         });
+      }
+      if (corrected.financingContract && financedProductIds.size) {
+        await this.createEquipmentFinancingContractTx(
+          tx,
+          organizationId,
+          corrected.supplierId,
+          corrected.financingContract,
+          [...financedProductIds],
+          extraction.ocrDocument.document.id,
+        );
       }
       await tx.ocrBusinessExtraction.update({
         where: { id: extraction.id },
@@ -4840,6 +4964,320 @@ export class StocksOcrService {
     return Math.min(0.99, Math.max(0.3, recognized / extraction.lines.length));
   }
 
+  private async extractFinancingContract(organizationId: string, markdown: string) {
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'acquisitionMode',
+        'contractNumber',
+        'financingProvider',
+        'termMonths',
+        'installmentAmount',
+        'paymentFrequency',
+        'monthlyPayment',
+        'financingStart',
+        'financingEnd',
+        'financedAmount',
+        'buyoutValue',
+        'currency',
+        'sourceConfidence',
+        'notes',
+      ],
+      properties: {
+        acquisitionMode: { enum: ['CREDIT', 'LEASING', 'RENTAL'] },
+        contractNumber: { type: ['string', 'null'] },
+        financingProvider: { type: ['string', 'null'] },
+        termMonths: { type: ['integer', 'null'], minimum: 1, maximum: 600 },
+        installmentAmount: { type: ['number', 'null'], minimum: 0 },
+        paymentFrequency: {
+          enum: ['MONTHLY', 'QUARTERLY', 'SEMIANNUAL', 'ANNUAL', 'OTHER', null],
+        },
+        monthlyPayment: { type: ['number', 'null'], minimum: 0 },
+        financingStart: { type: ['string', 'null'] },
+        financingEnd: { type: ['string', 'null'] },
+        financedAmount: { type: ['number', 'null'], minimum: 0 },
+        buyoutValue: { type: ['number', 'null'], minimum: 0 },
+        currency: { type: ['string', 'null'] },
+        sourceConfidence: { type: ['number', 'null'], minimum: 0, maximum: 1 },
+        notes: { type: ['string', 'null'] },
+      },
+    } as Record<string, unknown>;
+    try {
+      const detected = await this.mistralClient.chatJson<Record<string, unknown>>(
+        organizationId,
+        [
+          {
+            role: 'system',
+            content: [
+              'Tu extrais uniquement les conditions d’un contrat de financement de matériel.',
+              'Ne répartis jamais la mensualité entre les machines : le montant appartient au contrat complet.',
+              'installmentAmount est le montant réellement prélevé à chaque échéance.',
+              'monthlyPayment est installmentAmount divisé par 3 si le paiement est trimestriel, par 6 s’il est semestriel et par 12 s’il est annuel.',
+              'N’utilise jamais la date d’impression, de consultation ou de facture comme date de début du contrat.',
+              'Une date de début ou de fin doit être explicitement libellée comme telle. Laisse-la à null sinon.',
+              'Un contrat nommé Classic lease ou leasing est LEASING. Un financement à crédit est CREDIT.',
+              'Retourne null pour toute information absente et n’invente rien.',
+            ].join(' '),
+          },
+          { role: 'user', content: markdown.slice(0, 100_000) },
+        ],
+        'toquehub_equipment_financing_contract',
+        schema,
+        { temperature: 0, fallbackToJsonObject: true, timeoutMs: 15_000 },
+      );
+      return this.cleanFinancingContract(detected) ?? this.extractFinancingContractFallback(markdown);
+    } catch (error) {
+      this.logger.warn(
+        `Structuration du financement indisponible, repli déterministe: ${error instanceof Error ? error.message : error}`,
+      );
+      return this.extractFinancingContractFallback(markdown);
+    }
+  }
+
+  private extractFinancingContractFallback(markdown: string) {
+    const text = markdown.replace(/\u00a0/g, ' ');
+    const provider = /\bgrenke\b/i.test(text)
+      ? 'GRENKE'
+      : this.extractAfter(text, /(?:financing provider|finance provider|lessor|rahoittaja)\s*[:#]?\s*([^\n]+)/i, 1);
+    const contractNumber = this.extractAfter(
+      text,
+      /(?:contract|agreement|sopimus)(?:\s+(?:number|no\.?|nro))?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})/i,
+      1,
+    );
+    const termMonths = this.numberFromMatch(
+      text.match(/(?:term|duration|contract period|sopimuskausi)[^\d]{0,30}(\d{1,3})\s*(?:months?|kk|kuukautta)/i)?.[1],
+    );
+    const paymentFrequency = /\b(quarterly|quarter|kvartaali|3\s*months?)\b/i.test(text)
+      ? 'QUARTERLY'
+      : /\b(semiannual|half[- ]?year|6\s*months?)\b/i.test(text)
+        ? 'SEMIANNUAL'
+        : /\b(annual|yearly|12\s*months?)\b/i.test(text)
+          ? 'ANNUAL'
+          : /\b(monthly|per month|kuukausi)\b/i.test(text)
+            ? 'MONTHLY'
+            : null;
+    const installmentAmount = this.moneyFromMatch(
+      text.match(
+        /(?:instalment|installment|lease payment|payment amount|vuokraer[aä]|maksuer[aä])[^\d]{0,40}([0-9][0-9 .]*[,.][0-9]{2})\s*(?:€|eur)?/i,
+      )?.[1],
+    );
+    const monthlyPayment =
+      installmentAmount == null
+        ? null
+        : this.roundMoney(installmentAmount / this.financingFrequencyMonths(paymentFrequency));
+    const financingStart = this.cleanDate(
+      this.extractAfter(
+        text,
+        /(?:contract start|start date|commencement date|sopimus alkaa|alkamisp[aä]iv[aä])\s*:?\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+        1,
+      ),
+    );
+    const explicitEnd = this.cleanDate(
+      this.extractAfter(
+        text,
+        /(?:contract end|end date|maturity date|sopimus p[aä][aä]ttyy|p[aä][aä]ttymisp[aä]iv[aä])\s*:?\s*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+        1,
+      ),
+    );
+    return this.cleanFinancingContract({
+      acquisitionMode: /\b(credit|cr[eé]dit|hire purchase|osamaksu)\b/i.test(text)
+        ? EquipmentAcquisitionMode.CREDIT
+        : EquipmentAcquisitionMode.LEASING,
+      contractNumber,
+      financingProvider: provider,
+      termMonths,
+      installmentAmount,
+      paymentFrequency,
+      monthlyPayment,
+      financingStart,
+      financingEnd: explicitEnd,
+      buyoutValue: this.moneyFromMatch(
+        text.match(
+          /(?:buyout|purchase option|purchase price|lunastushinta|j[aä][aä]nn[oö]sarvo)[^\d]{0,40}([0-9][0-9 .]*[,.][0-9]{2})\s*(?:€|eur)?/i,
+        )?.[1],
+      ),
+      currency: /\bEUR\b|€/i.test(text) ? 'EUR' : null,
+      sourceConfidence: contractNumber && termMonths && installmentAmount ? 0.94 : 0.68,
+      notes: null,
+    });
+  }
+
+  private cleanFinancingContract(value: any) {
+    if (!value || typeof value !== 'object') return null;
+    const acquisitionMode = Object.values(EquipmentAcquisitionMode).includes(value.acquisitionMode)
+      ? (value.acquisitionMode as EquipmentAcquisitionMode)
+      : EquipmentAcquisitionMode.LEASING;
+    const termMonths = this.numberFromMatch(value.termMonths);
+    const installmentAmount = this.moneyFromMatch(value.installmentAmount);
+    const paymentFrequency = this.normalizeFinancingFrequency(value.paymentFrequency);
+    const explicitMonthly = this.moneyFromMatch(value.monthlyPayment);
+    const financingStart = this.cleanDate(value.financingStart);
+    let financingEnd = this.cleanDate(value.financingEnd);
+    if (!financingEnd && financingStart && termMonths) {
+      financingEnd = this.addMonthsIso(financingStart, termMonths);
+    }
+    return {
+      acquisitionMode,
+      contractNumber: this.cleanString(value.contractNumber) || null,
+      financingProvider: this.cleanString(value.financingProvider) || null,
+      termMonths,
+      installmentAmount,
+      paymentFrequency,
+      monthlyPayment:
+        explicitMonthly ??
+        (installmentAmount == null
+          ? null
+          : this.roundMoney(
+              installmentAmount / this.financingFrequencyMonths(paymentFrequency),
+            )),
+      financingStart,
+      financingEnd,
+      financedAmount: this.moneyFromMatch(value.financedAmount),
+      buyoutValue: this.moneyFromMatch(value.buyoutValue),
+      currency: (this.cleanString(value.currency) || 'EUR').toUpperCase().slice(0, 8),
+      sourceConfidence:
+        typeof value.sourceConfidence === 'number'
+          ? Math.max(0, Math.min(1, value.sourceConfidence))
+          : null,
+      notes: this.cleanString(value.notes) || null,
+      documentIds: Array.isArray(value.documentIds)
+        ? [
+            ...new Set<string>(
+              value.documentIds.map((documentId: unknown) => String(documentId)).filter(Boolean),
+            ),
+          ]
+        : [],
+    };
+  }
+
+  private mergeFinancingContracts(current: any, detected: any, documentId: string) {
+    const cleanCurrent: any = this.cleanFinancingContract(current) ?? {};
+    const cleanDetected: any = this.cleanFinancingContract(detected) ?? {};
+    const usefulDetected = Object.fromEntries(
+      Object.entries(cleanDetected).filter(
+        ([key, value]) => key !== 'documentIds' && value !== null && value !== undefined,
+      ),
+    );
+    return this.cleanFinancingContract({
+      ...cleanCurrent,
+      ...usefulDetected,
+      documentIds: [
+        ...(Array.isArray(cleanCurrent.documentIds) ? cleanCurrent.documentIds : []),
+        ...(Array.isArray(cleanDetected.documentIds) ? cleanDetected.documentIds : []),
+        documentId,
+      ],
+    });
+  }
+
+  private normalizeFinancingFrequency(value: unknown) {
+    const normalized = String(value ?? '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized.includes('QUART')) return 'QUARTERLY';
+    if (normalized.includes('SEMI') || normalized.includes('HALF')) return 'SEMIANNUAL';
+    if (normalized.includes('ANNU') || normalized.includes('YEAR')) return 'ANNUAL';
+    if (normalized.includes('MONTH')) return 'MONTHLY';
+    return 'OTHER';
+  }
+
+  private financingFrequencyMonths(value: unknown) {
+    const normalized = this.normalizeFinancingFrequency(value);
+    if (normalized === 'QUARTERLY') return 3;
+    if (normalized === 'SEMIANNUAL') return 6;
+    if (normalized === 'ANNUAL') return 12;
+    return 1;
+  }
+
+  private numberFromMatch(value: unknown) {
+    if (value == null || value === '') return null;
+    const parsed = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+  }
+
+  private moneyFromMatch(value: unknown) {
+    if (value == null || value === '') return null;
+    const raw = String(value).replace(/[^0-9,.-]/g, '');
+    const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? this.roundMoney(parsed) : null;
+  }
+
+  private addMonthsIso(isoDate: string, months: number) {
+    const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number);
+    if (!year || !month || !day) return null;
+    const targetMonth = month - 1 + months;
+    const targetYear = year + Math.floor(targetMonth / 12);
+    const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+    const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+    return `${targetYear.toString().padStart(4, '0')}-${(normalizedMonth + 1)
+      .toString()
+      .padStart(2, '0')}-${Math.min(day, lastDay).toString().padStart(2, '0')}`;
+  }
+
+  private async createEquipmentFinancingContractTx(
+    tx: Tx,
+    organizationId: string,
+    supplierId: string | null,
+    value: NonNullable<ReturnType<StocksOcrService['cleanFinancingContract']>>,
+    productIds: string[],
+    originalDocumentId: string,
+  ) {
+    const contract = await tx.equipmentFinancingContract.create({
+      data: {
+        organizationId,
+        supplierId,
+        acquisitionMode: value.acquisitionMode,
+        contractNumber: value.contractNumber,
+        financingProvider: value.financingProvider,
+        termMonths: value.termMonths,
+        installmentAmount: this.decimalOrNull(value.installmentAmount),
+        paymentFrequency: value.paymentFrequency,
+        monthlyPayment: this.decimalOrNull(value.monthlyPayment),
+        financingStart: value.financingStart ? new Date(value.financingStart) : null,
+        financingEnd: value.financingEnd ? new Date(value.financingEnd) : null,
+        financedAmount: this.decimalOrNull(value.financedAmount),
+        buyoutValue: this.decimalOrNull(value.buyoutValue),
+        currency: value.currency,
+        source: 'TOQUEHUB',
+        sourceConfidence: this.decimalOrNull(value.sourceConfidence),
+        notes: value.notes,
+      },
+    });
+    for (const productId of productIds) {
+      await tx.equipmentProfile.upsert({
+        where: { productId },
+        create: {
+          organizationId,
+          productId,
+          financingContractId: contract.id,
+          acquisitionMode: value.acquisitionMode,
+          financingProvider: value.financingProvider,
+          financingStart: value.financingStart ? new Date(value.financingStart) : null,
+          financingEnd: value.financingEnd ? new Date(value.financingEnd) : null,
+          condition: EquipmentCondition.IN_SERVICE,
+        },
+        update: {
+          financingContractId: contract.id,
+          acquisitionMode: value.acquisitionMode,
+          financingProvider: value.financingProvider,
+          financingStart: value.financingStart ? new Date(value.financingStart) : null,
+          financingEnd: value.financingEnd ? new Date(value.financingEnd) : null,
+          monthlyPayment: null,
+          financedAmount: null,
+          buyoutValue: null,
+        },
+      });
+    }
+    const documentIds: string[] = [
+      ...new Set<string>([originalDocumentId, ...(value.documentIds ?? []).map(String)]),
+    ];
+    await tx.document.updateMany({
+      where: { organizationId, id: { in: documentIds } },
+      data: { equipmentFinancingContractId: contract.id },
+    });
+    return contract;
+  }
+
   private normalizeCorrectionPayload(dto: SaveOcrCorrectionDto, forcedKind?: ProductKind) {
     return {
       supplierId: dto.supplierId || null,
@@ -4863,6 +5301,7 @@ export class StocksOcrService {
       warnings: dto.warnings ?? [],
       suggestedActions: dto.suggestedActions ?? [],
       aiAnalysis: dto.aiAnalysis ?? null,
+      financingContract: this.cleanFinancingContract(dto.financingContract),
       lines: (dto.lines || []).map((line) => ({
         ...line,
         productKind: forcedKind ?? line.productKind ?? ProductKind.UNSPECIFIED,

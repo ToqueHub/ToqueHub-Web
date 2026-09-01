@@ -61,6 +61,7 @@ RUN apt-get update \
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json apps/api/package.json
+COPY --from=build /app/apps/api/node_modules apps/api/node_modules
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/dist-automation apps/api/dist-automation
 COPY --from=build /app/apps/api/prisma apps/api/prisma

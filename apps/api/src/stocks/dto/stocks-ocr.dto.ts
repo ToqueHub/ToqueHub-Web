@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
@@ -258,6 +259,87 @@ export class OcrSupplierIdentifierDto {
   value!: string;
 }
 
+export class EquipmentFinancingContractDto {
+  @IsEnum(EquipmentAcquisitionMode)
+  acquisitionMode!: EquipmentAcquisitionMode;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  contractNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  financingProvider?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(600)
+  termMonths?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  installmentAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  paymentFrequency?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  monthlyPayment?: number;
+
+  @IsOptional()
+  @IsDateString()
+  financingStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  financingEnd?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  financedAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  buyoutValue?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  currency?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  sourceConfidence?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  documentIds?: string[];
+}
+
 export class SaveOcrCorrectionDto {
   @IsOptional()
   @IsString()
@@ -362,6 +444,11 @@ export class SaveOcrCorrectionDto {
   @IsOptional()
   @IsObject()
   aiAnalysis?: Record<string, unknown>;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EquipmentFinancingContractDto)
+  financingContract?: EquipmentFinancingContractDto;
 
   @IsArray()
   @ValidateNested({ each: true })

@@ -127,6 +127,11 @@ import { GuidedWelcome } from './ui/GuidedWelcome';
 import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
 import { InventoryImportWizard } from './stocks/InventoryImportWizard';
+import {
+  addMonthsToIsoDate,
+  financingDurationInMonths,
+  positiveInteger,
+} from './stocks/financing-dates';
 import { useLanguage } from '../i18n';
 import { activeLanguage, activeLocale, type AppLanguage } from '../i18n/runtime';
 import { translateText } from '../i18n/translate';
@@ -154,6 +159,7 @@ import type {
   Inventory,
   Location,
   Product,
+  EquipmentFinancingContractsResponse,
   ProductLabelOcrBatchStatus,
   ProductLabelOcrResult,
   Article,
@@ -209,6 +215,7 @@ import type {
   SystemUpdateOperation,
   SystemUpdateStatus,
   FinanceBootstrap,
+  CatererClient,
   WorkspaceOnboardingState,
   WorkspaceOnboardingStep,
 } from '../types';
@@ -646,6 +653,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [products, setProducts] = useState<Product[]>([]);
   const [articles, setArticles] = useState<ArticlesResponse | null>(null);
   const [equipmentArticles, setEquipmentArticles] = useState<ArticlesResponse | null>(null);
+  const [equipmentFinancing, setEquipmentFinancing] =
+    useState<EquipmentFinancingContractsResponse | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [equipmentStocks, setEquipmentStocks] = useState<Stock[]>([]);
@@ -674,6 +683,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [pendingClientId, setPendingClientId] = useState<string>();
   const [siteAddressModalHint, setSiteAddressModalHint] = useState(false);
   const [stocksMenuExpanded, setStocksMenuExpanded] = useState(false);
   const [rnmMenuExpanded, setRnmMenuExpanded] = useState(() => false);
@@ -727,6 +737,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showEquipmentCategoryModal, setShowEquipmentCategoryModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
+  const [showEquipmentFinancingModal, setShowEquipmentFinancingModal] = useState(false);
   const [showAddImportModal, setShowAddImportModal] = useState(false);
   const [showProductImportModal, setShowProductImportModal] = useState(false);
   const [showProductCreatorModal, setShowProductCreatorModal] = useState(false);
@@ -881,6 +892,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         nextProducts,
         nextArticles,
         nextEquipmentArticles,
+        nextEquipmentFinancing,
         nextSuppliers,
         nextStocks,
         nextEquipmentStocks,
@@ -922,6 +934,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             lowStockCount: 0,
           },
         })),
+        api.equipmentFinancingContracts(token).catch(() => null),
         api.suppliers(token),
         api.stocks(token),
         api.stocks(token, 'EQUIPMENT').catch(() => []),
@@ -958,6 +971,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setProducts(nextProducts);
       setArticles(nextArticles);
       setEquipmentArticles(nextEquipmentArticles);
+      setEquipmentFinancing(nextEquipmentFinancing);
       setSuppliers(nextSuppliers);
       setStocks(nextStocks);
       setEquipmentStocks(nextEquipmentStocks);
@@ -4524,8 +4538,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   {dashboardCockpit ? (
                     <DashboardCockpitOverview
                       cockpit={dashboardCockpit}
+                      token={token}
+                      clientsInstalled={clientsInstalled}
                       firstName={firstName}
                       onNavigate={goToTab}
+                      onOpenReceivableClient={(clientId) => {
+                        setPendingClientId(clientId);
+                        goToTab('clients-directory');
+                      }}
                       onRefresh={() => void refresh()}
                       collaborators={hrCollaborators}
                       movements={movements}
@@ -5162,7 +5182,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               )}
 
               {isClientsTab && clientsInstalled && (
-                <ClientsApp token={token} canManage={canWriteHr} />
+                <ClientsApp
+                  token={token}
+                  canManage={canWriteHr}
+                  openClientId={pendingClientId}
+                  onOpenClientHandled={() => setPendingClientId(undefined)}
+                />
               )}
 
               {isHaccpTab && haccpInstalled && (
@@ -5375,11 +5400,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   stocks={stocks}
                   movements={movements}
                   equipment={equipmentArticles}
+                  equipmentFinancing={equipmentFinancing}
                   ocrStatuses={ocrStatuses}
                   onCreateMovement={() => openMovementModal()}
                   onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('articles')}
+                  onOpenEquipmentFinancing={() => setShowEquipmentFinancingModal(true)}
                   onNavigate={goToTab}
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
                   onCreateProduct={() => setShowAddImportModal(true)}
@@ -7159,6 +7186,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onRefresh={() => void openChangelogModal()}
         />
       </Modal>
+
+      <Modal
+        isOpen={showEquipmentFinancingModal}
+        onClose={() => setShowEquipmentFinancingModal(false)}
+        title="Leasing et crédits"
+        subtitle="Contrats regroupés par financement, avec priorité aux montants comptables Fennoa."
+        size="xl"
+        bodyClassName="equipment-financing-modal-body"
+      >
+        <EquipmentFinancingContractsPanel data={equipmentFinancing} />
+      </Modal>
     </div>
   );
 }
@@ -7166,6 +7204,151 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 // =========================================================================
 // REUSABLE SUB-COMPONENTS
 // =========================================================================
+
+function EquipmentFinancingContractsPanel({
+  data,
+}: {
+  data: EquipmentFinancingContractsResponse | null;
+}) {
+  const money = (value: number | null | undefined, currency = 'EUR') =>
+    new Intl.NumberFormat(activeLocale(), {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(Number(value ?? 0));
+  const date = (value?: string | null) =>
+    value ? new Date(value).toLocaleDateString(activeLocale()) : '—';
+
+  if (!data) {
+    return (
+      <div className="cockpit-receivables-empty">
+        <WalletCards size={30} />
+        <strong>Financements indisponibles</strong>
+        <span>Actualisez la page pour recharger les contrats.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="equipment-financing-contracts-panel">
+      <div className="equipment-financing-summary-grid">
+        <div>
+          <span>Contrats</span>
+          <strong>{data.summary.contractCount}</strong>
+        </div>
+        <div>
+          <span>Contrats actifs</span>
+          <strong>{data.summary.activeContractCount}</strong>
+        </div>
+        <div>
+          <span>Mensualités</span>
+          <strong>{money(data.summary.monthlyTotal)}</strong>
+        </div>
+        <div>
+          <span>Montant financé</span>
+          <strong>{money(data.summary.financedTotal)}</strong>
+        </div>
+      </div>
+
+      {data.items.length ? (
+        <div className="equipment-financing-contract-list">
+          {data.items.map((contract) => (
+            <article className="equipment-financing-contract" key={contract.id}>
+              <header>
+                <div>
+                  <span
+                    className={`stocks-financing-source ${contract.source === 'FENNOA' ? 'fennoa' : ''}`}
+                  >
+                    {contract.source === 'FENNOA' ? 'Source Fennoa prioritaire' : 'Source ToqueHub'}
+                  </span>
+                  <h4>
+                    {contract.acquisitionMode === 'LEASING' ? 'Leasing' : 'Crédit'}
+                    {contract.contractNumber ? ` · ${contract.contractNumber}` : ''}
+                  </h4>
+                  <p>
+                    {contract.financingProvider ||
+                      contract.supplier?.name ||
+                      'Organisme à compléter'}
+                  </p>
+                </div>
+                <div className="equipment-financing-contract-main-amount">
+                  <strong>{money(contract.monthlyPayment, contract.currency)}</strong>
+                  <span>par mois</span>
+                </div>
+              </header>
+
+              <div className="equipment-financing-contract-facts">
+                <div>
+                  <span>Début</span>
+                  <strong>{date(contract.financingStart)}</strong>
+                </div>
+                <div>
+                  <span>Échéance</span>
+                  <strong>{date(contract.financingEnd)}</strong>
+                </div>
+                <div>
+                  <span>Durée</span>
+                  <strong>{contract.termMonths ? `${contract.termMonths} mois` : '—'}</strong>
+                </div>
+                <div>
+                  <span>Montant financé</span>
+                  <strong>{money(contract.financedAmount, contract.currency)}</strong>
+                </div>
+                <div>
+                  <span>Valeur de rachat</span>
+                  <strong>{money(contract.buyoutValue, contract.currency)}</strong>
+                </div>
+              </div>
+
+              {contract.fennoa ? (
+                <div className="equipment-financing-fennoa-proof">
+                  <Landmark size={16} />
+                  <span>
+                    Écriture Fennoa {contract.fennoa.accountCode} ·{' '}
+                    {date(contract.fennoa.entryDate)} ·{' '}
+                    {money(contract.fennoa.bookedAmount, contract.currency)}
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="equipment-financing-assets">
+                <span>Matériel rattaché</span>
+                <div>
+                  {contract.equipment.length ? (
+                    contract.equipment.map((item) => (
+                      <span className="equipment-financing-asset-chip" key={item.id}>
+                        <Boxes size={13} /> {item.name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="muted">Aucun matériel rapproché.</span>
+                  )}
+                </div>
+              </div>
+
+              <footer>
+                <span>
+                  {contract.documents.length} document{contract.documents.length > 1 ? 's' : ''}
+                </span>
+                {contract.documents.map((document) => (
+                  <span className="equipment-financing-asset-chip" key={document.id}>
+                    <FileText size={13} /> {document.originalName}
+                  </span>
+                ))}
+              </footer>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="cockpit-receivables-empty">
+          <CheckCircle2 size={30} />
+          <strong>Aucun financement enregistré</strong>
+          <span>Les contrats importés avec les documents matériel apparaîtront ici.</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatInstanceBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 o';
@@ -8450,10 +8633,24 @@ function ModularDashboardOverview({
   );
 }
 
+type DashboardReceivable = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  invoiceNumber: string;
+  amountDue: number;
+  currencyCode: string;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+};
+
 function DashboardCockpitOverview({
   cockpit,
+  token,
+  clientsInstalled,
   firstName,
   onNavigate,
+  onOpenReceivableClient,
   onRefresh,
   collaborators = [],
   movements = [],
@@ -8461,14 +8658,103 @@ function DashboardCockpitOverview({
   onOpenSiteAddress,
 }: {
   cockpit: NonNullable<ModularDashboard['cockpit']>;
+  token: string;
+  clientsInstalled: boolean;
   firstName: string;
   onNavigate: (tab: ActiveTab) => void;
+  onOpenReceivableClient: (clientId: string) => void;
   onRefresh: () => void;
   collaborators?: HrCollaborator[];
   movements?: StockMovement[];
   loading?: boolean;
   onOpenSiteAddress: () => void;
 }) {
+  const [receivablesOpen, setReceivablesOpen] = useState(false);
+  const [receivableClients, setReceivableClients] = useState<CatererClient[] | null>(null);
+  const [receivablesError, setReceivablesError] = useState<string>();
+
+  useEffect(() => {
+    if (!clientsInstalled) {
+      setReceivableClients(null);
+      setReceivablesError(undefined);
+      return undefined;
+    }
+    let active = true;
+    api
+      .catererClients(token)
+      .then((clients) => {
+        if (!active) return;
+        setReceivableClients(clients);
+        setReceivablesError(undefined);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setReceivableClients([]);
+        setReceivablesError(
+          error instanceof Error
+            ? error.message
+            : 'Chargement des factures à encaisser impossible.',
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [clientsInstalled, token]);
+
+  const receivables = useMemo<DashboardReceivable[]>(
+    () =>
+      (receivableClients ?? [])
+        .filter((client) => client.accountTypeId !== 2)
+        .flatMap((client) =>
+          (client.invoices ?? [])
+            .filter((invoice) => Number(invoice.totalDue) > 0.005)
+            .map((invoice) => ({
+              id: invoice.id,
+              clientId: client.id,
+              clientName: client.name,
+              invoiceNumber: invoice.invoiceNumber || `#${invoice.fennoaId}`,
+              amountDue: Number(invoice.totalDue),
+              currencyCode: invoice.currencyCode || 'EUR',
+              invoiceDate: invoice.invoiceDate,
+              dueDate: invoice.dueDate,
+            })),
+        )
+        .sort((left, right) => {
+          const leftDate = left.dueDate
+            ? new Date(left.dueDate).getTime()
+            : Number.MAX_SAFE_INTEGER;
+          const rightDate = right.dueDate
+            ? new Date(right.dueDate).getTime()
+            : Number.MAX_SAFE_INTEGER;
+          return leftDate - rightDate;
+        }),
+    [receivableClients],
+  );
+  const receivableClientCount = new Set(receivables.map((invoice) => invoice.clientId)).size;
+  const receivablesTotal = receivables.reduce((sum, invoice) => sum + invoice.amountDue, 0);
+  const receivablesCard: NonNullable<ModularDashboard['cockpit']>['overview'][number] = {
+    id: 'clients.receivables',
+    module: 'clients',
+    title: 'À encaisser',
+    value:
+      receivableClients === null
+        ? '…'
+        : new Intl.NumberFormat(activeLocale(), {
+            style: 'currency',
+            currency: 'EUR',
+            maximumFractionDigits: 2,
+          }).format(receivablesTotal),
+    description: receivablesError
+      ? activeLanguage() === 'en'
+        ? 'Data temporarily unavailable'
+        : 'Données momentanément indisponibles'
+      : activeLanguage() === 'en'
+        ? `${receivables.length} invoice${receivables.length === 1 ? '' : 's'} · ${receivableClientCount} client${receivableClientCount === 1 ? '' : 's'}`
+        : `${receivables.length} facture${receivables.length > 1 ? 's' : ''} · ${receivableClientCount} client${receivableClientCount > 1 ? 's' : ''}`,
+    href: '/clients',
+    tone: receivables.length ? 'amber' : 'emerald',
+  };
+
   if (loading) return <DashboardCockpitLoading />;
   const refreshedAt = new Date(cockpit.generatedAt).toLocaleTimeString(activeLocale(), {
     hour: '2-digit',
@@ -8642,6 +8928,16 @@ function DashboardCockpitOverview({
           <h2>Le pilotage du jour</h2>
         </div>
         <div className="cockpit-overview-grid">
+          {clientsInstalled ? (
+            <CockpitCard
+              card={receivablesCard}
+              onNavigate={onNavigate}
+              onOpen={() => setReceivablesOpen(true)}
+              sectionType="overview"
+              collaborators={collaborators}
+              movements={movements}
+            />
+          ) : null}
           {cockpit.overview.map((card) => (
             <CockpitCard
               key={card.id}
@@ -8728,6 +9024,99 @@ function DashboardCockpitOverview({
         <ChefHat size={26} />
       </button>
       */}
+
+      <Modal
+        isOpen={receivablesOpen}
+        onClose={() => setReceivablesOpen(false)}
+        title="Factures à encaisser"
+        subtitle={`${
+          activeLanguage() === 'en'
+            ? `${receivables.length} outstanding invoice${receivables.length === 1 ? '' : 's'}`
+            : `${receivables.length} facture${receivables.length > 1 ? 's' : ''} en attente`
+        } · ${new Intl.NumberFormat(activeLocale(), {
+          style: 'currency',
+          currency: 'EUR',
+          maximumFractionDigits: 2,
+        }).format(receivablesTotal)}`}
+        size="lg"
+        bodyClassName="cockpit-receivables-modal-body"
+      >
+        {receivablesError ? (
+          <div className="alert-modern error">
+            <AlertCircle size={17} /> {receivablesError}
+          </div>
+        ) : receivableClients === null ? (
+          <div className="dashboard-loading">Chargement des encaissements…</div>
+        ) : receivables.length ? (
+          <div className="cockpit-receivables-table-wrap">
+            <table className="cockpit-receivables-table">
+              <thead>
+                <tr>
+                  <th>Nom du client</th>
+                  <th>Numéro de facture</th>
+                  <th>À encaisser</th>
+                  <th>Date</th>
+                  <th>Échéance</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {receivables.map((invoice) => {
+                  const isOverdue = Boolean(
+                    invoice.dueDate && new Date(invoice.dueDate).getTime() < Date.now(),
+                  );
+                  return (
+                    <tr key={invoice.id}>
+                      <td>
+                        <strong>{invoice.clientName}</strong>
+                      </td>
+                      <td>{invoice.invoiceNumber}</td>
+                      <td className="cockpit-receivable-amount">
+                        {new Intl.NumberFormat(activeLocale(), {
+                          style: 'currency',
+                          currency: invoice.currencyCode,
+                          maximumFractionDigits: 2,
+                        }).format(invoice.amountDue)}
+                      </td>
+                      <td>
+                        {invoice.invoiceDate
+                          ? new Date(invoice.invoiceDate).toLocaleDateString(activeLocale())
+                          : '—'}
+                      </td>
+                      <td className={isOverdue ? 'overdue' : undefined}>
+                        {invoice.dueDate
+                          ? new Date(invoice.dueDate).toLocaleDateString(activeLocale())
+                          : '—'}
+                        {isOverdue ? <small>Échue</small> : null}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="cockpit-receivable-open"
+                          title={`Ouvrir la fiche de ${invoice.clientName}`}
+                          aria-label={`Ouvrir la fiche de ${invoice.clientName}`}
+                          onClick={() => {
+                            setReceivablesOpen(false);
+                            onOpenReceivableClient(invoice.clientId);
+                          }}
+                        >
+                          <Eye size={17} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="cockpit-receivables-empty">
+            <CheckCircle2 size={30} />
+            <strong>Tout est encaissé</strong>
+            <span>Aucune facture client ne présente de reste à payer.</span>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -8814,12 +9203,14 @@ function DashboardCockpitLoading() {
 function CockpitCard({
   card,
   onNavigate,
+  onOpen,
   sectionType,
   collaborators = [],
   movements = [],
 }: {
   card: NonNullable<ModularDashboard['cockpit']>['overview'][number];
   onNavigate: (tab: ActiveTab) => void;
+  onOpen?: () => void;
   sectionType: 'overview' | 'activity' | 'insights';
   collaborators?: HrCollaborator[];
   movements?: StockMovement[];
@@ -8838,6 +9229,7 @@ function CockpitCard({
     if (title.includes('prochain événement') || title.includes('prochain evenement'))
       return <CalendarDays size={20} />;
     if (title.includes('effectif') || title.includes('collaborat')) return <UsersRound size={20} />;
+    if (title.includes('encaisser') || title.includes('facture')) return <WalletCards size={20} />;
     if (title.includes('stock') || title.includes('mouvement')) return <Package size={20} />;
     if (title.includes('fiche') || title.includes('recette') || title.includes('technique')) {
       if (sectionType === 'activity') return <Edit3 size={20} />;
@@ -8855,6 +9247,7 @@ function CockpitCard({
     if (title.includes('prochain événement') || title.includes('prochain evenement'))
       return 'violet';
     if (title.includes('effectif') || title.includes('collaborat')) return 'teal';
+    if (title.includes('encaisser') || title.includes('facture')) return card.tone || 'amber';
     if (title.includes('stock') || title.includes('mouvement')) return 'emerald';
     if (title.includes('fiche') || title.includes('recette') || title.includes('technique'))
       return 'amber';
@@ -9065,8 +9458,8 @@ function CockpitCard({
   return (
     <button
       className="cockpit-card-modern"
-      onClick={() => target && onNavigate(target)}
-      disabled={!target}
+      onClick={() => (onOpen ? onOpen() : target && onNavigate(target))}
+      disabled={!onOpen && !target}
     >
       <div className="cockpit-card-header">
         <div className={`cockpit-card-icon-wrapper tone-${tone}`}>{getCardIcon()}</div>
@@ -9089,6 +9482,7 @@ function translateCockpitText(value: string) {
   if (activeLanguage() !== 'en' || !value.trim()) return value;
 
   const translatedDynamicText = value
+    .replace(/^À encaisser$/u, 'Outstanding')
     .replace(/^CA du jour ·/u, "Today's revenue ·")
     .replace(/· en attente des ventes du jour$/u, "· awaiting today's sales")
     .replace(/^TTC ·/u, 'Incl. tax ·')
@@ -13572,12 +13966,14 @@ function StocksDashboardPage({
   stocks,
   movements,
   equipment,
+  equipmentFinancing,
   ocrStatuses,
   onCreateMovement,
   onImportOcr,
   onOpenAssistant,
   onOpenExtraction,
   onOpenStocks,
+  onOpenEquipmentFinancing,
   onNavigate,
   onStartOnboarding,
   onCreateProduct,
@@ -13589,12 +13985,14 @@ function StocksDashboardPage({
   stocks: Stock[];
   movements: StockMovement[];
   equipment: ArticlesResponse | null;
+  equipmentFinancing: EquipmentFinancingContractsResponse | null;
   ocrStatuses: StocksOcrStatus[];
   onCreateMovement: () => void;
   onImportOcr: () => void;
   onOpenAssistant: () => void;
   onOpenExtraction: (extractionId: string) => Promise<void>;
   onOpenStocks: () => void;
+  onOpenEquipmentFinancing: () => void;
   onNavigate: (tab: ActiveTab) => void;
   onStartOnboarding: () => void;
   onCreateProduct: () => void;
@@ -13651,6 +14049,10 @@ function StocksDashboardPage({
     (sum, item) => sum + numeric(item.product.equipmentProfile?.monthlyPayment),
     0,
   );
+  const activeFinancingContractCount =
+    equipmentFinancing?.summary.activeContractCount ?? activeFinancedEquipment.length;
+  const totalEquipmentMonthlyPayments =
+    equipmentFinancing?.summary.monthlyTotal ?? equipmentMonthlyPayments;
   const leasingDeadlines = equipmentFinancialItems
     .flatMap((item) => {
       const profile = item.product.equipmentProfile;
@@ -13753,13 +14155,15 @@ function StocksDashboardPage({
               delay={3}
             />
           ) : null}
-          {activeFinancedEquipment.length > 0 ? (
+          {activeFinancingContractCount > 0 ? (
             <Metric
               icon={<CalendarCheck size={20} />}
-              value={`${equipmentMonthlyPayments.toFixed(2)} €`}
+              value={`${totalEquipmentMonthlyPayments.toFixed(2)} €`}
               label="Mensualités actives"
               tone="purple"
               delay={4}
+              onClick={onOpenEquipmentFinancing}
+              title="Voir le détail des contrats de leasing et de crédit"
             />
           ) : null}
         </div>
@@ -13793,6 +14197,58 @@ function StocksDashboardPage({
                     </strong>
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {equipmentFinancing?.items.length ? (
+          <div className="stocks-financing-section card-modern">
+            <div className="stocks-financing-section-heading">
+              <div>
+                <span className="card-title">
+                  <WalletCards size={18} /> Leasing et crédits
+                </span>
+                <span className="section-tagline">
+                  {equipmentFinancing.summary.activeContractCount} contrat
+                  {equipmentFinancing.summary.activeContractCount > 1 ? 's' : ''} actif
+                  {equipmentFinancing.summary.activeContractCount > 1 ? 's' : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onOpenEquipmentFinancing}
+              >
+                Voir tous les contrats
+              </button>
+            </div>
+            <div className="stocks-financing-contract-preview-grid">
+              {equipmentFinancing.items.slice(0, 3).map((contract) => (
+                <button
+                  type="button"
+                  className="stocks-financing-contract-preview"
+                  key={contract.id}
+                  onClick={onOpenEquipmentFinancing}
+                >
+                  <div>
+                    <strong>
+                      {contract.contractNumber || contract.financingProvider || 'Financement'}
+                    </strong>
+                    <small>
+                      {contract.equipment.map((item) => item.name).join(', ') ||
+                        'Matériel à rapprocher'}
+                    </small>
+                  </div>
+                  <div className="stocks-financing-contract-preview-amount">
+                    <strong>{contract.monthlyPayment.toFixed(2)} €</strong>
+                    <span>par mois</span>
+                  </div>
+                  <span
+                    className={`stocks-financing-source ${contract.source === 'FENNOA' ? 'fennoa' : ''}`}
+                  >
+                    {contract.source === 'FENNOA' ? 'Source Fennoa' : 'Source ToqueHub'}
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -15445,16 +15901,30 @@ function Metric({
   label,
   tone,
   delay = 0,
+  onClick,
+  title,
 }: {
   icon: ReactNode;
   value: ReactNode;
   label: string;
   tone: string;
   delay?: number;
+  onClick?: () => void;
+  title?: string;
 }) {
   return (
     <motion.div
       className={`metric-card-modern tone-${tone}`}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      title={title}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (onClick && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.38, delay: delay * 0.05, ease: 'easeOut' }}
@@ -15462,7 +15932,6 @@ function Metric({
     >
       <div className="metric-header">
         <div className={`metric-icon-wrapper-modern tone-${tone}`}>{icon}</div>
-        <span className="metric-badge-trend">Mise à jour</span>
       </div>
       <div className="metric-body-modern">
         <span className="metric-value-modern">{value}</span>
@@ -25847,6 +26316,7 @@ function StocksOcrReviewPanel({
   const [creatingAllProducts, setCreatingAllProducts] = useState(false);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [reanalyzingAi, setReanalyzingAi] = useState(false);
+  const [uploadingFinancingDocuments, setUploadingFinancingDocuments] = useState(false);
   const [lineFilter, setLineFilter] = useState<
     'all' | 'review' | 'ready' | 'missing' | 'price' | 'ignored'
   >('all');
@@ -25961,6 +26431,29 @@ function StocksOcrReviewPanel({
       ...current,
       lines: current.lines.map((line, i) => (i === index ? { ...line, ...patch } : line)),
     }));
+  }
+
+  async function importFinancingDocuments(files: File[]) {
+    if (!files.length) return;
+    setUploadingFinancingDocuments(true);
+    setError(undefined);
+    try {
+      const updated = await api.uploadStocksOcrFinancingDocuments(token, extraction.id, files);
+      setDraft(
+        enrichOcrProductMatches(
+          resolveOcrReceptionUnits(normalizeDraft(updated.data), units),
+          products,
+        ),
+      );
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : 'Le document de financement n’a pas pu être analysé.',
+      );
+    } finally {
+      setUploadingFinancingDocuments(false);
+    }
   }
 
   function removeLine(index: number) {
@@ -26289,6 +26782,27 @@ function StocksOcrReviewPanel({
               </p>
             </div>
             <div className="ocr-dossier-actions">
+              {isEquipmentImport ? (
+                <label
+                  className={`btn btn-secondary btn-sm${uploadingFinancingDocuments ? ' disabled' : ''}`}
+                  aria-disabled={uploadingFinancingDocuments}
+                >
+                  <UploadCloud size={13} />
+                  {uploadingFinancingDocuments ? 'Import…' : 'Importer'}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    multiple
+                    hidden
+                    disabled={uploadingFinancingDocuments}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = '';
+                      void importFinancingDocuments(files);
+                    }}
+                  />
+                </label>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -26335,6 +26849,157 @@ function StocksOcrReviewPanel({
               </strong>
             </div>
           </div>
+
+          {isEquipmentImport && draft.financingContract ? (
+            <div className="ocr-financing-contract-card">
+              <div className="ocr-financing-contract-heading">
+                <div>
+                  <span className="ocr-dossier-kicker">Financement rattaché au dossier</span>
+                  <h4>
+                    {draft.financingContract.acquisitionMode === 'LEASING' ? 'Leasing' : 'Crédit'}
+                    {draft.financingContract.contractNumber
+                      ? ` · ${draft.financingContract.contractNumber}`
+                      : ''}
+                  </h4>
+                </div>
+                <span className="ocr-financing-documents-count">
+                  <FileText size={13} /> {draft.financingContract.documentIds?.length ?? 0} document
+                  {(draft.financingContract.documentIds?.length ?? 0) > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="ocr-financing-contract-grid">
+                <label>
+                  <span>Numéro de contrat</span>
+                  <input
+                    value={draft.financingContract.contractNumber || ''}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              contractNumber: event.target.value || null,
+                            }
+                          : null,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Financeur</span>
+                  <input
+                    value={draft.financingContract.financingProvider || ''}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              financingProvider: event.target.value || null,
+                            }
+                          : null,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Durée du contrat</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={draft.financingContract.termMonths ?? ''}
+                    onChange={(event) => {
+                      const termMonths = positiveInteger(event.target.value);
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              termMonths,
+                              financingEnd: addMonthsToIsoDate(
+                                current.financingContract.financingStart,
+                                termMonths,
+                              ),
+                            }
+                          : null,
+                      }));
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>Date de début</span>
+                  <input
+                    type="date"
+                    value={dateInputValue(draft.financingContract.financingStart)}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              financingStart: event.target.value || null,
+                              financingEnd: addMonthsToIsoDate(
+                                event.target.value,
+                                current.financingContract.termMonths,
+                              ),
+                            }
+                          : null,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Date de fin calculée</span>
+                  <input
+                    type="date"
+                    value={dateInputValue(draft.financingContract.financingEnd)}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              financingEnd: event.target.value || null,
+                              termMonths: financingDurationInMonths(
+                                current.financingContract.financingStart,
+                                event.target.value,
+                              ),
+                            }
+                          : null,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Mensualité</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draft.financingContract.monthlyPayment ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        financingContract: current.financingContract
+                          ? {
+                              ...current.financingContract,
+                              monthlyPayment: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            }
+                          : null,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <p className="ocr-financing-contract-note">
+                Le contrat et la facture restent liés au même dossier matériel. Les mensualités ne
+                sont pas dupliquées sur chaque machine.
+              </p>
+            </div>
+          ) : null}
 
           {aiWarnings.length || aiActions.length ? (
             <div className="ocr-dossier-alerts">
@@ -26868,12 +27533,21 @@ function StocksOcrReviewPanel({
                             Acquisition
                             <select
                               value={line.acquisitionMode || 'CASH'}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const acquisitionMode = e.target
+                                  .value as StocksOcrLine['acquisitionMode'];
                                 updateLine(index, {
-                                  acquisitionMode: e.target
-                                    .value as StocksOcrLine['acquisitionMode'],
-                                })
-                              }
+                                  acquisitionMode,
+                                  financingDurationMonths:
+                                    acquisitionMode && acquisitionMode !== 'CASH'
+                                      ? (line.financingDurationMonths ??
+                                        financingDurationInMonths(
+                                          line.financingStart,
+                                          line.financingEnd,
+                                        ))
+                                      : null,
+                                });
+                              }}
                             >
                               <option value="CASH">Achat direct</option>
                               <option value="CREDIT">Crédit</option>
@@ -26942,9 +27616,36 @@ function StocksOcrReviewPanel({
                                 <input
                                   type="date"
                                   value={dateInputValue(line.financingStart)}
-                                  onChange={(e) =>
-                                    updateLine(index, { financingStart: e.target.value || null })
-                                  }
+                                  onChange={(e) => {
+                                    const financingStart = e.target.value || null;
+                                    updateLine(index, {
+                                      financingStart,
+                                      financingEnd: addMonthsToIsoDate(
+                                        financingStart,
+                                        line.financingDurationMonths,
+                                      ),
+                                    });
+                                  }}
+                                />
+                              </label>
+                              <label>
+                                Durée du contrat (mois)
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={line.financingDurationMonths ?? ''}
+                                  onChange={(e) => {
+                                    const financingDurationMonths = positiveInteger(e.target.value);
+                                    updateLine(index, {
+                                      financingDurationMonths,
+                                      financingEnd: addMonthsToIsoDate(
+                                        line.financingStart,
+                                        financingDurationMonths,
+                                      ),
+                                    });
+                                  }}
+                                  placeholder="Ex. 36"
                                 />
                               </label>
                               <label>
@@ -26952,9 +27653,16 @@ function StocksOcrReviewPanel({
                                 <input
                                   type="date"
                                   value={dateInputValue(line.financingEnd)}
-                                  onChange={(e) =>
-                                    updateLine(index, { financingEnd: e.target.value || null })
-                                  }
+                                  onChange={(e) => {
+                                    const financingEnd = e.target.value || null;
+                                    updateLine(index, {
+                                      financingEnd,
+                                      financingDurationMonths: financingDurationInMonths(
+                                        line.financingStart,
+                                        financingEnd,
+                                      ),
+                                    });
+                                  }}
                                 />
                               </label>
                               <label>

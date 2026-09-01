@@ -412,6 +412,16 @@ const REGISTRY: RegistryWidget[] = [
     defaultOrder: 90,
     size: 'md',
   },
+  {
+    id: 'finance.monthly-financing',
+    appId: 'finance',
+    moduleLabel: 'Finance',
+    title: 'Leasing et crédits',
+    description: 'Mensualités actives du matériel financé.',
+    zone: 'kpi',
+    defaultOrder: 91,
+    size: 'md',
+  },
 ];
 
 @Injectable()
@@ -486,6 +496,7 @@ export class DashboardService {
       haccpToday,
       todayRevenues,
       nextCatererEvent,
+      equipmentFinancing,
     ] = await Promise.all([
       has('stocks') ? this.stockValue(organizationId) : null,
       has('stocks') ? this.stockAlerts(organizationId) : null,
@@ -504,6 +515,7 @@ export class DashboardService {
       has('haccp') ? this.haccpToday(organizationId) : null,
       has('finance') ? this.financeTodayRevenues(organizationId) : null,
       has('menus') ? this.nextCatererEvent(organizationId) : null,
+      has('finance') ? this.equipmentFinancingSummary(organizationId) : null,
     ]);
     const card = (
       id: string,
@@ -662,6 +674,19 @@ export class DashboardService {
               `${stockValue.products} produits · ${stockValue.suppliers} fournisseurs`,
               '/stocks',
               'emerald',
+            ),
+          ]
+        : []),
+      ...(equipmentFinancing
+        ? [
+            card(
+              'finance.monthly-financing',
+              'finance',
+              'Leasing et crédits',
+              `${equipmentFinancing.monthlyTotal.toFixed(2)} €`,
+              `${equipmentFinancing.activeContractCount} contrat${equipmentFinancing.activeContractCount > 1 ? 's' : ''} actif${equipmentFinancing.activeContractCount > 1 ? 's' : ''} · par mois`,
+              '/stocks',
+              'violet',
             ),
           ]
         : []),
@@ -1008,6 +1033,8 @@ export class DashboardService {
         };
       case 'core.users':
         return this.coreUsers(organizationId);
+      case 'finance.monthly-financing':
+        return this.equipmentFinancingSummary(organizationId);
       case 'core.recent-activity':
         return this.recentActivity(organizationId);
       case 'stocks.stock-value':
@@ -1642,6 +1669,36 @@ export class DashboardService {
       orderBy: [{ service: 'asc' }, { date: 'asc' }],
       take: 8,
     });
+  }
+
+  private async equipmentFinancingSummary(organizationId: string) {
+    const now = new Date();
+    const [contracts, legacyProfiles] = await Promise.all([
+      this.prisma.equipmentFinancingContract.findMany({
+        where: {
+          organizationId,
+          OR: [{ financingEnd: null }, { financingEnd: { gte: now } }],
+        },
+        select: { monthlyPayment: true, acquisitionMode: true },
+      }),
+      this.prisma.equipmentProfile.findMany({
+        where: {
+          organizationId,
+          financingContractId: null,
+          acquisitionMode: { not: 'CASH' },
+          OR: [{ financingEnd: null }, { financingEnd: { gte: now } }],
+        },
+        select: { monthlyPayment: true },
+      }),
+    ]);
+    const monthlyTotal = [...contracts, ...legacyProfiles].reduce(
+      (sum, item) => sum + Number(item.monthlyPayment ?? 0),
+      0,
+    );
+    return {
+      monthlyTotal: Math.round((monthlyTotal + Number.EPSILON) * 100) / 100,
+      activeContractCount: contracts.length + legacyProfiles.length,
+    };
   }
 
   private async haccpScore(organizationId: string) {

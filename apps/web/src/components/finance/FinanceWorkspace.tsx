@@ -2382,7 +2382,6 @@ function ProviderSummaryCard({
           <ProviderMark provider={provider} />
           <h3>{PROVIDER_LABELS[provider]}</h3>
         </div>
-        <StatusBadge status={providerStatus(data, provider)} />
       </div>
       <p className="finance-connector-description">{PROVIDER_DESCRIPTIONS[provider]}</p>
       <div className="finance-connector-last-sync">

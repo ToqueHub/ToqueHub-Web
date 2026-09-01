@@ -1754,6 +1754,7 @@ export type EquipmentCondition = 'IN_SERVICE' | 'TO_MONITOR' | 'OUT_OF_SERVICE';
 
 export interface EquipmentProfile {
   id?: string;
+  financingContractId?: string | null;
   brand?: string | null;
   model?: string | null;
   purchaseUrl?: string | null;
@@ -1769,6 +1770,74 @@ export interface EquipmentProfile {
   financedAmount?: string | number | null;
   buyoutValue?: string | number | null;
   notes?: string | null;
+}
+
+export interface EquipmentFinancingContractDraft {
+  acquisitionMode: Exclude<EquipmentAcquisitionMode, 'CASH'>;
+  contractNumber?: string | null;
+  financingProvider?: string | null;
+  termMonths?: number | string | null;
+  installmentAmount?: number | string | null;
+  paymentFrequency?: 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'ANNUAL' | 'OTHER' | string | null;
+  monthlyPayment?: number | string | null;
+  financingStart?: string | null;
+  financingEnd?: string | null;
+  financedAmount?: number | string | null;
+  buyoutValue?: number | string | null;
+  currency?: string | null;
+  sourceConfidence?: number | string | null;
+  notes?: string | null;
+  documentIds?: string[];
+}
+
+export interface EquipmentFinancingContract {
+  id: string;
+  acquisitionMode: Exclude<EquipmentAcquisitionMode, 'CASH'>;
+  contractNumber?: string | null;
+  financingProvider?: string | null;
+  supplier?: { id: string; name: string } | null;
+  termMonths?: number | null;
+  installmentAmount?: number | null;
+  paymentFrequency?: string | null;
+  monthlyPayment: number;
+  registeredMonthlyPayment?: number;
+  financingStart?: string | null;
+  financingEnd?: string | null;
+  financedAmount?: number | null;
+  buyoutValue?: number | null;
+  currency: string;
+  source: 'FENNOA' | 'TOQUEHUB' | string;
+  sourceConfidence?: number | null;
+  fennoa?: {
+    monthlyPayment: number;
+    bookedAmount: number;
+    entryDate: string;
+    description?: string | null;
+    accountCode: string;
+    sourceUrl?: string | null;
+    paymentFrequency: string;
+  } | null;
+  notes?: string | null;
+  legacy?: boolean;
+  equipment: Array<{ id: string; name: string; sku?: string | null }>;
+  documents: Array<{
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    createdAt: string;
+  }>;
+}
+
+export interface EquipmentFinancingContractsResponse {
+  items: EquipmentFinancingContract[];
+  summary: {
+    contractCount: number;
+    activeContractCount: number;
+    monthlyTotal: number;
+    financedTotal: number;
+    fennoaReconciledCount: number;
+  };
 }
 
 export interface EquipmentDocument {
@@ -3392,6 +3461,7 @@ export interface MenuAvailabilityItem {
     referencePortions: number;
     total: MenuNutritionValues;
     perPortion: MenuNutritionValues;
+    per100Grams?: MenuNutritionValues;
     coverage?: Record<keyof MenuNutritionValues, number>;
     coveragePercent?: number;
     missingProductsByField?: Record<keyof MenuNutritionValues, string[]>;
@@ -4106,6 +4176,8 @@ export interface StocksOcrLine {
   acquisitionMode?: EquipmentAcquisitionMode | null;
   financingProvider?: string | null;
   financingStart?: string | null;
+  /** UI-only helper used to calculate financingEnd before the OCR line is saved. */
+  financingDurationMonths?: number | string | null;
   financingEnd?: string | null;
   monthlyPayment?: number | string | null;
   financedAmount?: number | string | null;
@@ -4193,6 +4265,7 @@ export interface StocksOcrReceptionData {
       status?: string | null;
     };
   } | null;
+  financingContract?: EquipmentFinancingContractDraft | null;
   document?: {
     invoiceNumber?: string | null;
     deliveryNoteNumber?: string | null;
