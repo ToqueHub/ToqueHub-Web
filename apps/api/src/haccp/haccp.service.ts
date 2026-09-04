@@ -1189,7 +1189,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createCleaningZone(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpCleaningZone.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, description: dto.description, surfaces: { create: (dto.surfaces ?? []).map((surface) => ({ organizationId, createdById: actor.id, ...this.syncData(surface), name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true })) } }, include: { surfaces: true } });
+    const item = await this.prisma.haccpCleaningZone.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, description: dto.description, surfaces: { create: (dto.surfaces ?? []).map((surface) => ({ organizationId, createdById: actor.id, ...this.syncData(surface), name: surface.name, frequency: surface.frequency, notes: surface.notes?.trim() || null, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true })) } }, include: { surfaces: true } });
     return this.ok(this.serializeCleaningZone(item));
   }
 
@@ -1203,9 +1203,9 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
         const surfaceId = surface.id || surface._id;
         if (surfaceId && zone.surfaces.some((existing) => existing.id === surfaceId)) {
           seen.add(surfaceId);
-          await tx.haccpCleaningSurface.update({ where: { id: surfaceId }, data: { name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : undefined, isActive: surface.isActive ?? true, ...this.syncUpdateData(surface) } });
+          await tx.haccpCleaningSurface.update({ where: { id: surfaceId }, data: { name: surface.name, frequency: surface.frequency, notes: surface.notes?.trim() || null, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : undefined, isActive: surface.isActive ?? true, ...this.syncUpdateData(surface) } });
         } else {
-          await tx.haccpCleaningSurface.create({ data: { organizationId, createdById: actor.id, ...this.syncData(surface), zoneId: id, name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true } });
+          await tx.haccpCleaningSurface.create({ data: { organizationId, createdById: actor.id, ...this.syncData(surface), zoneId: id, name: surface.name, frequency: surface.frequency, notes: surface.notes?.trim() || null, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true } });
         }
       }
       const missing = zone.surfaces.filter((surface) => !seen.has(surface.id) && !incoming.some((item) => (item.id || item._id) === surface.id)).map((surface) => surface.id);
@@ -1322,20 +1322,47 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
 
   async todayCleaningSurfaces(organizationId: string) {
     const zones = await this.prisma.haccpCleaningZone.findMany({ where: { organizationId, isActive: true, deletedAt: null }, include: { surfaces: { where: { isActive: true, deletedAt: null } } } });
-    const surfaces = zones.flatMap((zone) => zone.surfaces.filter((surface) => this.shouldCleanToday(surface)).map((surface) => ({ surfaceId: surface.id, surfaceName: surface.name, zoneId: zone.id, zoneName: zone.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned })));
+    const surfaces = zones.flatMap((zone) => zone.surfaces.filter((surface) => this.shouldCleanToday(surface)).map((surface) => ({ surfaceId: surface.id, surfaceName: surface.name, zoneId: zone.id, zoneName: zone.name, frequency: surface.frequency, notes: surface.notes, lastCleaned: surface.lastCleaned })));
     return this.ok(surfaces);
   }
 
   private shouldCleanToday(surface: any) {
     if (!surface.lastCleaned) return true;
-    const frequency = String(surface.frequency);
-    const [, countPart, period] = frequency.match(/^(\d+)x_(daily|weekly|monthly)$/) ?? [];
-    const normalized = period || frequency;
-    if (normalized === 'daily') return true;
-    const days = Math.floor((Date.now() - new Date(surface.lastCleaned).getTime()) / 86400000);
-    if (normalized === 'weekly') return days >= 7;
-    if (normalized === 'monthly') return days >= 30;
-    return countPart ? true : false;
+    const frequency = String(surface.frequency || '').trim().toLowerCase();
+    const lastCleaned = new Date(surface.lastCleaned);
+    if (Number.isNaN(lastCleaned.getTime())) return true;
+
+    const legacy = frequency.match(/^(\d+)x_(daily|weekly|monthly|yearly|annual)$/);
+    if (legacy) {
+      const occurrences = Math.max(1, Number(legacy[1]));
+      const periodMs = {
+        daily: 86400000,
+        weekly: 7 * 86400000,
+        monthly: 30 * 86400000,
+        yearly: 365 * 86400000,
+        annual: 365 * 86400000,
+      }[legacy[2]] ?? 86400000;
+      return Date.now() - lastCleaned.getTime() >= periodMs / occurrences;
+    }
+
+    const custom = frequency.match(/^every:(\d+):(day|week|month|year)s?$/);
+    const amount = custom ? Math.max(1, Number(custom[1])) : 1;
+    const unit = custom?.[2] ?? ({
+      daily: 'day',
+      weekly: 'week',
+      monthly: 'month',
+      yearly: 'year',
+      annual: 'year',
+    } as Record<string, string>)[frequency];
+    if (!unit) return false;
+
+    const nextDue = new Date(lastCleaned);
+    if (unit === 'day') nextDue.setDate(nextDue.getDate() + amount);
+    if (unit === 'week') nextDue.setDate(nextDue.getDate() + amount * 7);
+    if (unit === 'month') nextDue.setMonth(nextDue.getMonth() + amount);
+    if (unit === 'year') nextDue.setFullYear(nextDue.getFullYear() + amount);
+    nextDue.setHours(0, 0, 0, 0);
+    return Date.now() >= nextDue.getTime();
   }
 
   async listProductionSessions(organizationId: string, q: any = {}) {

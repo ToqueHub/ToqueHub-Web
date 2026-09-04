@@ -28413,6 +28413,130 @@ input:checked + .slider-round:before {
   gap: 0.6rem;
 }
 
+.haccp-custom-frequency-fields {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(120px, 1fr);
+  gap: 0.5rem;
+  flex: 1.2;
+}
+
+.haccp-frequency-amount {
+  max-width: 90px;
+}
+
+.haccp-cleaning-zone-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.haccp-cleaning-zone-card {
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.haccp-cleaning-zone-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.haccp-cleaning-zone-header > div,
+.haccp-cleaning-zone-header > div > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.haccp-cleaning-zone-header small {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.haccp-cleaning-zone-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.haccp-cleaning-instruction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  color: #475569;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.haccp-sensor-toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  color: #64748b;
+  background: white;
+  cursor: pointer;
+}
+
+.haccp-sensor-toggle:hover {
+  color: #047857;
+  border-color: #6ee7b7;
+  background: #ecfdf5;
+}
+
+.haccp-sensor-target-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.haccp-sensor-target-preview.assigned {
+  color: #166534;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.haccp-sensor-target-preview span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.haccp-sensor-target-preview small,
+.haccp-sensor-target-preview em {
+  font-size: 0.72rem;
+  font-style: normal;
+  opacity: 0.82;
+}
+
+@media (max-width: 640px) {
+  .haccp-custom-frequency-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .haccp-cleaning-zone-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .haccp-instances-grid {
   display: flex;
   flex-direction: column;

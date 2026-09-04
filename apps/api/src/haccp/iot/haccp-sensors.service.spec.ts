@@ -65,6 +65,22 @@ describe('HaccpSensorsService', () => {
     jest.useRealTimers();
   });
 
+  it('stops Zigbee pairing and broadcasts expiration when a session times out', async () => {
+    const { service, prisma, provider, gateway } = createService();
+    prisma.iotPairingSession.findMany.mockResolvedValue([
+      { id: 'pairing-expired', organizationId: orgId },
+    ]);
+
+    await (service as any).expirePairingSessions(orgId);
+
+    expect(prisma.iotPairingSession.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['pairing-expired'] } },
+      data: expect.objectContaining({ status: IotPairingStatus.EXPIRED }),
+    }));
+    expect(provider.stopPairing).toHaveBeenCalled();
+    expect(gateway.emitToOrganization).toHaveBeenCalledWith(orgId, 'pairing.updated', null);
+  });
+
   it('creates a discovered sensor only for active pairing sessions', async () => {
     const { service, prisma, gateway } = createService();
     prisma.iotSensor.findMany.mockResolvedValueOnce([]);

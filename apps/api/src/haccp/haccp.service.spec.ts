@@ -29,14 +29,14 @@ function createPrismaMock() {
     },
     haccpOilEquipment: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     haccpOilSession: { findMany: jest.fn(), count: jest.fn() },
-    haccpCleaningZone: { findMany: jest.fn() },
+    haccpCleaningZone: { findMany: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     haccpCleaningSession: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
-    haccpCleaningSurface: { findFirst: jest.fn(), update: jest.fn(), count: jest.fn() },
+    haccpCleaningSurface: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
     haccpCleanedSurface: { upsert: jest.fn(), count: jest.fn() },
     haccpDailyReport: {
       findMany: jest.fn(),
@@ -143,6 +143,33 @@ describe('HaccpService', () => {
     expect(response.data).toMatchObject({ _id: 's1', status: 'active' });
   });
 
+  it('stores cleaning instructions with each configured surface', async () => {
+    const prisma = createPrismaMock();
+    prisma.haccpCleaningZone.create.mockImplementation(async ({ data }: any) => ({
+      id: 'zone-1',
+      ...data,
+      surfaces: data.surfaces.create.map((surface: any, index: number) => ({ id: `surface-${index + 1}`, ...surface })),
+    }));
+    const service = new HaccpService(prisma);
+
+    await service.createCleaningZone(orgId, actor, {
+      name: 'Cuisine',
+      surfaces: [{ name: 'Hotte', frequency: 'monthly', notes: 'Démonter les filtres avant dégraissage.' }],
+    });
+
+    expect(prisma.haccpCleaningZone.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        surfaces: {
+          create: [expect.objectContaining({
+            name: 'Hotte',
+            frequency: 'monthly',
+            notes: 'Démonter les filtres avant dégraissage.',
+          })],
+        },
+      }),
+    }));
+  });
+
   it('records cleaning with authoritative surface and zone data in one transaction', async () => {
     const prisma = createPrismaMock();
     prisma.haccpCleaningSession.findFirst.mockResolvedValue({ id: 'session-1', organizationId: orgId, status: 'active' });
@@ -174,6 +201,30 @@ describe('HaccpService', () => {
       create: expect.objectContaining({ surfaceName: 'Plan de travail', zoneId: 'zone-1', zoneName: 'Cuisine' }),
     }));
     expect(response.data).toMatchObject({ _id: 'session-1', completedSurfaces: 1, totalSurfaces: 3 });
+  });
+
+  it('calculates annual and custom cleaning frequencies from the last cleaning date', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T12:00:00.000Z'));
+    const service = new HaccpService(createPrismaMock());
+
+    expect((service as any).shouldCleanToday({
+      frequency: 'yearly',
+      lastCleaned: new Date('2025-09-04T11:59:00.000Z'),
+    })).toBe(true);
+    expect((service as any).shouldCleanToday({
+      frequency: 'every:3:months',
+      lastCleaned: new Date('2026-06-04T11:59:00.000Z'),
+    })).toBe(true);
+    expect((service as any).shouldCleanToday({
+      frequency: 'every:3:months',
+      lastCleaned: new Date('2026-07-04T12:00:00.000Z'),
+    })).toBe(false);
+    expect((service as any).shouldCleanToday({
+      frequency: 'daily',
+      lastCleaned: new Date('2026-09-04T08:00:00.000Z'),
+    })).toBe(false);
+
+    jest.useRealTimers();
   });
 
   it('completes process sessions with backend end time, status, and duration', async () => {

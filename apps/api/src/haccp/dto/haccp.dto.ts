@@ -185,6 +185,7 @@ export class CleaningSurfaceDto {
   @IsOptional() @IsString() id?: string;
   @IsString() @IsNotEmpty() name!: string;
   @IsString() @IsNotEmpty() frequency!: string;
+  @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() lastCleaned?: string;
   @IsOptional() @Transform(toBool) @IsBoolean() isActive?: boolean;
 }
