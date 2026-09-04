@@ -1,0 +1,393 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$RootDir = Resolve-Path (Join-Path $PSScriptRoot '..')
+Set-Location $RootDir
+
+$RunDbSetup = $env:RUN_DB_SETUP -ne '0'
+$ResetDb = $env:RESET_DB -eq '1'
+
+function Show-Usage {
+  @'
+Usage: npm run welcome -- [options]
+
+Prepares a freshly pulled branch for local development on Windows:
+  1. Creates .env from .env.example if missing
+  2. Installs npm dependencies
+  3. Prepares a local PostgreSQL database
+  4. Applies pending Prisma migrations without deleting data
+  5. Generates Prisma Client and verifies the database
+
+Options:
+  --no-db-setup   Skip local PostgreSQL setup
+  --reset-db      Drop local data and replay migrations before seeding
+  -h, --help      Show this help
+
+Environment:
+  RUN_DB_SETUP=0  Same as --no-db-setup
+  RESET_DB=1      Same as --reset-db
+
+PostgreSQL:
+  If psql is available, this script uses the local PostgreSQL server.
+  If psql is not available but Docker is running, it starts/reuses a local
+  container named toquehub-postgres-dev on port 5432.
+'@ | Write-Host
+}
+
+function New-RandomSecret {
+  $Bytes = New-Object byte[] 32
+  $Generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $Generator.GetBytes($Bytes)
+  } finally {
+    $Generator.Dispose()
+  }
+  return (($Bytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Convert-EnvToUtf8NoBom {
+  $EnvPath = Resolve-Path '.env'
+  $Content = [System.IO.File]::ReadAllText($EnvPath)
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($EnvPath, $Content, $Utf8NoBom)
+}
+
+function Set-EnvIfPlaceholder([string]$Key, [string]$Value) {
+  $Lines = @(Get-Content '.env')
+  $Pattern = '^' + [regex]::Escape($Key) + '='
+  $Existing = $Lines | Where-Object { $_ -match $Pattern } | Select-Object -Last 1
+  $Current = if ($null -eq $Existing) { '' } else { ($Existing -replace $Pattern, '').Trim('"') }
+
+  if ($Current -and $Current -notlike 'replace-with-*' -and $Current -notlike 'change-me-*') {
+    return
+  }
+
+  $Replacement = "$Key=`"$Value`""
+  if ($null -eq $Existing) {
+    $Lines += $Replacement
+  } else {
+    $Lines = @($Lines | ForEach-Object { if ($_ -match $Pattern) { $Replacement } else { $_ } })
+  }
+  # Windows PowerShell 5.1 writes a UTF-8 BOM with Set-Content -Encoding utf8.
+  # Node's loadEnvFile() treats that BOM as part of the first variable name,
+  # which makes DATABASE_URL look missing to Prisma.
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllLines((Resolve-Path '.env'), $Lines, $Utf8NoBom)
+}
+
+foreach ($Arg in $args) {
+  switch ($Arg) {
+    '--no-db-setup' { $RunDbSetup = $false; continue }
+    '--reset-db' { $ResetDb = $true; continue }
+    '-h' { Show-Usage; exit 0 }
+    '--help' { Show-Usage; exit 0 }
+    default {
+      Write-Error "Unknown option: $Arg"
+      Show-Usage
+      exit 1
+    }
+  }
+}
+
+function Write-Step([string] $Message) {
+  Write-Host ''
+  Write-Host "==> $Message" -ForegroundColor Cyan
+}
+
+function Test-Command([string] $Name) {
+  return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Invoke-Checked([string] $FilePath, [string[]] $Arguments) {
+  & $FilePath @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+  }
+}
+
+function Quote-SqlIdentifier([string] $Value) {
+  return '"' + $Value.Replace('"', '""') + '"'
+}
+
+function Quote-SqlLiteral([string] $Value) {
+  return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Invoke-Psql([string] $Database, [string[]] $Arguments) {
+  $BaseArgs = @(
+    '-v', 'ON_ERROR_STOP=1',
+    '-h', $script:DbHost,
+    '-p', $script:DbPort,
+    '-d', $Database
+  )
+  & psql @BaseArgs @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "psql command failed."
+  }
+}
+
+function Invoke-PsqlScalar([string] $Database, [string] $Sql) {
+  $BaseArgs = @(
+    '-v', 'ON_ERROR_STOP=1',
+    '-h', $script:DbHost,
+    '-p', $script:DbPort,
+    '-d', $Database,
+    '-tAc', $Sql
+  )
+  $Output = & psql @BaseArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "psql query failed."
+  }
+  return (($Output | Out-String).Trim())
+}
+
+function Prepare-PostgresWithPsql {
+  if (Test-Command 'pg_isready') {
+    & pg_isready -h $script:DbHost -p $script:DbPort *> $null
+    if ($LASTEXITCODE -ne 0) {
+      throw "PostgreSQL is not reachable on $($script:DbHost):$($script:DbPort). Start PostgreSQL, then rerun this script."
+    }
+  }
+
+  try {
+    Invoke-Psql 'postgres' @('-tAc', 'SELECT 1') *> $null
+  } catch {
+    throw 'Could not connect to PostgreSQL database "postgres" with your current Windows user. Try running this script as a PostgreSQL superuser, install psql with the right PATH, or rerun with Docker available and psql removed from PATH.'
+  }
+
+  $UserIdentifier = Quote-SqlIdentifier $script:DbUser
+  $UserLiteral = Quote-SqlLiteral $script:DbUser
+  $PasswordLiteral = Quote-SqlLiteral $script:DbPassword
+  $DatabaseIdentifier = Quote-SqlIdentifier $script:DbName
+  $DatabaseLiteral = Quote-SqlLiteral $script:DbName
+
+  $UserExists = Invoke-PsqlScalar 'postgres' "SELECT 1 FROM pg_roles WHERE rolname = $UserLiteral"
+  if ($UserExists -ne '1') {
+    Invoke-Psql 'postgres' @('-c', "CREATE USER $UserIdentifier WITH PASSWORD $PasswordLiteral CREATEDB;")
+  } else {
+    Invoke-Psql 'postgres' @('-c', "ALTER USER $UserIdentifier WITH PASSWORD $PasswordLiteral CREATEDB;")
+  }
+
+  $DatabaseExists = Invoke-PsqlScalar 'postgres' "SELECT 1 FROM pg_database WHERE datname = $DatabaseLiteral"
+  if ($DatabaseExists -ne '1') {
+    Invoke-Psql 'postgres' @('-c', "CREATE DATABASE $DatabaseIdentifier OWNER $UserIdentifier;")
+  }
+
+  Invoke-Psql 'postgres' @('-c', "ALTER DATABASE $DatabaseIdentifier OWNER TO $UserIdentifier;")
+  Invoke-Psql 'postgres' @('-c', "GRANT ALL PRIVILEGES ON DATABASE $DatabaseIdentifier TO $UserIdentifier;")
+  Invoke-Psql $script:DbName @('-c', "GRANT ALL ON SCHEMA public TO $UserIdentifier;") *> $null
+}
+
+function Invoke-Docker([string[]] $Arguments) {
+  # Docker writes normal progress (including image pulls) to stderr. With the
+  # script-wide Stop preference, Windows PowerShell can turn that output into a
+  # terminating NativeCommandError even when Docker succeeds.
+  $PreviousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    & docker @Arguments
+    $DockerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+  }
+  if ($DockerExitCode -ne 0) {
+    throw "Docker command failed with exit code ${DockerExitCode}: docker $($Arguments -join ' ')"
+  }
+}
+
+function Test-DockerContainerExists([string] $Name) {
+  $Existing = & docker ps -a --format '{{.Names}}'
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Docker is installed but is not responding. Start Docker Desktop, then rerun this script.'
+  }
+  return @($Existing) -contains $Name
+}
+
+function Find-RunningDockerPostgres([string] $HostPort) {
+  $PreviousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $Containers = & docker ps --filter "publish=$HostPort" --format '{{.Names}}|{{.Image}}'
+    $DockerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+  }
+  if ($DockerExitCode -ne 0) {
+    throw 'Docker is installed but is not responding. Start Docker Desktop, then rerun this script.'
+  }
+
+  foreach ($Container in @($Containers)) {
+    $Parts = $Container -split '\|', 2
+    if (($Parts.Count -eq 2) -and ($Parts[1] -match '^postgres(?:\:|$)')) {
+      return $Parts[0]
+    }
+  }
+  return $null
+}
+
+function Wait-DockerPostgres([string] $ContainerName) {
+  for ($Attempt = 1; $Attempt -le 45; $Attempt++) {
+    & docker exec $ContainerName pg_isready -U $script:DbUser -d $script:DbName *> $null
+    if ($LASTEXITCODE -eq 0) {
+      return
+    }
+    Start-Sleep -Seconds 2
+  }
+  throw "PostgreSQL container $ContainerName did not become ready in time."
+}
+
+function Invoke-DockerPsql([string] $ContainerName, [string] $Database, [string[]] $Arguments) {
+  $BaseArgs = @(
+    'exec',
+    $ContainerName,
+    'psql',
+    '-v', 'ON_ERROR_STOP=1',
+    '-U', $script:DbUser,
+    '-d', $Database
+  )
+  Invoke-Docker ($BaseArgs + $Arguments)
+}
+
+function Prepare-PostgresWithDocker {
+  if ($script:DbHost -notin @('localhost', '127.0.0.1')) {
+    throw "Docker fallback only supports localhost databases. Current TOQUEHUB_DB_HOST is $($script:DbHost)."
+  }
+
+  Invoke-Docker @('info') *> $null
+
+  $ContainerName = if ($env:TOQUEHUB_POSTGRES_CONTAINER) { $env:TOQUEHUB_POSTGRES_CONTAINER } else { 'toquehub-postgres-dev' }
+  $VolumeName = if ($env:TOQUEHUB_POSTGRES_VOLUME) { $env:TOQUEHUB_POSTGRES_VOLUME } else { 'toquehub-postgres-dev-data' }
+  $Image = if ($env:POSTGRES_DOCKER_IMAGE) { $env:POSTGRES_DOCKER_IMAGE } else { 'postgres:15-alpine' }
+
+  if (-not $env:TOQUEHUB_POSTGRES_CONTAINER -and -not (Test-DockerContainerExists $ContainerName)) {
+    $RunningPostgres = Find-RunningDockerPostgres $script:DbPort
+    if ($RunningPostgres) {
+      $ContainerName = $RunningPostgres
+    }
+  }
+
+  if (Test-DockerContainerExists $ContainerName) {
+    $IsRunning = (& docker inspect -f '{{.State.Running}}' $ContainerName).Trim() -eq 'true'
+    if ($IsRunning) {
+      Write-Step "Reusing PostgreSQL Docker container $ContainerName"
+    } else {
+      Write-Step "Starting PostgreSQL Docker container $ContainerName"
+      Invoke-Docker @('start', $ContainerName) *> $null
+    }
+  } else {
+    Write-Step "Creating PostgreSQL Docker container $ContainerName"
+    Invoke-Docker @(
+      'run', '-d',
+      '--name', $ContainerName,
+      '-e', "POSTGRES_DB=$($script:DbName)",
+      '-e', "POSTGRES_USER=$($script:DbUser)",
+      '-e', "POSTGRES_PASSWORD=$($script:DbPassword)",
+      '-p', "$($script:DbPort):5432",
+      '-v', "${VolumeName}:/var/lib/postgresql/data",
+      $Image
+    ) *> $null
+  }
+
+  Wait-DockerPostgres $ContainerName
+
+  $UserIdentifier = Quote-SqlIdentifier $script:DbUser
+  $DatabaseIdentifier = Quote-SqlIdentifier $script:DbName
+
+  Invoke-DockerPsql $ContainerName 'postgres' @('-c', "ALTER USER $UserIdentifier CREATEDB;")
+  Invoke-DockerPsql $ContainerName 'postgres' @('-c', "ALTER DATABASE $DatabaseIdentifier OWNER TO $UserIdentifier;")
+  Invoke-DockerPsql $ContainerName 'postgres' @('-c', "GRANT ALL PRIVILEGES ON DATABASE $DatabaseIdentifier TO $UserIdentifier;")
+  Invoke-DockerPsql $ContainerName $script:DbName @('-c', "GRANT ALL ON SCHEMA public TO $UserIdentifier;") *> $null
+}
+
+function Prepare-LocalPostgres {
+  $script:DbName = if ($env:TOQUEHUB_DB_NAME) { $env:TOQUEHUB_DB_NAME } else { 'toquehub' }
+  $script:DbUser = if ($env:TOQUEHUB_DB_USER) { $env:TOQUEHUB_DB_USER } else { 'toquehub' }
+  $script:DbPassword = if ($env:TOQUEHUB_DB_PASSWORD) { $env:TOQUEHUB_DB_PASSWORD } else { 'toquehub' }
+  $script:DbHost = if ($env:TOQUEHUB_DB_HOST) { $env:TOQUEHUB_DB_HOST } else { 'localhost' }
+  $script:DbPort = if ($env:TOQUEHUB_DB_PORT) { $env:TOQUEHUB_DB_PORT } else { '5432' }
+
+  if (Test-Command 'psql') {
+    try {
+      Prepare-PostgresWithPsql
+      return
+    } catch {
+      if ((Test-Command 'docker') -and ($script:DbHost -in @('localhost', '127.0.0.1'))) {
+        Write-Warning "$($_.Exception.Message)"
+        Write-Warning 'Falling back to a local Docker PostgreSQL container.'
+        Prepare-PostgresWithDocker
+        return
+      }
+      throw
+    }
+  }
+
+  if (Test-Command 'docker') {
+    Prepare-PostgresWithDocker
+  } else {
+    throw @'
+psql was not found and Docker is not available.
+Install PostgreSQL client tools, start PostgreSQL locally, or install/start Docker Desktop.
+'@
+  }
+
+  Write-Host ''
+  Write-Host 'Local PostgreSQL database is ready. Use this DATABASE_URL in .env:'
+  Write-Host "postgresql://$($script:DbUser):$($script:DbPassword)@$($script:DbHost):$($script:DbPort)/$($script:DbName)?schema=public"
+}
+
+if (-not (Test-Path '.env')) {
+  Write-Step 'Creating .env from .env.example'
+  Copy-Item '.env.example' '.env'
+} else {
+  Write-Step '.env already exists, keeping it'
+}
+
+# Repair .env files previously written by Windows PowerShell with a UTF-8 BOM.
+# Otherwise Node exposes the first key as an invisible-BOM-prefixed name.
+Convert-EnvToUtf8NoBom
+
+Set-EnvIfPlaceholder 'PURCHASING_RESEND_ENCRYPTION_KEY' (New-RandomSecret)
+Set-EnvIfPlaceholder 'PURCHASING_EMAIL_ENCRYPTION_KEY' (New-RandomSecret)
+Set-EnvIfPlaceholder 'FINANCE_SECRETS_ENCRYPTION_KEY' (New-RandomSecret)
+
+Write-Step 'Installing npm dependencies'
+Invoke-Checked 'npm' @('install')
+
+if ($RunDbSetup) {
+  Write-Step 'Preparing local PostgreSQL'
+  Prepare-LocalPostgres
+} else {
+  Write-Step 'Skipping local PostgreSQL setup'
+}
+
+if ($ResetDb) {
+  Write-Step 'Resetting local database and replaying Prisma migrations'
+  Invoke-Checked 'npm' @('run', 'prisma:reset', '--', '--force')
+}
+
+Write-Step 'Applying migrations, generating Prisma Client, and verifying the database'
+& npm run prisma:prepare
+if ($LASTEXITCODE -ne 0) {
+  @'
+Prisma preparation failed.
+
+If Prisma reported drift, a failed migration, or a migration that exists in your
+local database but not in this branch, your local dev database is out of sync
+with the code.
+When you are okay with losing local data, rerun:
+  npm run welcome -- --reset-db
+
+To keep local data, recover the missing migration/code instead of resetting.
+
+If Prisma reported EPERM while generating on Windows, stop every running
+"npm run api:dev" process, then rerun "npm run welcome".
+'@ | Write-Error
+  exit 1
+}
+
+@'
+
+Done. You can now start the app with:
+  npm run api:dev
+  npm run web:dev
+'@ | Write-Host

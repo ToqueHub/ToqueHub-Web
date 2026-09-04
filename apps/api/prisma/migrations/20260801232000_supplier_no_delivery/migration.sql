@@ -1,0 +1,1 @@
+ALTER TYPE "PurchasingDeliveryMode" ADD VALUE IF NOT EXISTS 'NO_DELIVERY';

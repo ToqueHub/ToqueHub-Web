@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "baseUrl": "./",
+    "incremental": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "declaration": false,
+    "sourceMap": true,
+    "strictPropertyInitialization": false,
+    "paths": {
+      "@toquehub/shared-types": ["../../packages/shared-types/src"],
+      "@toquehub/core": ["../../packages/core/src"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "ts-node": {
+    "files": true
+  }
+}

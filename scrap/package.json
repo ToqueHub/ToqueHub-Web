@@ -1,0 +1,35 @@
+{
+  "name": "toquehub-rnm-scrap",
+  "version": "1.0.0",
+  "description": "Module de synchronisation RNM FranceAgriMer pour ToqueHub",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma db push",
+    "test:tomate": "ts-node test-sync-tomate.ts",
+    "test:all": "ts-node test-sync-all.ts",
+    "db:empty": "node scripts/empty-db.js",
+    "sync:daily": "ts-node scripts/sync-daily.ts",
+    "cron:daemon": "ts-node scripts/cron-daemon.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0",
+    "axios": "^1.7.2",
+    "next": "^15.0.0",
+    "node-cron": "^3.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.10",
+    "@types/node": "^20.14.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^18.3.3",
+    "prisma": "^5.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

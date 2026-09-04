@@ -1,0 +1,13 @@
+[Unit]
+Description=Expand the ToqueHub root filesystem
+After=local-fs.target
+Before=docker.service toquehub-firstboot.service
+ConditionPathExists=!/var/lib/toquehub/.root-expanded
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/toquehub-grow-root
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

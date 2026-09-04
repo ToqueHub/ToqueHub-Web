@@ -1,0 +1,73 @@
+{
+  "name": "toquehub",
+  "version": "1.1.69",
+  "private": true,
+  "description": "Open source, self-hosted ERP core for professional kitchens.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "privacy:check": "node scripts/check-git-privacy.mjs --all",
+    "privacy:check:staged": "node scripts/check-git-privacy.mjs",
+    "i18n:extract": "node scripts/i18n/extract-web-translations.mjs",
+    "i18n:translate": "node scripts/i18n/translate-web-catalog.mjs",
+    "i18n:audit": "node scripts/i18n/extract-web-translations.mjs && node scripts/i18n/audit-web-translations.mjs",
+    "i18n:check-surfaces": "node --import tsx scripts/i18n/check-reported-surfaces.ts",
+    "i18n:check-haccp": "node --import tsx scripts/i18n/check-haccp-translations.ts",
+    "api:dev": "npm run prisma:ensure && npm run start:dev -w apps/api",
+    "web:dev": "npm run dev -w apps/web",
+    "landing:dev": "npm run dev -w apps/landing",
+    "prisma:generate": "npm run prisma:generate -w apps/api",
+    "prisma:deploy": "npm run prisma:deploy -w apps/api",
+    "prisma:status": "npm run prisma:status -w apps/api",
+    "prisma:verify": "npm run prisma:verify -w apps/api",
+    "prisma:ensure": "npm run prisma:deploy && npm run prisma:status && npm run prisma:verify",
+    "prisma:prepare": "npm run prisma:deploy && npm run prisma:generate && npm run prisma:status && npm run prisma:verify",
+    "prisma:migrate": "npm run prisma:migrate -w apps/api",
+    "prisma:reset": "npm run prisma:reset -w apps/api --",
+    "prisma:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prisma-restart.ps1",
+    "seed:legal-rights": "npm run seed:legal-rights -w apps/api",
+    "seed:caterer-demo": "npm run seed:caterer-demo -w apps/api",
+    "seed:haccp-dashboard-demo": "npm run seed:haccp-dashboard-demo -w apps/api",
+    "seed:production-flow-day": "npm run seed:production-flow-day -w apps/api",
+    "db:setup:local": "./scripts/setup-local-postgres.sh",
+    "iot:setup": "./scripts/setup-haccp-iot.sh",
+    "iot:start": "./scripts/start-haccp-iot.sh",
+    "iot:docker:up": "./scripts/setup-haccp-iot-docker.sh && docker compose -f docker-compose.iot.yml --profile iot up -d",
+    "iot:docker:down": "docker compose -f docker-compose.iot.yml --profile iot down",
+    "iot:docker:logs": "docker compose -f docker-compose.iot.yml logs -f mosquitto zigbee2mqtt",
+    "docker:setup": "./scripts/setup-toquehub-docker.sh",
+    "docker:up": "./scripts/setup-toquehub-docker.sh && docker compose --env-file .env.docker up -d --build",
+    "docker:down": "docker compose --env-file .env.docker down",
+    "docker:logs": "docker compose --env-file .env.docker logs -f api web mdns postgres mosquitto zigbee2mqtt updater",
+    "addresses": "./scripts/toquehub-addresses.sh",
+    "docker:publish": "./scripts/docker-publish.sh",
+    "ubuntu:install": "./scripts/install-toquehub-ubuntu.sh",
+    "pi:image": "./scripts/build-rpi-image.sh",
+    "pi:install": "./scripts/install-toquehub-pi.sh",
+    "bienvenue": "./scripts/bootstrap-main.sh",
+    "welcome": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/bootstrap-main.ps1",
+    "bootstrap:main": "./scripts/bootstrap-main.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

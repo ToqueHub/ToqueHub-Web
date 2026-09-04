@@ -1,0 +1,16 @@
+[Unit]
+Description=ToqueHub Zigbee2MQTT service
+Requires=docker.service toquehub.service
+After=docker.service toquehub.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/toquehub
+EnvironmentFile=/etc/toquehub/toquehub.env
+ExecStart=/usr/bin/docker compose --env-file /etc/toquehub/toquehub.env -f /opt/toquehub/docker-compose.pi.yml --profile zigbee up -d zigbee2mqtt
+ExecStop=/usr/bin/docker compose --env-file /etc/toquehub/toquehub.env -f /opt/toquehub/docker-compose.pi.yml stop zigbee2mqtt
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

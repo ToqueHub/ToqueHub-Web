@@ -1,0 +1,26 @@
+include:
+  file: bookworm-minbase.yaml
+
+device:
+  hostname: toquehub
+  layer: rpi4
+  user1: toquehub
+  user1sudo: nopasswd
+
+image:
+  name: toquehub-pi64
+  root_part_size: 600%
+
+locale:
+  default: fr_FR.UTF-8
+  keyboard_keymap: fr
+  keyboard_layout: French
+  timezone: Europe/Paris
+
+layer:
+  docker: docker-debian-bookworm
+  ssh: openssh-server
+  app: toquehub-appliance
+
+ssh:
+  pubkey_only: y
