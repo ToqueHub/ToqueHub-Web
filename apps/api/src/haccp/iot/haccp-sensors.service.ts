@@ -986,10 +986,27 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async expirePairingSessions(organizationId?: string) {
-    await this.prisma.iotPairingSession.updateMany({
+    const expired = await this.prisma.iotPairingSession.findMany({
       where: { ...(organizationId ? { organizationId } : {}), status: IotPairingStatus.ACTIVE, expiresAt: { lt: new Date() } },
+      select: { id: true, organizationId: true },
+    }) ?? [];
+    if (!expired.length) return;
+    await this.prisma.iotPairingSession.updateMany({
+      where: { id: { in: expired.map((session) => session.id) } },
       data: { status: IotPairingStatus.EXPIRED, stoppedAt: new Date() },
     });
+    const remainingActiveSession = await this.prisma.iotPairingSession.findFirst({
+      where: { status: IotPairingStatus.ACTIVE, expiresAt: { gt: new Date() } },
+      select: { id: true },
+    });
+    if (!remainingActiveSession) {
+      await this.provider.stopPairing().catch((error: any) => {
+        this.logger.warn(`Zigbee pairing stop after expiration skipped: ${error?.message ?? 'unknown error'}`);
+      });
+    }
+    for (const targetOrganizationId of new Set(expired.map((session) => session.organizationId))) {
+      this.gateway.emitToOrganization(targetOrganizationId, 'pairing.updated', null);
+    }
   }
 
   private activePairingSessions() {

@@ -35,6 +35,7 @@ import {
   List,
   MapPin,
   Package,
+  Pencil,
   Plus,
   Radio,
   RefreshCw,
@@ -138,6 +139,7 @@ type TodayCleaningSurface = {
   zoneId: string;
   zoneName: string;
   frequency?: string;
+  notes?: string | null;
   lastCleaned?: string | null;
 };
 
@@ -146,7 +148,8 @@ type HaccpConfigKind = 'temperature' | 'process' | 'cleaning';
 type HaccpOnboardingStep = 'welcome' | 'temperatures' | 'process' | 'cleaning' | 'sensors' | 'review';
 type TemperatureTemplate = { key: string; name: string; type: string; description: string; recommendedTemp: number; selected: boolean };
 type ProcessTemplate = { key: string; name: string; type: 'refroidissement' | 'congelation' | 'rechauffement'; temperatureRange: { min: number; max: number }; description: string; selected: boolean };
-type CleaningTemplate = { key: string; name: string; description: string; selected: boolean; surfaces: Array<{ name: string; frequency: string }> };
+type CleaningSurfaceDraft = { id?: string; _id?: string; name: string; frequency: string; notes?: string };
+type CleaningTemplate = { key: string; name: string; description: string; selected: boolean; surfaces: CleaningSurfaceDraft[] };
 type HaccpOnboardingPayload = {
   temperatures: TemperatureTemplate[];
   processes: ProcessTemplate[];
@@ -252,6 +255,8 @@ const FREQUENCY_OPTIONS = [
   { value: 'daily', label: 'Quotidien' },
   { value: 'weekly', label: 'Hebdomadaire' },
   { value: 'monthly', label: 'Mensuel' },
+  { value: 'yearly', label: 'Annuel' },
+  { value: 'custom', label: 'Personnalisé' },
 ];
 
 const DEFAULT_TEMPERATURE_CATEGORIES = [
@@ -461,7 +466,7 @@ const emptyConfigForm = {
   notes: '',
 };
 
-const emptySurfaceRows = [{ name: '', frequency: 'daily' }];
+const emptySurfaceRows: CleaningSurfaceDraft[] = [{ name: '', frequency: 'daily', notes: '' }];
 
 const haccpText = (value: string) => translateText(value, activeLanguage());
 
@@ -541,12 +546,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<SectionId | null>(null);
   const [configModal, setConfigModal] = useState<HaccpConfigKind | null>(null);
+  const [configEditingItem, setConfigEditingItem] = useState<HaccpItem | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showModuleGuide, setShowModuleGuide] = useState(false);
   const [processType, setProcessType] = useState<'refroidissement' | 'congelation' | 'rechauffement'>('refroidissement');
   const [form, setForm] = useState<Record<string, string>>(emptyForm);
   const [configForm, setConfigForm] = useState<Record<string, string>>(emptyConfigForm);
-  const [surfaceRows, setSurfaceRows] = useState<Array<{ name: string; frequency: string }>>(emptySurfaceRows);
+  const [surfaceRows, setSurfaceRows] = useState<CleaningSurfaceDraft[]>(emptySurfaceRows);
   const [searchQuery, setSearchQuery] = useState('');
   const [sensorSummary, setSensorSummary] = useState<HaccpSensorSummary>({ total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' });
   const [sensorGatewayStatus, setSensorGatewayStatus] = useState<HaccpSensorGatewayStatus | null>(null);
@@ -562,6 +568,17 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
 
   useEffect(() => setActiveTab(tab), [tab]);
   useEffect(() => { void refreshTabData(activeTab); }, [activeTab, token, processType]);
+  useEffect(() => {
+    if (pairing?.status !== 'ACTIVE' || !pairing.expiresAt) return;
+    const delay = Math.max(0, new Date(pairing.expiresAt).getTime() - Date.now()) + 250;
+    const timer = window.setTimeout(() => {
+      setPairing(null);
+      void api.haccpCurrentSensorPairing(token)
+        .then((current) => setPairing(current))
+        .catch(() => setPairing(null));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [pairing?.id, pairing?.status, pairing?.expiresAt, token]);
   useEffect(() => {
     if (activeTab !== 'dashboard' && activeTab !== 'temperatures') return;
     const interval = window.setInterval(() => void refreshLiveData(activeTab), 30_000);
@@ -954,30 +971,27 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     }
   }
 
-  async function renameSensor(sensor: HaccpSensor, name: string) {
+  async function configureSensor(sensor: HaccpSensor, name: string, equipmentId: string) {
+    const nextName = name.trim();
+    if (!nextName) return;
+    const currentEquipmentId = sensor.assignedEquipment?.id ?? '';
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.haccpRenameSensor(token, sensor.id, name);
-      setSensors((current) => upsertSensor(current, updated));
-      await refreshSensorsOnly();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Renommage impossible.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function assignSensor(sensor: HaccpSensor, equipmentId: string) {
-    setSaving(true);
-    setError(null);
-    try {
-      const updated = equipmentId ? await api.haccpAssignSensor(token, sensor.id, equipmentId) : await api.haccpUnassignSensor(token, sensor.id);
+      let updated = sensor;
+      if (nextName !== sensorDisplayName(sensor)) {
+        updated = await api.haccpRenameSensor(token, sensor.id, nextName);
+      }
+      if (equipmentId !== currentEquipmentId) {
+        updated = equipmentId
+          ? await api.haccpAssignSensor(token, sensor.id, equipmentId)
+          : await api.haccpUnassignSensor(token, sensor.id);
+      }
       setSelectedSensorId(updated.id);
       setSensors((current) => upsertSensor(current, updated));
       await refreshSensorsOnly();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Affectation impossible.');
+      setError(err instanceof Error ? err.message : 'Configuration du capteur impossible.');
     } finally {
       setSaving(false);
     }
@@ -1008,6 +1022,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   }
 
   function openConfigCreate(kind: HaccpConfigKind) {
+    setError(null);
+    setConfigEditingItem(null);
     setConfigForm({
       ...emptyConfigForm,
       type: kind === 'temperature' ? 'enceinte_positive' : kind === 'process' ? 'refroidissement' : '',
@@ -1015,6 +1031,26 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       max: kind === 'process' ? '4' : '',
     });
     setSurfaceRows(emptySurfaceRows);
+    setConfigModal(kind);
+  }
+
+  function openConfigEdit(kind: HaccpConfigKind, item: HaccpItem) {
+    if (kind !== 'cleaning') return;
+    setError(null);
+    setConfigEditingItem(item);
+    setConfigForm({
+      ...emptyConfigForm,
+      name: String(item.name ?? ''),
+      description: String(item.description ?? ''),
+    });
+    setSurfaceRows(
+      (Array.isArray(item.surfaces) ? item.surfaces : []).map((surface) => ({
+        id: String(surface.id ?? surface._id ?? ''),
+        name: String(surface.name ?? ''),
+        frequency: String(surface.frequency ?? 'daily'),
+        notes: String(surface.notes ?? ''),
+      })),
+    );
     setConfigModal(kind);
   }
 
@@ -1044,14 +1080,23 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         });
       }
       if (configModal === 'cleaning') {
-        const exists = cleaningZones.some((item) => normalizeName(item.name) === normalizeName(name));
+        const editingId = haccpItemId(configEditingItem ?? {});
+        const exists = cleaningZones.some((item) => haccpItemId(item) !== editingId && normalizeName(item.name) === normalizeName(name));
         if (exists) throw new Error('Cette zone de nettoyage existe déjà.');
         const surfaces = surfaceRows
-          .map((surface) => ({ name: surface.name.trim(), frequency: surface.frequency || 'daily' }))
+          .map((surface) => ({
+            ...(surface.id || surface._id ? { id: surface.id || surface._id } : {}),
+            name: surface.name.trim(),
+            frequency: normalizeCleaningFrequency(surface.frequency),
+            notes: surface.notes?.trim() || '',
+          }))
           .filter((surface) => surface.name);
-        await api.haccpCreate(token, '/cleaning/zones', { name, description: configForm.description, surfaces });
+        const payload = { name, description: configForm.description, surfaces };
+        if (editingId) await api.haccpUpdate(token, `/cleaning/zones/${editingId}`, payload);
+        else await api.haccpCreate(token, '/cleaning/zones', payload);
       }
       setConfigModal(null);
+      setConfigEditingItem(null);
       await refreshTabData(activeTab);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Création impossible.');
@@ -1339,7 +1384,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           name,
           description: template.description,
           surfaces: template.surfaces
-            .map((surface) => ({ name: surface.name.trim(), frequency: surface.frequency || 'daily' }))
+            .map((surface) => ({ name: surface.name.trim(), frequency: normalizeCleaningFrequency(surface.frequency), notes: surface.notes?.trim() || '' }))
             .filter((surface) => surface.name),
         });
         existingCleaningNames.add(key);
@@ -1509,6 +1554,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             onCreate={openConfigCreate}
+            onEdit={openConfigEdit}
             onDelete={(kind, item) => void removeConfig(kind, item)}
           />
         ) : null}
@@ -1526,9 +1572,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             onStartPairing={startSensorPairing}
             onStopPairing={stopSensorPairing}
             onRefresh={refreshSensorsOnly}
-            onSelect={(sensor) => setSelectedSensorId(sensor.id)}
-            onRename={(sensor, name) => void renameSensor(sensor, name)}
-            onAssign={(sensor, equipmentId) => void assignSensor(sensor, equipmentId)}
+            onSelect={(sensor) => setSelectedSensorId((current) => current === sensor.id ? null : sensor.id)}
+            onConfigure={(sensor, name, equipmentId) => void configureSensor(sensor, name, equipmentId)}
             onRemove={(sensor, removeFromNetwork) => void removeSensor(sensor, removeFromNetwork)}
             onBack={() => {
               setActiveTab('dashboard');
@@ -1623,12 +1668,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         <div className="modal-overlay haccp-modal-overlay">
           <form className="modal-content-wrapper modal-md" onSubmit={submitConfig}>
             <div className="modal-header">
-              <h2>{configModalTitle(configModal)}</h2>
-              <button type="button" className="modal-close-btn" onClick={() => setConfigModal(null)}>
+              <h2>{configModalTitle(configModal, Boolean(configEditingItem))}</h2>
+              <button type="button" className="modal-close-btn" onClick={() => { setConfigModal(null); setConfigEditingItem(null); }}>
                 <X size={18} />
               </button>
             </div>
             <div className="modal-body">
+              {error ? <div className="alert error"><AlertCircle size={16} /> {error}</div> : null}
               <HaccpConfigForm
                 kind={configModal}
                 form={configForm}
@@ -1638,8 +1684,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
               />
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setConfigModal(null)}>Annuler</button>
-              <button className="btn btn-primary" disabled={saving}><Plus size={16} /> Créer</button>
+              <button type="button" className="btn btn-secondary" onClick={() => { setConfigModal(null); setConfigEditingItem(null); }}>Annuler</button>
+              <button className="btn btn-primary" disabled={saving}>{configEditingItem ? <CheckCircle2 size={16} /> : <Plus size={16} />} {configEditingItem ? 'Enregistrer' : 'Créer'}</button>
             </div>
           </form>
         </div>
@@ -4404,6 +4450,7 @@ function HaccpSetupManager({
   searchQuery,
   setSearchQuery,
   onCreate,
+  onEdit,
   onDelete,
 }: {
   temperatureEquipment: HaccpItem[];
@@ -4412,6 +4459,7 @@ function HaccpSetupManager({
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   onCreate: (kind: HaccpConfigKind) => void;
+  onEdit: (kind: HaccpConfigKind, item: HaccpItem) => void;
   onDelete: (kind: HaccpConfigKind, item: HaccpItem) => void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<'all' | 'temperature' | 'process' | 'cleaning'>('all');
@@ -4485,6 +4533,7 @@ function HaccpSetupManager({
             icon={<Thermometer size={18} />}
             items={filteredTemperatures}
             onCreate={() => onCreate('temperature')}
+            onEdit={(item) => onEdit('temperature', item)}
             onDelete={(item) => onDelete('temperature', item)}
           />
         )}
@@ -4497,6 +4546,7 @@ function HaccpSetupManager({
             icon={<Snowflake size={18} />}
             items={filteredProcess}
             onCreate={() => onCreate('process')}
+            onEdit={(item) => onEdit('process', item)}
             onDelete={(item) => onDelete('process', item)}
           />
         )}
@@ -4509,6 +4559,7 @@ function HaccpSetupManager({
             icon={<ShieldCheck size={18} />}
             items={filteredZones}
             onCreate={() => onCreate('cleaning')}
+            onEdit={(item) => onEdit('cleaning', item)}
             onDelete={(item) => onDelete('cleaning', item)}
           />
         )}
@@ -4602,6 +4653,7 @@ function ConfigSectionRowList({
   icon,
   items,
   onCreate,
+  onEdit,
   onDelete,
 }: {
   kind: HaccpConfigKind;
@@ -4610,6 +4662,7 @@ function ConfigSectionRowList({
   icon: ReactNode;
   items: HaccpItem[];
   onCreate: () => void;
+  onEdit: (item: HaccpItem) => void;
   onDelete: (item: HaccpItem) => void;
 }) {
   const colorMap = {
@@ -4647,6 +4700,7 @@ function ConfigSectionRowList({
               key={item._id ?? item.id ?? index}
               kind={kind}
               item={item}
+              onEdit={() => onEdit(item)}
               onDelete={() => onDelete(item)}
             />
           ))}
@@ -4666,7 +4720,7 @@ function ConfigSectionRowList({
   );
 }
 
-function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: HaccpItem; onDelete: () => void }) {
+function ConfigRowCard({ kind, item, onEdit, onDelete }: { kind: HaccpConfigKind; item: HaccpItem; onEdit: () => void; onDelete: () => void }) {
   const surfaces = Array.isArray(item.surfaces) ? item.surfaces : [];
   const isNegative = (item.temperatureTarget ?? 0) < 0 || String(item.type || '').includes('negative');
   const isHot = item.type === 'rechauffement';
@@ -4711,6 +4765,17 @@ function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: 
         </div>
 
         <div className="haccp-equipment-actions">
+          {kind === 'cleaning' ? (
+            <button
+              type="button"
+              className="haccp-action-btn"
+              onClick={onEdit}
+              title="Modifier"
+              aria-label={`Modifier ${item.name || 'la zone'}`}
+            >
+              <Pencil size={15} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="haccp-instance-delete-btn"
@@ -5574,7 +5639,7 @@ function CleaningChecklistView({
   const cleanedIds = new Set((activeSession?.cleanedSurfaces ?? []).map((surface) => surface.surfaceId));
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const query = deferredSearchQuery.trim().toLowerCase();
-  const allSurfaces = zones.flatMap((zone) => {
+  const allSurfaces: TodayCleaningSurface[] = zones.flatMap((zone) => {
     const zoneId = String(zone._id ?? zone.id ?? '');
     return (Array.isArray(zone.surfaces) ? zone.surfaces : [])
       .filter((surface) => surface?.isActive !== false)
@@ -5584,6 +5649,7 @@ function CleaningChecklistView({
         zoneId,
         zoneName: String(zone.name ?? 'Zone'),
         frequency: String(surface.frequency ?? 'daily'),
+        notes: surface.notes ? String(surface.notes) : null,
         lastCleaned: surface.lastCleaned ?? null,
       }))
       .filter((surface) => surface.surfaceId && surface.surfaceName);
@@ -5592,6 +5658,14 @@ function CleaningChecklistView({
   const visibleAll = allSurfaces.filter((surface) => !query || `${surface.zoneName} ${surface.surfaceName} ${surface.frequency ?? ''}`.toLowerCase().includes(query));
   const activeList = view === 'today' ? visibleToday : visibleAll;
   const remainingList = activeList.filter((surface) => !cleanedIds.has(surface.surfaceId));
+  const groupedActiveList = Array.from(
+    activeList.reduce((groups, surface) => {
+      const current = groups.get(surface.zoneId) ?? { zoneId: surface.zoneId, zoneName: surface.zoneName, surfaces: [] as typeof activeList };
+      current.surfaces.push(surface);
+      groups.set(surface.zoneId, current);
+      return groups;
+    }, new Map<string, { zoneId: string; zoneName: string; surfaces: typeof activeList }>()),
+  ).map(([, group]) => group);
   const completedCount = activeSession?.cleanedSurfaces?.length ?? 0;
   const totalCount = allSurfaces.length;
 
@@ -5658,38 +5732,52 @@ function CleaningChecklistView({
           <p>{view === 'today' ? 'Toutes les surfaces prévues aujourd’hui sont à jour.' : 'Aucune surface ne correspond à la recherche.'}</p>
         </div>
       ) : (
-        <div className="haccp-equipment-list">
-          {activeList.map((surface) => {
-            const isCompleted = cleanedIds.has(surface.surfaceId);
+        <div className="haccp-cleaning-zone-list">
+          {groupedActiveList.map((group) => {
+            const remainingInZone = group.surfaces.filter((surface) => !cleanedIds.has(surface.surfaceId));
+            const completedInZone = group.surfaces.length - remainingInZone.length;
             return (
-              <div key={`${surface.zoneId}-${surface.surfaceId}`} className={`haccp-equipment-row ${isCompleted ? 'active' : ''}`}>
-                <div className="haccp-equipment-row-main">
-                  <div className="haccp-equipment-row-info">
-                    <div className={`haccp-card-icon-badge ${isCompleted ? 'positive' : 'cleaning'}`}>
-                      {isCompleted ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}
-                    </div>
-                    <div>
-                      <strong className="haccp-equipment-title">{surface.surfaceName}</strong>
-                      <span className="haccp-equipment-desc">
-                        {surface.zoneName} • {frequencyLabel(surface.frequency ?? 'daily')}
-                        {surface.lastCleaned ? haccpCopy(
-                          ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
-                          ` • Last cleaned ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
-                        ) : ''}
-                      </span>
-                    </div>
+              <section key={group.zoneId} className="haccp-cleaning-zone-card">
+                <header className="haccp-cleaning-zone-header">
+                  <div>
+                    <span className="haccp-cleaning-zone-icon"><MapPin size={17} /></span>
+                    <span><strong>{group.zoneName}</strong><small>{completedInZone}/{group.surfaces.length} nettoyées</small></span>
                   </div>
-                  <button
-                    type="button"
-                    className={`btn ${isCompleted ? 'btn-secondary' : 'btn-primary'}`}
-                    onClick={() => onMarkSurface(surface)}
-                    disabled={saving || isCompleted}
-                  >
-                    <CheckCircle2 size={16} />
-                    {isCompleted ? 'Nettoyé' : 'Cocher'}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => onMarkAll(remainingInZone)} disabled={saving || !remainingInZone.length}>
+                    <CheckCircle2 size={14} /> Tout cocher dans la zone
                   </button>
+                </header>
+                <div className="haccp-equipment-list">
+                  {group.surfaces.map((surface) => {
+                    const isCompleted = cleanedIds.has(surface.surfaceId);
+                    return (
+                      <div key={`${surface.zoneId}-${surface.surfaceId}`} className={`haccp-equipment-row ${isCompleted ? 'active' : ''}`}>
+                        <div className="haccp-equipment-row-main">
+                          <div className="haccp-equipment-row-info">
+                            <div className={`haccp-card-icon-badge ${isCompleted ? 'positive' : 'cleaning'}`}>
+                              {isCompleted ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}
+                            </div>
+                            <div>
+                              <strong className="haccp-equipment-title">{surface.surfaceName}</strong>
+                              <span className="haccp-equipment-desc">
+                                {frequencyLabel(surface.frequency ?? 'daily')}
+                                {surface.lastCleaned ? haccpCopy(
+                                  ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
+                                  ` • Last cleaned ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
+                                ) : ''}
+                              </span>
+                              {surface.notes ? <span className="haccp-cleaning-instruction"><FileText size={13} /> {surface.notes}</span> : null}
+                            </div>
+                          </div>
+                          <button type="button" className={`btn ${isCompleted ? 'btn-secondary' : 'btn-primary'}`} onClick={() => onMarkSurface(surface)} disabled={saving || isCompleted}>
+                            <CheckCircle2 size={16} /> {isCompleted ? 'Nettoyé' : 'Cocher'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
@@ -6539,7 +6627,7 @@ function SonoffPairingScanModal({
   const activePairing = pairing?.status === 'ACTIVE';
   const isSerialDetected = gatewayStatus?.zigbee2mqtt?.serialPortDetected ?? false;
   const isMqttConnected = gatewayStatus?.mqtt?.connected ?? false;
-  const isGatewayReady = Boolean(gatewayStatus?.ready || activePairing);
+  const isGatewayReady = Boolean(gatewayStatus?.ready);
 
   const discoveredSensors = useMemo(() => {
     if (pairing?.sensors?.length) return pairing.sensors;
@@ -6553,6 +6641,8 @@ function SonoffPairingScanModal({
     pairing ? Math.round((new Date(pairing.expiresAt).getTime() - new Date(pairing.startedAt).getTime()) / 1000) : 60,
   );
   const [secondsLeft, setSecondsLeft] = useState(durationSeconds);
+
+  useEffect(() => setSecondsLeft(durationSeconds), [durationSeconds, pairing?.id]);
 
   useEffect(() => {
     if (!isGatewayReady) return;
@@ -6585,6 +6675,7 @@ function SonoffPairingScanModal({
         justifyContent: 'center',
         zIndex: 10005,
         padding: '1.5rem',
+        overflowY: 'auto',
       }}
     >
       <motion.div
@@ -6607,6 +6698,8 @@ function SonoffPairingScanModal({
           textAlign: 'center',
           gap: '1.5rem',
           position: 'relative',
+          maxHeight: 'calc(100dvh - 3rem)',
+          overflow: 'hidden',
         }}
       >
         {/* Close Button */}
@@ -6649,7 +6742,7 @@ function SonoffPairingScanModal({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#991b1b', fontWeight: 800 }}>
-                Appairage Impossible (IoT Non Prêt)
+                Appairage impossible : passerelle IoT indisponible
               </h3>
               <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
                 Le scan de capteurs requiert la détection de la clé USB Sonoff 3.0 sur le serveur.
@@ -6721,7 +6814,7 @@ function SonoffPairingScanModal({
             {/* Title & Description */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>
-                Appairage Capteur Sonoff
+                Appairage du capteur Sonoff
               </h3>
               <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
                 Recherche de signal Zigbee en cours. Maintenez le bouton du capteur pendant <strong>5 secondes</strong>.
@@ -6751,9 +6844,9 @@ function SonoffPairingScanModal({
             </div>
 
             {/* Discovered Sensors List */}
-            <div style={{ width: '100%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ width: '100%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0, maxHeight: '240px', overflowY: 'auto' }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', textAlign: 'left' }}>
-                Capteurs Détectés ({discoveredCount})
+                Capteurs détectés ({discoveredCount})
               </span>
 
               {discoveredCount > 0 ? (
@@ -6822,8 +6915,7 @@ function SensorsView({
   onStopPairing,
   onRefresh,
   onSelect,
-  onRename,
-  onAssign,
+  onConfigure,
   onRemove,
   onBack,
 }: {
@@ -6840,8 +6932,7 @@ function SensorsView({
   onStopPairing: () => void;
   onRefresh: () => void;
   onSelect: (sensor: HaccpSensor) => void;
-  onRename: (sensor: HaccpSensor, name: string) => void;
-  onAssign: (sensor: HaccpSensor, equipmentId: string) => void;
+  onConfigure: (sensor: HaccpSensor, name: string, equipmentId: string) => void;
   onRemove: (sensor: HaccpSensor, removeFromNetwork: boolean) => void;
   onBack: () => void;
 }) {
@@ -6860,8 +6951,9 @@ function SensorsView({
   const activePairing = pairing?.status === 'ACTIVE';
   const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
   const selectedAssignmentId = selectedSensor?.assignedEquipment?.id ?? '';
-  const canSaveAssignment = Boolean(draftEquipmentId) && draftEquipmentId !== selectedAssignmentId;
+  const canSaveConfiguration = Boolean(draftName.trim()) && (draftName.trim() !== selectedName || draftEquipmentId !== selectedAssignmentId);
   const canClearAssignment = Boolean(selectedAssignmentId);
+  const draftTarget = temperatureEquipment.find((equipment) => String(equipment._id ?? equipment.id) === draftEquipmentId);
 
   useEffect(() => {
     setDraftName(selectedName);
@@ -6945,10 +7037,10 @@ function SensorsView({
 
       {/* KPIs Summary */}
       <div className="haccp-sensors-kpis">
-        <SensorMetric label="Total Capteurs" value={summary.total} detail="Enregistrés" />
-        <SensorMetric label="En Ligne" value={summary.online} detail="Relevé automatique" tone="ok" />
-        <SensorMetric label="Hors Ligne" value={summary.offline} detail="À vérifier" tone={summary.offline > 0 ? 'danger' : 'neutral'} />
-        <SensorMetric label="Batterie Moyenne" value={summary.averageBattery == null ? '-' : `${summary.averageBattery}%`} detail={sensorGlobalStatus(summary.globalStatus)} />
+        <SensorMetric label="Total des capteurs" value={summary.total} detail="Enregistrés" />
+        <SensorMetric label="En ligne" value={summary.online} detail="Relevé automatique" tone="ok" />
+        <SensorMetric label="Hors ligne" value={summary.offline} detail="À vérifier" tone={summary.offline > 0 ? 'danger' : 'neutral'} />
+        <SensorMetric label="Batterie moyenne" value={summary.averageBattery == null ? '-' : `${summary.averageBattery}%`} detail={sensorGlobalStatus(summary.globalStatus)} />
       </div>
 
       {/* Active Pairing Banner */}
@@ -7050,9 +7142,15 @@ function SensorsView({
                       </span>
                     )}
 
-                    <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="haccp-sensor-toggle"
+                      aria-expanded={isSelected}
+                      aria-label={isSelected ? 'Replier le capteur' : 'Déplier le capteur'}
+                      onClick={(event) => { event.stopPropagation(); onSelect(sensor); }}
+                    >
                       {isSelected ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </span>
+                    </button>
                   </div>
                 </div>
 
@@ -7108,33 +7206,37 @@ function SensorsView({
                       </div>
                     </div>
 
+                    <div className={`haccp-sensor-target-preview ${draftTarget ? 'assigned' : 'unassigned'}`}>
+                      <MapPin size={17} />
+                      {draftTarget ? (
+                        <span>
+                          <small>Cible d’affectation</small>
+                          <strong>{draftTarget.name}</strong>
+                          <em>{formatTemperatureTypeLabel(String(draftTarget.type ?? ''))}{draftTarget.temperatureTarget != null ? ` · cible ${draftTarget.temperatureTarget}°C` : ''}</em>
+                        </span>
+                      ) : (
+                        <span><small>Cible d’affectation</small><strong>Capteur non affecté</strong><em>Choisissez une enceinte HACCP.</em></span>
+                      )}
+                    </div>
+
                     {/* Actions panel */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          disabled={saving || !draftName.trim() || draftName.trim() === sensorDisplayName(sensor)}
-                          onClick={() => onRename(sensor, draftName.trim())}
+                          disabled={saving || !canSaveConfiguration}
+                          onClick={() => onConfigure(sensor, draftName.trim(), draftEquipmentId)}
                           style={{ borderRadius: '8px' }}
                         >
-                          Renommer
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={saving || !canSaveAssignment}
-                          onClick={() => onAssign(sensor, draftEquipmentId)}
-                          style={{ borderRadius: '8px' }}
-                        >
-                          Enregistrer l'affectation
+                          <CheckCircle2 size={14} /> Enregistrer les modifications
                         </button>
                         {canClearAssignment && (
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             disabled={saving}
-                            onClick={() => onAssign(sensor, '')}
+                            onClick={() => setDraftEquipmentId('')}
                             style={{ borderRadius: '8px' }}
                           >
                             Désaffecter
@@ -7715,7 +7817,7 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
   };
 
   const addSurface = (zoneIndex: number) => {
-    const newSurface = { name: `Surface ${items[zoneIndex].surfaces.length + 1}`, frequency: 'daily' };
+    const newSurface = { name: `Surface ${items[zoneIndex].surfaces.length + 1}`, frequency: 'daily', notes: '' };
     const updatedSurfaces = [...items[zoneIndex].surfaces, newSurface];
     updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
   };
@@ -7733,8 +7835,8 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
       description: customZoneDesc.trim() || 'Zone de nettoyage sur mesure',
       selected: true,
       surfaces: [
-        { name: 'Plan de travail / Surface principale', frequency: 'daily' },
-        { name: 'Sols & Poignées', frequency: 'daily' },
+        { name: 'Plan de travail / Surface principale', frequency: 'daily', notes: '' },
+        { name: 'Sols & Poignées', frequency: 'daily', notes: '' },
       ],
     };
     onChange([...items, newZone]);
@@ -7818,13 +7920,48 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
                         />
                         <select
                           className="haccp-frequency-select"
-                          value={surface.frequency}
-                          onChange={(e) => updateSurfaceFrequency(zoneIndex, surfaceIndex, e.target.value)}
+                          value={isCustomCleaningFrequency(surface.frequency) ? 'custom' : surface.frequency}
+                          onChange={(e) => updateSurfaceFrequency(zoneIndex, surfaceIndex, e.target.value === 'custom' ? 'every:1:days' : e.target.value)}
                         >
                           <option value="daily">Quotidien</option>
                           <option value="weekly">Hebdomadaire</option>
                           <option value="monthly">Mensuel</option>
+                          <option value="yearly">Annuel</option>
+                          <option value="custom">Personnalisé</option>
                         </select>
+                        {isCustomCleaningFrequency(surface.frequency) ? (
+                          <>
+                            <input
+                              type="number"
+                              min="1"
+                              className="haccp-instance-input haccp-frequency-amount"
+                              value={customCleaningFrequencyParts(surface.frequency).amount}
+                              onChange={(e) => updateSurfaceFrequency(zoneIndex, surfaceIndex, customCleaningFrequencyValue(e.target.value, customCleaningFrequencyParts(surface.frequency).unit))}
+                              aria-label="Intervalle de nettoyage"
+                            />
+                            <select
+                              className="haccp-frequency-select"
+                              value={customCleaningFrequencyParts(surface.frequency).unit}
+                              onChange={(e) => updateSurfaceFrequency(zoneIndex, surfaceIndex, customCleaningFrequencyValue(customCleaningFrequencyParts(surface.frequency).amount, e.target.value))}
+                              aria-label="Unité de la fréquence"
+                            >
+                              <option value="days">Jours</option>
+                              <option value="weeks">Semaines</option>
+                              <option value="months">Mois</option>
+                              <option value="years">Années</option>
+                            </select>
+                          </>
+                        ) : null}
+                        <input
+                          type="text"
+                          className="haccp-instance-input"
+                          value={surface.notes ?? ''}
+                          onChange={(e) => {
+                            const updatedSurfaces = items[zoneIndex].surfaces.map((entry, idx) => idx === surfaceIndex ? { ...entry, notes: e.target.value } : entry);
+                            updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
+                          }}
+                          placeholder="Note / consigne"
+                        />
                         <button
                           type="button"
                           className="haccp-instance-delete-btn"
@@ -7934,7 +8071,7 @@ function EditableSensorsStep({
     <div className="haccp-onboarding-step">
       <StepIntro
         icon={<Smartphone size={20} />}
-        title="Capteurs de Température Sonoff (IoT)"
+        title="Capteurs de température Sonoff (IoT)"
         text="Branchez la clé USB Sonoff Zigbee 3.0 et appairez directement vos capteurs de température sans fil."
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem', marginTop: '1.25rem' }}>
@@ -7947,7 +8084,7 @@ function EditableSensorsStep({
           </div>
           <span className={`haccp-status-pill ${isZigbeeKeyDetected ? 'ok' : 'danger'}`}>
             <span className="status-dot" />
-            {isZigbeeKeyDetected ? 'Clé USB Détectée' : 'Clé USB Non Détectée'}
+            {isZigbeeKeyDetected ? 'Clé USB détectée' : 'Clé USB non détectée'}
           </span>
         </div>
 
@@ -7955,8 +8092,8 @@ function EditableSensorsStep({
         <div style={{ border: '1px solid #e2e8f0', borderRadius: '18px', padding: '1.25rem', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.85rem' }}>
           <img src="/capteur.png" alt="Capteur Sonoff Température" style={{ height: '115px', objectFit: 'contain' }} />
           <div>
-            <strong style={{ display: 'block', fontSize: '1rem', color: '#0f172a' }}>2. Capteur Température Sonoff</strong>
-            <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>Maintenez le bouton du capteur pendant 5s pour l'appairer.</span>
+            <strong style={{ display: 'block', fontSize: '1rem', color: '#0f172a' }}>2. Capteur de température Sonoff</strong>
+            <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>Maintenez le bouton du capteur pendant 5 s pour l’appairer.</span>
           </div>
           {activePairing ? (
             <button type="button" className="btn secondary btn-sm" onClick={() => setShowScanModal(true)} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
@@ -8154,8 +8291,8 @@ function HaccpConfigForm({
   kind: HaccpConfigKind;
   form: Record<string, string>;
   setField: (key: string, value: string) => void;
-  surfaces: Array<{ name: string; frequency: string }>;
-  setSurfaces: (surfaces: Array<{ name: string; frequency: string }>) => void;
+  surfaces: CleaningSurfaceDraft[];
+  setSurfaces: (surfaces: CleaningSurfaceDraft[]) => void;
 }) {
   if (kind === 'temperature') {
     return (
@@ -8182,14 +8319,26 @@ function HaccpConfigForm({
       <div className="haccp-custom-surfaces full-width">
         <div className="haccp-custom-surfaces-header">
           <strong>Surfaces à contrôler</strong>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSurfaces([...surfaces, { name: '', frequency: 'daily' }])}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSurfaces([...surfaces, { name: '', frequency: 'daily', notes: '' }])}>
             <Plus size={14} /> Surface
           </button>
         </div>
         {surfaces.map((surface, index) => (
           <div className="haccp-custom-surface-row" key={index}>
             <TextInput label="Surface" value={surface.name} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, name: value } : entry))} placeholder="Ex : Table inox" />
-            <SelectInput label="Fréquence" value={surface.frequency} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, frequency: value } : entry))} options={FREQUENCY_OPTIONS} />
+            <SelectInput label="Fréquence" value={isCustomCleaningFrequency(surface.frequency) ? 'custom' : surface.frequency} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, frequency: value === 'custom' ? 'every:1:days' : value } : entry))} options={FREQUENCY_OPTIONS} />
+            {isCustomCleaningFrequency(surface.frequency) ? (
+              <div className="haccp-custom-frequency-fields">
+                <TextInput label="Tous les" value={String(customCleaningFrequencyParts(surface.frequency).amount)} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, frequency: customCleaningFrequencyValue(value, customCleaningFrequencyParts(entry.frequency).unit) } : entry))} type="number" />
+                <SelectInput label="Période" value={customCleaningFrequencyParts(surface.frequency).unit} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, frequency: customCleaningFrequencyValue(customCleaningFrequencyParts(entry.frequency).amount, value) } : entry))} options={[
+                  { value: 'days', label: 'Jours' },
+                  { value: 'weeks', label: 'Semaines' },
+                  { value: 'months', label: 'Mois' },
+                  { value: 'years', label: 'Années' },
+                ]} />
+              </div>
+            ) : null}
+            <TextInput label="Note / consigne" value={surface.notes ?? ''} onChange={(value) => setSurfaces(surfaces.map((entry, entryIndex) => entryIndex === index ? { ...entry, notes: value } : entry))} placeholder="Ex : démonter, dégraisser puis désinfecter" />
             <button type="button" className="haccp-action-btn" onClick={() => setSurfaces(surfaces.filter((_, entryIndex) => entryIndex !== index))} aria-label="Supprimer la surface">
               <Trash2 size={14} />
             </button>
@@ -8454,7 +8603,34 @@ function processLabel(type: string) {
 }
 
 function frequencyLabel(value: string) {
+  if (isCustomCleaningFrequency(value)) {
+    const { amount, unit } = customCleaningFrequencyParts(value);
+    const unitLabel = ({ days: 'jour', weeks: 'semaine', months: 'mois', years: 'année' } as Record<string, string>)[unit] ?? unit;
+    const plural = amount > 1 && unit !== 'months' ? 's' : '';
+    return haccpCopy(`Tous les ${amount} ${unitLabel}${plural}`, `Every ${amount} ${unit}`);
+  }
   return haccpText(FREQUENCY_OPTIONS.find((item) => item.value === value)?.label ?? value ?? '-');
+}
+
+function isCustomCleaningFrequency(value: string) {
+  return /^every:\d+:(?:day|week|month|year)s?$/.test(String(value || ''));
+}
+
+function customCleaningFrequencyParts(value: string) {
+  const match = String(value || '').match(/^every:(\d+):(day|week|month|year)s?$/);
+  return {
+    amount: Math.max(1, Number(match?.[1] ?? 1)),
+    unit: `${match?.[2] ?? 'day'}s`,
+  };
+}
+
+function customCleaningFrequencyValue(amount: string | number, unit: string) {
+  return `every:${Math.max(1, Math.round(Number(amount) || 1))}:${unit}`;
+}
+
+function normalizeCleaningFrequency(value: string) {
+  if (value === 'custom') return 'every:1:days';
+  return value || 'daily';
 }
 
 function temperatureTypeOptions() {
@@ -8468,7 +8644,8 @@ function temperatureTypeOptions() {
     .map((item) => ({ value: item.type, label: `${item.name} (${item.type})` }));
 }
 
-function configModalTitle(kind: HaccpConfigKind) {
+function configModalTitle(kind: HaccpConfigKind, editing = false) {
+  if (editing && kind === 'cleaning') return haccpText('Modifier la zone de nettoyage');
   return haccpText(({
     temperature: 'Créer un matériel température',
     process: 'Créer un équipement de procédé',

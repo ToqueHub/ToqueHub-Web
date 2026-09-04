@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/zigbee-adapter.sh"
 ENV_FILE="$ROOT_DIR/.env.docker"
 IOT_DATA_DIR="$ROOT_DIR/.toquehub-iot/zigbee2mqtt-data"
 IOT_CONFIG_FILE="$IOT_DATA_DIR/configuration.yaml"
@@ -41,20 +42,6 @@ detect_serial_port() {
   if [[ ${#candidates[@]} -gt 0 ]]; then
     printf '%s\n' "${candidates[0]}"
   fi
-}
-
-infer_zigbee_adapter_type() {
-  local serial_port
-  serial_port="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-
-  case "$serial_port" in
-    *mg21*|*dongle_lite*|*efr32*|*silabs*|*silicon_labs*)
-      printf 'ember\n'
-      ;;
-    *)
-      printf 'zstack\n'
-      ;;
-  esac
 }
 
 get_env() {

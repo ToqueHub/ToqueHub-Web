@@ -7343,6 +7343,7 @@ model HaccpCleaningSurface {
   zoneId          String    @db.Uuid
   name            String
   frequency       String
+  notes           String?   @db.Text
   lastCleaned     DateTime?
   isActive        Boolean   @default(true)
   archivedAt      DateTime?
