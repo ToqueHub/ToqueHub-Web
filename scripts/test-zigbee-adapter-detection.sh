@@ -16,6 +16,7 @@ assert_adapter() {
 }
 
 assert_adapter '/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2-if00-port0' ember
+assert_adapter '/dev/serial/by-id/usb-ITEAD_SONOFF_ZBDongle-E_123456-if00-port0' ember
 assert_adapter '/dev/serial/by-id/usb-Silicon_Labs_CP2102N_EFR32MG21-if00-port0' ember
 assert_adapter '/dev/serial/by-id/usb-SONOFF_Dongle_Lite-if00-port0' ember
 assert_adapter '/dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_1234-if00-port0' zstack
