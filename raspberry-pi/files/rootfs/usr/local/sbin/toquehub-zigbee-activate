@@ -29,7 +29,7 @@ detect_adapter() {
 detect_adapter_type() {
   local properties
   properties="$(udevadm info -q property -n "$1" 2>/dev/null || true)"
-  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|ZBDongle-E)' <<<"$properties"; then
+  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|Dongle_Plus_V2|ZBDongle-E)' <<<"$properties"; then
     printf '%s\n' ember
   else
     printf '%s\n' zstack

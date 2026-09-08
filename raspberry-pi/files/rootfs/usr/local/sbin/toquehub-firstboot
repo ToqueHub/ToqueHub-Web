@@ -32,7 +32,7 @@ detect_zigbee_adapter_type() {
 
   # Sonoff Dongle Lite MG21 and Sonoff ZBDongle-E use Silicon Labs EmberZNet.
   # The older Sonoff ZBDongle-P and most TI coordinators use Z-Stack.
-  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|ZBDongle-E)' <<<"$properties"; then
+  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|Dongle_Plus_V2|ZBDongle-E)' <<<"$properties"; then
     printf '%s\n' ember
   else
     printf '%s\n' zstack
