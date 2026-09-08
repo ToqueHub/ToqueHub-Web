@@ -21,6 +21,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { FinanceInstallationService } from './finance-installation.service';
 import { FinanceService, type FinanceUploadedFile } from './finance.service';
 import {
+  ConfigureFennoaAutomationDto,
   ConfigureFennoaDto,
   ConfigureFlatpayDto,
   ConfigurePosApiDto,
@@ -114,6 +115,14 @@ export class FinanceController {
     return this.fennoa.publicSettings(this.org(user));
   }
 
+  @Patch('fennoa/automation')
+  configureFennoaAutomation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfigureFennoaAutomationDto,
+  ) {
+    return this.fennoa.configureAutomation(this.org(user), user, dto);
+  }
+
   @Post('fennoa/test')
   testFennoa(@CurrentUser() user: AuthenticatedUser) {
     return this.fennoa.test(this.org(user), user);
@@ -148,6 +157,14 @@ export class FinanceController {
     @Body() dto: MapFinanceSourceSiteDto,
   ) {
     return this.flatpayAutomation.reconnect(this.org(user), user, dto.siteId);
+  }
+
+  @Post('flatpay/automation/sync')
+  syncFlatpayAutomation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: MapFinanceSourceSiteDto,
+  ) {
+    return this.flatpayAutomation.syncNow(this.org(user), user, dto.siteId);
   }
 
   @Get('pos/configuration')

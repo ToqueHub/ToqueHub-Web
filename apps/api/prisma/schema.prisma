@@ -2446,6 +2446,9 @@ model FinanceSettings {
   fennoaApiKeyUpdatedAt        DateTime?
   fennoaLastTestedAt           DateTime?
   fennoaLastError              String?   @db.Text
+  fennoaAutomaticSyncEnabled   Boolean   @default(true)
+  fennoaAutomaticSyncTime      String    @default("03:00")
+  fennoaAutomaticSyncLastRunAt DateTime?
   flatpayPortalUrl             String    @default("https://portal.flatpay.com")
   flatpayUsername              String?
   flatpayCredentialStorage     String?
@@ -2541,6 +2544,7 @@ model FinanceFlatpayConnection {
   automationInstalledAt DateTime?
   automationInbox       String?
   automationSchedule    String[]  @default(["07:00", "15:00", "19:00", "23:00"])
+  automationLastAttemptAt DateTime?
   historyStart          DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt

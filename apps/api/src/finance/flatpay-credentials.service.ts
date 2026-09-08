@@ -228,6 +228,7 @@ export class FlatpayCredentialsService {
       automationInstalledAt: null,
       automationInbox: null,
       automationSchedule: ['07:00', '15:00', '19:00', '23:00'],
+      automationLastAttemptAt: null,
       historyStart: null,
       defaultSite: null,
       automationRuntime: 'TOQUEHUB_LOCAL_AGENT',
@@ -249,6 +250,7 @@ export class FlatpayCredentialsService {
       automationInstalledAt: Date | null;
       automationInbox: string | null;
       automationSchedule: string[];
+      automationLastAttemptAt: Date | null;
       historyStart: Date | null;
     },
     site: { id: string; name: string },
@@ -266,6 +268,7 @@ export class FlatpayCredentialsService {
       automationInstalledAt: connection.automationInstalledAt,
       automationInbox: connection.automationInbox,
       automationSchedule: connection.automationSchedule,
+      automationLastAttemptAt: connection.automationLastAttemptAt,
       historyStart: connection.historyStart,
       defaultSite: site,
       automationRuntime: 'TOQUEHUB_LOCAL_AGENT',

@@ -797,6 +797,13 @@ export const api = {
       token,
     );
   },
+  configureFennoaAutomation(token: string, payload: { enabled: boolean; time: string }) {
+    return request<FinanceBootstrap['settings']['fennoa']>(
+      '/finance/fennoa/automation',
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
   testFennoa(token: string) {
     return request<FennoaSyncResult>('/finance/fennoa/test', { method: 'POST' }, token);
   },
@@ -881,6 +888,13 @@ export const api = {
   reconnectFlatpayAutomation(token: string, siteId: string) {
     return request<{ started: boolean; alreadyRunning: boolean; message: string }>(
       '/finance/flatpay/automation/reconnect',
+      { method: 'POST', body: JSON.stringify({ siteId }) },
+      token,
+    );
+  },
+  syncFlatpayAutomation(token: string, siteId: string) {
+    return request<{ started: boolean; alreadyRunning: boolean; message: string }>(
+      '/finance/flatpay/automation/sync',
       { method: 'POST', body: JSON.stringify({ siteId }) },
       token,
     );

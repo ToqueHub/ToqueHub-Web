@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   FinanceAccountCategory,
   FinanceProvider,
@@ -10,18 +16,31 @@ import {
 import { createHash } from 'node:crypto';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ConfigureFennoaDto, SyncFennoaDto } from './dto/finance.dto';
+import type {
+  ConfigureFennoaAutomationDto,
+  ConfigureFennoaDto,
+  SyncFennoaDto,
+} from './dto/finance.dto';
 import {
   FennoaClientService,
   normalizeFennoaBaseUrl,
   type FennoaCredentials,
 } from './fennoa-client.service';
 import { FennoaSecretService } from './fennoa-secret.service';
+import { latestFlatpayScheduledOccurrence } from './flatpay-automation.service';
 import { FinancePolicy } from './finance.policy';
 
 type UnknownRecord = Record<string, unknown>;
 
 const DEFAULT_FENNOA_URL = 'https://app.fennoa.com/api';
+
+export function latestFennoaScheduledOccurrence(
+  time: string,
+  now: Date,
+  timeZone = 'Europe/Helsinki',
+) {
+  return latestFlatpayScheduledOccurrence([time], now, timeZone);
+}
 
 type FennoaAccountingPeriod = {
   externalId: number;
@@ -435,13 +454,32 @@ type FennoaPeriodPayload = {
 };
 
 @Injectable()
-export class FennoaSyncService {
+export class FennoaSyncService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(FennoaSyncService.name);
+  private readonly running = new Set<string>();
+  private timer?: NodeJS.Timeout;
+  private startupTimer?: NodeJS.Timeout;
+  private checkingSchedule = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly policy: FinancePolicy,
     private readonly secrets: FennoaSecretService,
     private readonly client: FennoaClientService,
   ) {}
+
+  onModuleInit() {
+    if (process.env.NODE_ENV === 'test') return;
+    this.startupTimer = setTimeout(() => void this.checkSchedule(), 10_000);
+    this.startupTimer.unref();
+    this.timer = setInterval(() => void this.checkSchedule(), 60_000);
+    this.timer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.startupTimer) clearTimeout(this.startupTimer);
+    if (this.timer) clearInterval(this.timer);
+  }
 
   async configure(organizationId: string, actor: AuthenticatedUser, dto: ConfigureFennoaDto) {
     this.policy.assertPermission(actor, 'finance.manage');
@@ -475,6 +513,29 @@ export class FennoaSyncService {
       },
     });
     await this.source(organizationId);
+    return this.publicConfiguration(updated);
+  }
+
+  async configureAutomation(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    dto: ConfigureFennoaAutomationDto,
+  ) {
+    this.policy.assertPermission(actor, 'finance.manage');
+    const existing = await this.prisma.financeSettings.findUnique({ where: { organizationId } });
+    if (!existing) throw new BadRequestException('Le module Finance doit être installé.');
+    if (dto.enabled && (!existing.fennoaUsername || !existing.fennoaApiKeyEncrypted)) {
+      throw new BadRequestException(
+        'Configurez l’utilisateur et la clé API Fennoa avant d’activer la synchronisation.',
+      );
+    }
+    const updated = await this.prisma.financeSettings.update({
+      where: { organizationId },
+      data: {
+        fennoaAutomaticSyncEnabled: dto.enabled,
+        fennoaAutomaticSyncTime: dto.time,
+      },
+    });
     return this.publicConfiguration(updated);
   }
 
@@ -514,6 +575,22 @@ export class FennoaSyncService {
 
   async sync(organizationId: string, actor: AuthenticatedUser, dto: SyncFennoaDto) {
     this.policy.assertPermission(actor, 'finance.manage');
+    return this.executeSync(organizationId, dto);
+  }
+
+  private async executeSync(organizationId: string, dto: SyncFennoaDto) {
+    if (this.running.has(organizationId)) {
+      throw new BadRequestException('Une synchronisation Fennoa est déjà en cours.');
+    }
+    this.running.add(organizationId);
+    try {
+      return await this.syncInternal(organizationId, dto);
+    } finally {
+      this.running.delete(organizationId);
+    }
+  }
+
+  private async syncInternal(organizationId: string, dto: SyncFennoaDto) {
     const credentials = await this.credentials(organizationId);
     const source = await this.source(organizationId);
     const hasSuccessfulFullSync = Boolean(
@@ -808,6 +885,66 @@ export class FennoaSyncService {
     }
   }
 
+  private async checkSchedule() {
+    if (this.checkingSchedule) return;
+    this.checkingSchedule = true;
+    try {
+      const settingsList = await this.prisma.financeSettings
+        .findMany({
+          where: {
+            fennoaAutomaticSyncEnabled: true,
+            fennoaUsername: { not: null },
+            fennoaApiKeyEncrypted: { not: null },
+          },
+          select: {
+            organizationId: true,
+            timezone: true,
+            fennoaAutomaticSyncTime: true,
+            fennoaAutomaticSyncLastRunAt: true,
+          },
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `Planification Fennoa indisponible : ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return [];
+        });
+      const now = new Date();
+      for (const settings of settingsList) {
+        const dueAt = latestFennoaScheduledOccurrence(
+          settings.fennoaAutomaticSyncTime,
+          now,
+          settings.timezone || 'Europe/Helsinki',
+        );
+        if (
+          !dueAt ||
+          (settings.fennoaAutomaticSyncLastRunAt && settings.fennoaAutomaticSyncLastRunAt >= dueAt)
+        ) {
+          continue;
+        }
+        const claimed = await this.prisma.financeSettings.updateMany({
+          where: {
+            organizationId: settings.organizationId,
+            fennoaAutomaticSyncEnabled: true,
+            OR: [
+              { fennoaAutomaticSyncLastRunAt: null },
+              { fennoaAutomaticSyncLastRunAt: { lt: dueAt } },
+            ],
+          },
+          data: { fennoaAutomaticSyncLastRunAt: now },
+        });
+        if (!claimed.count) continue;
+        void this.executeSync(settings.organizationId, {}).catch((error) =>
+          this.logger.error(
+            `Synchronisation Fennoa planifiée : ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+      }
+    } finally {
+      this.checkingSchedule = false;
+    }
+  }
+
   private async syncCustomers(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -970,6 +1107,9 @@ export class FennoaSyncService {
     fennoaApiKeyUpdatedAt: Date | null;
     fennoaLastTestedAt: Date | null;
     fennoaLastError: string | null;
+    fennoaAutomaticSyncEnabled: boolean;
+    fennoaAutomaticSyncTime: string;
+    fennoaAutomaticSyncLastRunAt: Date | null;
   }) {
     return {
       baseUrl: settings.fennoaBaseUrl,
@@ -980,6 +1120,9 @@ export class FennoaSyncService {
       apiKeyUpdatedAt: settings.fennoaApiKeyUpdatedAt,
       lastTestedAt: settings.fennoaLastTestedAt,
       lastError: settings.fennoaLastError,
+      automaticSyncEnabled: settings.fennoaAutomaticSyncEnabled,
+      automaticSyncTime: settings.fennoaAutomaticSyncTime,
+      automaticSyncLastRunAt: settings.fennoaAutomaticSyncLastRunAt,
     };
   }
 }

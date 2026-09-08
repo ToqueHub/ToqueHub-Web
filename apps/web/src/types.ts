@@ -2725,6 +2725,7 @@ export interface FinanceFlatpayConfiguration {
   automationInstalledAt?: string | null;
   automationInbox?: string | null;
   automationSchedule?: string[];
+  automationLastAttemptAt?: string | null;
   historyStart?: string | null;
   defaultSite?: { id: string; name: string } | null;
   automationRuntime?: 'TOQUEHUB_LOCAL_AGENT';
@@ -2767,6 +2768,9 @@ export interface FinanceBootstrap {
       apiKeyUpdatedAt?: string | null;
       lastTestedAt?: string | null;
       lastError?: string | null;
+      automaticSyncEnabled?: boolean;
+      automaticSyncTime?: string;
+      automaticSyncLastRunAt?: string | null;
     } | null;
     flatpay: FinanceFlatpayConfiguration | null;
     pos: {

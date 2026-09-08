@@ -1,11 +1,26 @@
 import { classifyFinanceFile } from './finance.service';
 import {
+  isCompleteFlatpayDownload,
   resolveFlatpayDownloadedReportKey,
   resolveFlatpayDownloadFileName,
 } from './flatpay-download';
 import { flatpayProductPeriodFromFileName } from './finance-import-parser.service';
 
 describe('FlatPay report download names', () => {
+  it('recognizes a complete Chromium workbook left with a temporary suffix', () => {
+    const completeWorkbook = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      Buffer.from('workbook payload'),
+      Buffer.from([0x50, 0x4b, 0x05, 0x06]),
+      Buffer.alloc(18),
+    ]);
+
+    expect(isCompleteFlatpayDownload(completeWorkbook, 'OrdersReport.xlsx')).toBe(true);
+    expect(isCompleteFlatpayDownload(completeWorkbook.subarray(0, -22), 'OrdersReport.xlsx')).toBe(
+      false,
+    );
+  });
+
   it('turns a generic Sales Overview download into a classifiable workbook name', () => {
     const fileName = resolveFlatpayDownloadFileName(
       'download',

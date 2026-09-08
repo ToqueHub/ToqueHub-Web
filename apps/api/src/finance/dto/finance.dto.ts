@@ -106,6 +106,15 @@ export class ConfigureFennoaDto {
   apiVersion?: 'v1' | 'v2';
 }
 
+export class ConfigureFennoaAutomationDto {
+  @IsBoolean()
+  enabled!: boolean;
+
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  time!: string;
+}
+
 export class ConfigureFlatpayDto {
   @IsUUID()
   siteId!: string;
