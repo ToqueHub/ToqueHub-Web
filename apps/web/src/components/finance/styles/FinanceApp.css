@@ -1926,6 +1926,92 @@
   font-weight: 800;
   text-align: right;
 }
+.finance-provider-sync-schedule {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: end;
+  gap: 0.7rem;
+  margin: 0.8rem 0;
+  padding: 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.finance-provider-flatpay-schedule {
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, auto) auto auto auto;
+}
+.finance-provider-flatpay-schedule .finance-schedule-presets {
+  align-self: center;
+}
+.finance-provider-sync-schedule > div,
+.finance-provider-sync-time {
+  display: grid;
+  gap: 0.15rem;
+}
+.finance-provider-sync-schedule > div strong {
+  font-size: 0.7rem;
+}
+.finance-provider-sync-schedule > div span,
+.finance-provider-sync-actions > span,
+.finance-provider-sync-time > span {
+  color: #64748b;
+  font-size: 0.62rem;
+}
+.finance-provider-sync-enabled {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 40px;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+.finance-provider-sync-enabled input {
+  accent-color: #0f8a77;
+}
+.finance-provider-sync-time input {
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.finance-provider-sync-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+.finance-provider-sync-actions > span {
+  max-width: 420px;
+}
+.finance-provider-sync-actions > small {
+  grid-column: 1 / -1;
+  color: #047857;
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+.finance-provider-sync-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.7rem 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #b91c1c;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.finance-provider-sync-error svg {
+  flex: 0 0 auto;
+}
 .finance-provider-source-row {
   display: flex;
   align-items: center;
@@ -4584,6 +4670,21 @@
   }
   .finance-schedule-custom {
     grid-template-columns: 1fr;
+  }
+  .finance-provider-sync-schedule {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .finance-provider-sync-actions {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .finance-provider-sync-actions > small {
+    grid-column: auto;
+  }
+  .finance-provider-sync-actions .btn,
+  .finance-provider-sync-schedule .btn {
+    justify-content: center;
   }
   .finance-schedule-custom .btn,
   .finance-settings-modal-footer .btn {

@@ -3,6 +3,47 @@ import { basename, extname } from 'node:path';
 const SUPPORTED_REPORT_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv', '.pdf']);
 const GENERIC_DOWNLOAD_NAME = /^download(?:-\d+)?(?:\.[a-z0-9]+)?$/i;
 
+function containsSignature(buffer: Buffer, signature: number[]) {
+  if (buffer.length < signature.length) return false;
+  for (let offset = 0; offset <= buffer.length - signature.length; offset += 1) {
+    if (signature.every((byte, index) => buffer[offset + index] === byte)) return true;
+  }
+  return false;
+}
+
+/**
+ * Chromium can leave a complete FlatPay workbook with a `.crdownload` suffix
+ * when the portal does not close the download stream cleanly. Only recover a
+ * temporary file after its container format proves that the payload is whole.
+ */
+export function isCompleteFlatpayDownload(buffer: Buffer, targetFileName: string) {
+  const extension = extname(targetFileName).toLowerCase();
+  if (!buffer.length) return false;
+  if (extension === '.xlsx') {
+    const zipHeader =
+      buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) ||
+      buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    if (!zipHeader) return false;
+    const footerWindow = buffer.subarray(Math.max(0, buffer.length - 65_557));
+    return containsSignature(footerWindow, [0x50, 0x4b, 0x05, 0x06]);
+  }
+  if (extension === '.xls') {
+    return buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  }
+  if (extension === '.pdf') {
+    return (
+      buffer.subarray(0, 5).toString('ascii') === '%PDF-' &&
+      buffer.subarray(-1_024).includes(Buffer.from('%%EOF'))
+    );
+  }
+  if (extension === '.csv') {
+    return !buffer.includes(0) && /[\r\n]/.test(buffer.toString('utf8'));
+  }
+  return false;
+}
+
 function safeReportStem(value: string) {
   return value
     .normalize('NFD')

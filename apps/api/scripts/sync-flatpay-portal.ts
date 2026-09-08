@@ -1,5 +1,15 @@
 import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import {
+  access,
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { basename, dirname, extname, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -15,6 +25,7 @@ import {
 } from 'playwright-core';
 import { FennoaSecretService } from '../src/finance/fennoa-secret.service';
 import {
+  isCompleteFlatpayDownload,
   resolveFlatpayDownloadedReportKey,
   resolveFlatpayDownloadFileName,
 } from '../src/finance/flatpay-download';
@@ -715,7 +726,30 @@ async function generateSelectedReport(
   return generateReport(page, options, type, range);
 }
 
-async function saveDownload(download: Download, inbox: string, reportName: string) {
+async function recentChromiumDownloads(inbox: string, startedAt: number) {
+  const entries = await readdir(inbox, { withFileTypes: true }).catch(() => []);
+  const candidates = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.crdownload'))
+      .map(async (entry) => {
+        const path = resolve(inbox, entry.name);
+        const details = await stat(path).catch(() => null);
+        return details && details.mtimeMs >= startedAt - 1_500
+          ? { path, size: details.size, modifiedAt: details.mtimeMs }
+          : null;
+      }),
+  );
+  return candidates
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((left, right) => right.modifiedAt - left.modifiedAt);
+}
+
+async function saveDownload(
+  download: Download,
+  inbox: string,
+  reportName: string,
+  startedAt: number,
+) {
   const fileName = resolveFlatpayDownloadFileName(download.suggestedFilename(), reportName);
   const extension = extname(fileName);
   const stem = basename(fileName, extension);
@@ -730,8 +764,50 @@ async function saveDownload(download: Download, inbox: string, reportName: strin
       break;
     target = resolve(directory, `${stem}-${suffix}${extension}`);
   }
-  await download.saveAs(target);
-  return target;
+  let nativeSaved = false;
+  let nativeError: unknown;
+  const nativeSave = download
+    .saveAs(target)
+    .then(() => {
+      nativeSaved = true;
+    })
+    .catch((error) => {
+      nativeError = error;
+    });
+  let observedPath = '';
+  let observedSize = -1;
+  let stableChecks = 0;
+  const deadline = Date.now() + 25_000;
+  while (Date.now() < deadline) {
+    if (nativeSaved) return target;
+    const candidate = (await recentChromiumDownloads(inbox, startedAt))[0];
+    if (candidate) {
+      if (candidate.path === observedPath && candidate.size === observedSize) stableChecks += 1;
+      else {
+        observedPath = candidate.path;
+        observedSize = candidate.size;
+        stableChecks = 0;
+      }
+      if (stableChecks >= 2) {
+        const content = await readFile(candidate.path).catch(() => null);
+        if (content && isCompleteFlatpayDownload(content, fileName)) {
+          await copyFile(candidate.path, target);
+          await download.cancel().catch(() => undefined);
+          await nativeSave;
+          await rm(candidate.path, { force: true }).catch(() => undefined);
+          return target;
+        }
+      }
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+  }
+  await download.cancel().catch(() => undefined);
+  await nativeSave;
+  throw nativeError instanceof Error
+    ? nativeError
+    : new Error(
+        `Le téléchargement FlatPay « ${reportName} » est resté incomplet pendant 25 secondes.`,
+      );
 }
 
 async function downloadReadyReports(
@@ -775,10 +851,11 @@ async function downloadReadyReports(
     const button = row.getByRole('button');
     if ((await button.count()) !== 1 || !(await button.isVisible()) || !(await button.isEnabled()))
       continue;
+    const downloadStartedAt = Date.now();
     const pending = page.waitForEvent('download', { timeout: 30_000 });
     await button.click();
     const download = await pending;
-    saved.push(await saveDownload(download, options.inbox, reportName));
+    saved.push(await saveDownload(download, options.inbox, reportName, downloadStartedAt));
     if (forcedPrefix) forcedPrefixes.add(forcedPrefix);
     downloadedKeys.add(reportName);
     state.downloadedReportKeys = [...downloadedKeys].slice(-10_000);

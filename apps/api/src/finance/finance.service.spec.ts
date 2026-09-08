@@ -4,6 +4,7 @@ import {
   flattenFennoaBudgetRows,
   buildFennoaSyncRanges,
   inferFinanceAccountCategory,
+  latestFennoaScheduledOccurrence,
   normalizeFennoaCustomer,
   normalizeFennoaLedgerRow,
   normalizeFennoaLockingPeriods,
@@ -351,6 +352,16 @@ describe('contrôle du CA par la comptabilité', () => {
 });
 
 describe('rattrapage historique Fennoa', () => {
+  it('planifie la synchronisation dans le fuseau Finance', () => {
+    expect(
+      latestFennoaScheduledOccurrence(
+        '03:00',
+        new Date('2026-09-08T01:00:00.000Z'),
+        'Europe/Helsinki',
+      )?.toISOString(),
+    ).toBe('2026-09-08T00:00:00.000Z');
+  });
+
   const periods = [
     { externalId: 1, startDate: new Date('2022-12-20'), endDate: new Date('2024-05-31') },
     { externalId: 2, startDate: new Date('2024-06-01'), endDate: new Date('2025-05-31') },

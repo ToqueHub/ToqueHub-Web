@@ -453,6 +453,54 @@ export function FinanceWorkspace({
     }
   };
 
+  const configureFennoaAutomation = async (enabled: boolean, time: string) => {
+    setSourceBusy('fennoa-schedule');
+    setError(undefined);
+    try {
+      await api.configureFennoaAutomation(token, { enabled, time });
+      await load(true, asOf);
+      setSuccess(
+        enabled
+          ? `Synchronisation quotidienne Fennoa programmée à ${time}.`
+          : 'Synchronisation quotidienne Fennoa désactivée.',
+      );
+    } catch (nextError) {
+      setError(messageOf(nextError, 'Impossible d’enregistrer la planification Fennoa.'));
+    } finally {
+      setSourceBusy(undefined);
+    }
+  };
+
+  const syncFlatpay = async (siteId: string) => {
+    setSourceBusy(`flatpay:${siteId}`);
+    setError(undefined);
+    try {
+      const result = await api.syncFlatpayAutomation(token, siteId);
+      await load(true, asOf);
+      setSuccess(result.message);
+      return true;
+    } catch (nextError) {
+      setError(messageOf(nextError, 'La synchronisation FlatPay n’a pas pu démarrer.'));
+      return false;
+    } finally {
+      setSourceBusy(undefined);
+    }
+  };
+
+  const configureFlatpayAutomation = async (siteId: string, schedule: string[]) => {
+    setSourceBusy(`flatpay-schedule:${siteId}`);
+    setError(undefined);
+    try {
+      await api.installFlatpayAutomation(token, { siteId, schedule });
+      await load(true, asOf);
+      setSuccess(`Synchronisations FlatPay programmées à ${schedule.join(', ')}.`);
+    } catch (nextError) {
+      setError(messageOf(nextError, 'Impossible d’enregistrer la planification FlatPay.'));
+    } finally {
+      setSourceBusy(undefined);
+    }
+  };
+
   const savePreferences = async (ids: string[]) => {
     try {
       await api.updateFinancePreferences(token, ids);
@@ -701,6 +749,13 @@ export function FinanceWorkspace({
           onSetSalesInclusion={(id, enabled) => void setSalesInclusion(id, enabled)}
           onSetPrimaryPos={(id) => void setPrimaryPos(id)}
           onSyncFennoa={() => void syncFennoa()}
+          onConfigureFennoaAutomation={(enabled, time) =>
+            void configureFennoaAutomation(enabled, time)
+          }
+          onConfigureFlatpayAutomation={(siteId, schedule) =>
+            void configureFlatpayAutomation(siteId, schedule)
+          }
+          onSyncFlatpay={syncFlatpay}
           onReload={() => void load(true, asOf)}
           asOf={asOf}
           selectedSiteId={selectedSiteId || undefined}
@@ -2251,6 +2306,9 @@ function SourcesView({
   onSetSalesInclusion,
   onSetPrimaryPos,
   onSyncFennoa,
+  onConfigureFennoaAutomation,
+  onConfigureFlatpayAutomation,
+  onSyncFlatpay,
   onReload,
   asOf,
   selectedSiteId,
@@ -2263,6 +2321,9 @@ function SourcesView({
   onSetSalesInclusion: (id: string, enabled: boolean) => void;
   onSetPrimaryPos: (id: string) => void;
   onSyncFennoa: () => void;
+  onConfigureFennoaAutomation: (enabled: boolean, time: string) => void;
+  onConfigureFlatpayAutomation: (siteId: string, schedule: string[]) => void;
+  onSyncFlatpay: (siteId: string) => Promise<boolean>;
   onReload: () => void;
   asOf: string;
   selectedSiteId?: string;
@@ -2340,6 +2401,9 @@ function SourcesView({
           onSetSalesInclusion={onSetSalesInclusion}
           onSetPrimaryPos={onSetPrimaryPos}
           onSyncFennoa={onSyncFennoa}
+          onConfigureFennoaAutomation={onConfigureFennoaAutomation}
+          onConfigureFlatpayAutomation={onConfigureFlatpayAutomation}
+          onSyncFlatpay={onSyncFlatpay}
           onImport={() => {
             setSelectedProvider(undefined);
             setImportOpen(true);
@@ -2447,6 +2511,23 @@ function providerStatus(data: FinanceBootstrap, provider: FinanceProvider): Fina
   return configured || sources.some(({ status }) => status === 'READY') ? 'READY' : 'NOT_CONNECTED';
 }
 
+function flatpayConnectionStatus(
+  connection: ReturnType<typeof flatpayConnectionForSite>,
+): FinanceSourceStatus {
+  if (!connection?.configured) return 'NOT_CONNECTED';
+  if (connection.lastError) return 'ERROR';
+  if (!connection.automationInstalledAt || !connection.lastSyncedAt) return 'ATTENTION';
+  return 'READY';
+}
+
+function flatpayFailureMessage(error?: string | null) {
+  if (!error) return null;
+  if (/\[pid=\d+\]|dbus|crashpad|net_error|\.crdownload/i.test(error)) {
+    return 'Le rapport a été généré par FlatPay, mais son téléchargement ne s’est pas terminé correctement.';
+  }
+  return error;
+}
+
 function ProviderSummaryCard({
   provider,
   data,
@@ -2484,6 +2565,9 @@ function ProviderDetailsModal({
   onSetSalesInclusion,
   onSetPrimaryPos,
   onSyncFennoa,
+  onConfigureFennoaAutomation,
+  onConfigureFlatpayAutomation,
+  onSyncFlatpay,
   onConfigure,
   onImport,
 }: {
@@ -2495,24 +2579,57 @@ function ProviderDetailsModal({
   onSetSalesInclusion: (sourceId: string, enabled: boolean) => void;
   onSetPrimaryPos: (sourceId: string) => void;
   onSyncFennoa: () => void;
+  onConfigureFennoaAutomation: (enabled: boolean, time: string) => void;
+  onConfigureFlatpayAutomation: (siteId: string, schedule: string[]) => void;
+  onSyncFlatpay: (siteId: string) => Promise<boolean>;
   onConfigure: (provider: FinanceProvider, siteId?: string) => void;
   onImport: () => void;
 }) {
   const sources = data.sources.filter((source) => source.provider === provider);
   const isPos = provider === 'FLATPAY' || provider === 'LOYVERSE' || provider === 'PAYPAL_POS';
   const [siteId, setSiteId] = useState(data.sites[0]?.id ?? 'unmapped');
+  const [fennoaAutomaticSyncEnabled, setFennoaAutomaticSyncEnabled] = useState(
+    data.settings.fennoa?.automaticSyncEnabled ?? true,
+  );
+  const [fennoaAutomaticSyncTime, setFennoaAutomaticSyncTime] = useState(
+    data.settings.fennoa?.automaticSyncTime ?? '03:00',
+  );
+  const [flatpaySyncRequested, setFlatpaySyncRequested] = useState(false);
+  useEffect(() => {
+    setFennoaAutomaticSyncEnabled(data.settings.fennoa?.automaticSyncEnabled ?? true);
+    setFennoaAutomaticSyncTime(data.settings.fennoa?.automaticSyncTime ?? '03:00');
+  }, [data.settings.fennoa]);
   const selectedSite = data.sites.find((site) => site.id === siteId);
   const siteSources = sources.filter((source) =>
     siteId === 'unmapped' ? !source.siteId : source.siteId === siteId,
   );
-  const connection =
+  const selectedFlatpayConnection =
     provider === 'FLATPAY'
       ? flatpayConnectionForSite(data.settings.flatpay, selectedSite?.id)
+      : null;
+  const connection =
+    provider === 'FLATPAY'
+      ? selectedFlatpayConnection
       : provider === 'LOYVERSE'
         ? posConnectionForSite(data.settings.pos.loyverse, selectedSite?.id)
         : provider === 'PAYPAL_POS'
           ? posConnectionForSite(data.settings.pos.paypalPos, selectedSite?.id)
           : null;
+  const savedFlatpaySchedule = (
+    selectedFlatpayConnection?.automationSchedule?.length
+      ? selectedFlatpayConnection.automationSchedule
+      : FLATPAY_DEFAULT_SCHEDULE
+  )
+    .slice()
+    .sort();
+  const savedFlatpayScheduleKey = savedFlatpaySchedule.join('|');
+  const [flatpaySchedule, setFlatpaySchedule] = useState(savedFlatpaySchedule);
+  const [flatpayCustomTime, setFlatpayCustomTime] = useState('');
+  useEffect(() => setFlatpaySyncRequested(false), [siteId, connection?.lastSyncedAt]);
+  useEffect(() => {
+    setFlatpaySchedule(savedFlatpaySchedule);
+    setFlatpayCustomTime('');
+  }, [siteId, savedFlatpayScheduleKey]);
   return (
     <div className="finance-settings-modal-overlay" role="presentation" onMouseDown={onClose}>
       <section
@@ -2590,14 +2707,56 @@ function ProviderDetailsModal({
                   </div>
                 </dl>
                 {data.settings.fennoa?.apiKeyConfigured ? (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={onSyncFennoa}
-                    disabled={busySourceId === 'fennoa'}
-                  >
-                    <RefreshCw size={16} /> Synchroniser maintenant
-                  </button>
+                  <>
+                    <div className="finance-provider-sync-schedule">
+                      <div>
+                        <strong>Synchronisation quotidienne</strong>
+                        <span>Une fois par jour · fuseau {data.settings.timezone}</span>
+                      </div>
+                      <label className="finance-provider-sync-enabled">
+                        <input
+                          type="checkbox"
+                          checked={fennoaAutomaticSyncEnabled}
+                          onChange={(event) => setFennoaAutomaticSyncEnabled(event.target.checked)}
+                        />
+                        Activée
+                      </label>
+                      <label className="finance-provider-sync-time">
+                        <span>Heure</span>
+                        <input
+                          type="time"
+                          value={fennoaAutomaticSyncTime}
+                          onChange={(event) => setFennoaAutomaticSyncTime(event.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() =>
+                          onConfigureFennoaAutomation(
+                            fennoaAutomaticSyncEnabled,
+                            fennoaAutomaticSyncTime,
+                          )
+                        }
+                        disabled={
+                          busySourceId === 'fennoa-schedule' || !fennoaAutomaticSyncTime
+                        }
+                      >
+                        {busySourceId === 'fennoa-schedule' ? (
+                          <LoaderCircle size={16} className="spin" />
+                        ) : null}{' '}
+                        Enregistrer la planification
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={onSyncFennoa}
+                      disabled={busySourceId === 'fennoa'}
+                    >
+                      <RefreshCw size={16} /> Synchroniser maintenant
+                    </button>
+                  </>
                 ) : (
                   <p className="finance-source-guidance">
                     Configuration dans Système → Clés API & IA
@@ -2607,7 +2766,17 @@ function ProviderDetailsModal({
             ) : null}
             {isPos && selectedSite ? (
               <div className="finance-provider-account-card">
-                <StatusBadge status={connection?.configured ? 'READY' : 'NOT_CONNECTED'} />
+                <StatusBadge
+                  status={
+                    provider === 'FLATPAY'
+                      ? flatpayConnectionStatus(selectedFlatpayConnection)
+                      : connection?.lastError
+                        ? 'ERROR'
+                        : connection?.configured
+                          ? 'READY'
+                          : 'NOT_CONNECTED'
+                  }
+                />
                 <dl>
                   <div>
                     <dt>Compte</dt>
@@ -2617,6 +2786,12 @@ function ProviderDetailsModal({
                     <dt>Dernière synchro</dt>
                     <dd>{formatDate(connection?.lastSyncedAt, true)}</dd>
                   </div>
+                  {provider === 'FLATPAY' && selectedFlatpayConnection?.automationLastAttemptAt ? (
+                    <div>
+                      <dt>Dernière tentative</dt>
+                      <dd>{formatDate(selectedFlatpayConnection.automationLastAttemptAt, true)}</dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>Couverture</dt>
                     <dd>
@@ -2624,6 +2799,109 @@ function ProviderDetailsModal({
                     </dd>
                   </div>
                 </dl>
+                {provider === 'FLATPAY' && selectedFlatpayConnection?.automationInstalledAt ? (
+                  <div className="finance-provider-sync-schedule finance-provider-flatpay-schedule">
+                    <div>
+                      <strong>Synchronisations programmées</strong>
+                      <span>Fuseau {data.settings.timezone} · un appel par horaire</span>
+                    </div>
+                    <div className="finance-schedule-presets" aria-label="Horaires FlatPay">
+                      {Array.from(new Set([...FLATPAY_DEFAULT_SCHEDULE, ...flatpaySchedule]))
+                        .sort()
+                        .map((time) => (
+                          <button
+                            type="button"
+                            key={time}
+                            className={flatpaySchedule.includes(time) ? 'active' : undefined}
+                            aria-pressed={flatpaySchedule.includes(time)}
+                            onClick={() =>
+                              setFlatpaySchedule((current) =>
+                                current.includes(time)
+                                  ? current.filter((value) => value !== time)
+                                  : [...current, time].sort(),
+                              )
+                            }
+                          >
+                            {time}
+                          </button>
+                        ))}
+                    </div>
+                    <label className="finance-provider-sync-time">
+                      <span>Autre heure</span>
+                      <input
+                        type="time"
+                        value={flatpayCustomTime}
+                        onChange={(event) => setFlatpayCustomTime(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        if (flatpayCustomTime && !flatpaySchedule.includes(flatpayCustomTime)) {
+                          setFlatpaySchedule((current) => [...current, flatpayCustomTime].sort());
+                          setFlatpayCustomTime('');
+                        }
+                      }}
+                      disabled={!flatpayCustomTime || flatpaySchedule.includes(flatpayCustomTime)}
+                    >
+                      Ajouter
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => onConfigureFlatpayAutomation(selectedSite.id, flatpaySchedule)}
+                      disabled={
+                        busySourceId === `flatpay-schedule:${selectedSite.id}` ||
+                        flatpaySchedule.length === 0
+                      }
+                    >
+                      {busySourceId === `flatpay-schedule:${selectedSite.id}` ? (
+                        <LoaderCircle size={16} className="spin" />
+                      ) : null}{' '}
+                      Enregistrer la planification
+                    </button>
+                  </div>
+                ) : null}
+                {provider === 'FLATPAY' && selectedFlatpayConnection?.lastError ? (
+                  <div className="finance-provider-sync-error">
+                    <AlertCircle size={16} />
+                    <span>{flatpayFailureMessage(selectedFlatpayConnection.lastError)}</span>
+                  </div>
+                ) : null}
+                {provider === 'FLATPAY' && selectedFlatpayConnection?.configured ? (
+                  <div className="finance-provider-sync-actions">
+                    <span>
+                      Planification dans le fuseau {data.settings.timezone}. Un passage manuel ne
+                      modifie pas les horaires enregistrés.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        void onSyncFlatpay(selectedSite.id).then((started) => {
+                          if (started) setFlatpaySyncRequested(true);
+                        });
+                      }}
+                      disabled={
+                        busySourceId === `flatpay:${selectedSite.id}` ||
+                        !selectedFlatpayConnection.automationInstalledAt
+                      }
+                    >
+                      {busySourceId === `flatpay:${selectedSite.id}` ? (
+                        <LoaderCircle size={16} className="spin" />
+                      ) : (
+                        <RefreshCw size={16} />
+                      )}{' '}
+                      Synchroniser maintenant
+                    </button>
+                    {flatpaySyncRequested ? (
+                      <small>
+                        Demande envoyée à FlatPay. Actualisez les données dans quelques instants.
+                      </small>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {siteSources.map((source) => (
