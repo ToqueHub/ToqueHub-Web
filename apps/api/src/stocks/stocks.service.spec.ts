@@ -6,6 +6,7 @@ import {
   PurchasingDeliveryMode,
   StockMovementType,
 } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
@@ -347,6 +348,41 @@ describe('StocksService equipment profile', () => {
         financingEnd: '2026-08-01',
       }),
     ).toThrow('La fin du financement doit être postérieure');
+  });
+});
+
+describe('StocksService product uniqueness errors', () => {
+  const organizationId = '11111111-1111-4111-8111-111111111111';
+  const unitId = '22222222-2222-4222-8222-222222222222';
+  const actor = { id: '33333333-3333-4333-8333-333333333333', role: 'Administrateur' };
+
+  function duplicateError(target: string) {
+    return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['organizationId', target] },
+    });
+  }
+
+  it.each([
+    ['name', 'portant ce nom existe déjà'],
+    ['sku', 'référence / ce SKU est déjà utilisé'],
+  ])('returns a readable conflict when the product %s already exists', async (target, message) => {
+    const prisma = {
+      unit: { findFirst: jest.fn().mockResolvedValue({ id: unitId }) },
+      product: { create: jest.fn().mockRejectedValue(duplicateError(target)) },
+    };
+    const service = new StocksService(prisma as any);
+
+    const creation = service.createProduct(organizationId, actor, {
+      name: 'Four mixte',
+      sku: 'FOUR-1',
+      unitId,
+      kind: ProductKind.EQUIPMENT,
+    });
+
+    await expect(creation).rejects.toBeInstanceOf(ConflictException);
+    await expect(creation).rejects.toThrow(message);
   });
 });
 

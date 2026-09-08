@@ -1555,6 +1555,64 @@ Total TTC: 9,90
     expect(discountedLine.warnings).toEqual([]);
   });
 });
+
+describe('StocksOcrService analysis tracking', () => {
+  it('dismisses a completed equipment OCR analysis without deleting its source document', async () => {
+    const prisma: any = mockPrisma();
+    prisma.document = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'document-1',
+        status: 'PROCESSED',
+        ocrDocuments: [{ status: 'COMPLETED' }],
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+
+    await expect(
+      service.dismissAnalysis('org-1', { id: 'user-1', role: 'ADMIN' }, 'document-1'),
+    ).resolves.toEqual({ removed: true });
+    expect(prisma.document.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'document-1',
+        organizationId: 'org-1',
+        sourceType: 'ocr-reception',
+        status: { in: ['FAILED', 'PROCESSED'] },
+      }),
+      data: { sourceType: 'ocr-reception-dismissed' },
+    });
+    expect(prisma.document).not.toHaveProperty('delete');
+  });
+
+  it('keeps an equipment OCR analysis visible while it is processing', async () => {
+    const prisma: any = mockPrisma();
+    prisma.document = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'document-1',
+        status: 'PROCESSING',
+        ocrDocuments: [{ status: 'PROCESSING' }],
+      }),
+      updateMany: jest.fn(),
+    };
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+
+    await expect(
+      service.dismissAnalysis('org-1', { id: 'user-1', role: 'ADMIN' }, 'document-1'),
+    ).rejects.toThrow('Impossible de retirer une analyse OCR en cours.');
+    expect(prisma.document.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('StocksOcrService reception safeguards', () => {
   it('preserves the deferred product-creation choice in a corrected OCR line', () => {
     const service = new StocksOcrService(

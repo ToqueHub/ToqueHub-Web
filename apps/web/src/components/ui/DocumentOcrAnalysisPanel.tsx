@@ -1,4 +1,5 @@
-import { ArrowRight, Download } from 'lucide-react';
+import { ArrowRight, Download, RefreshCw, X } from 'lucide-react';
+import { useState } from 'react';
 import type { StocksOcrStatus } from '../../types';
 import { DocumentOcrUpload } from './DocumentOcrUpload';
 
@@ -12,6 +13,7 @@ export function DocumentOcrAnalysisPanel({
   onUpload,
   onOpenExtraction,
   onDownload,
+  onRemoveStatus,
   heading = 'Suivi des analyses',
   verifyLabel = 'Vérifier',
   busy = false,
@@ -25,10 +27,29 @@ export function DocumentOcrAnalysisPanel({
   onUpload: (files: File[]) => Promise<void>;
   onOpenExtraction: (extractionId: string) => Promise<void>;
   onDownload?: (documentId: string, filename: string) => Promise<void>;
+  onRemoveStatus?: (documentId: string) => Promise<void>;
   heading?: string;
   verifyLabel?: string;
   busy?: boolean;
 }) {
+  const [removingDocumentIds, setRemovingDocumentIds] = useState<string[]>([]);
+  const [removeError, setRemoveError] = useState<string>();
+
+  async function removeStatus(documentId: string) {
+    if (!onRemoveStatus || removingDocumentIds.includes(documentId)) return;
+    setRemovingDocumentIds((current) => [...current, documentId]);
+    setRemoveError(undefined);
+    try {
+      await onRemoveStatus(documentId);
+    } catch (error) {
+      setRemoveError(
+        error instanceof Error ? error.message : 'Suppression du suivi OCR impossible.',
+      );
+    } finally {
+      setRemovingDocumentIds((current) => current.filter((id) => id !== documentId));
+    }
+  }
+
   return (
     <div className="stocks-ocr-import">
       <DocumentOcrUpload
@@ -39,6 +60,7 @@ export function DocumentOcrAnalysisPanel({
         submitLabel={submitLabel}
         onUpload={onUpload}
       />
+      {removeError ? <div className="alert-modern error">{removeError}</div> : null}
       {statuses.length ? (
         <div className="ocr-analysis-results">
           <div className="ocr-analysis-heading">
@@ -51,6 +73,12 @@ export function DocumentOcrAnalysisPanel({
               const isSuccess = state === 'vérifier' || Boolean(status.extraction);
               const isAnalyzing = state === 'analyse' || state === 'en cours';
               const isPending = state === 'en attente' || state === 'pending';
+              const isWorking =
+                isAnalyzing ||
+                isPending ||
+                state === 'upload' ||
+                state === 'uploading' ||
+                state === 'processing';
               const fillClass = isError
                 ? 'error'
                 : isSuccess
@@ -117,6 +145,26 @@ export function DocumentOcrAnalysisPanel({
                         }
                       >
                         <Download size={12} /> Original
+                      </button>
+                    ) : null}
+                    {onRemoveStatus ? (
+                      <button
+                        type="button"
+                        className="modal-close-btn ocr-status-card-remove"
+                        onClick={() => void removeStatus(status.document.id)}
+                        disabled={isWorking || removingDocumentIds.includes(status.document.id)}
+                        aria-label={`Retirer ${status.document.originalName} du suivi`}
+                        title={
+                          isWorking
+                            ? 'L’analyse en cours ne peut pas être retirée.'
+                            : 'Retirer cette analyse du suivi'
+                        }
+                      >
+                        {removingDocumentIds.includes(status.document.id) ? (
+                          <RefreshCw size={14} className="spin" />
+                        ) : (
+                          <X size={15} />
+                        )}
                       </button>
                     ) : null}
                   </div>

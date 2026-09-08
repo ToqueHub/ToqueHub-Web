@@ -1550,6 +1550,43 @@ export class StocksOcrService {
     };
   }
 
+  async dismissAnalysis(organizationId: string, actor: Actor, documentId: string) {
+    this.assertOcr(actor);
+    const document = await this.prisma.document.findFirst({
+      where: {
+        id: documentId,
+        organizationId,
+        sourceModule: 'stocks',
+        sourceType: 'ocr-reception',
+      },
+      include: { ocrDocuments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+    if (!document) throw new NotFoundException('Analyse OCR Stocks introuvable.');
+    const ocrStatus = document.ocrDocuments[0]?.status;
+    if (
+      document.status === DocumentStatus.UPLOADED ||
+      document.status === DocumentStatus.PROCESSING ||
+      ocrStatus === OcrProcessingStatus.PENDING ||
+      ocrStatus === OcrProcessingStatus.PROCESSING
+    ) {
+      throw new BadRequestException('Impossible de retirer une analyse OCR en cours.');
+    }
+
+    const removed = await this.prisma.document.updateMany({
+      where: {
+        id: documentId,
+        organizationId,
+        sourceModule: 'stocks',
+        sourceType: 'ocr-reception',
+        status: { in: [DocumentStatus.FAILED, DocumentStatus.PROCESSED] },
+      },
+      data: { sourceType: 'ocr-reception-dismissed' },
+    });
+    if (!removed.count)
+      throw new BadRequestException('Impossible de retirer une analyse OCR en cours.');
+    return { removed: true };
+  }
+
   async getExtraction(organizationId: string, actor: Actor, extractionId: string) {
     this.assertOcr(actor);
     const extraction = await this.prisma.ocrBusinessExtraction.findFirst({

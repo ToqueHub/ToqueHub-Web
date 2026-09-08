@@ -11,6 +11,7 @@ import {
   Layers,
   LayoutGrid,
   MapPin,
+  Package,
   PackagePlus,
   Paperclip,
   Plus,
@@ -78,11 +79,41 @@ function equipmentValue(article: Article, siteId: string) {
   return equipmentQuantity(article, siteId) * numberValue(article.product.averagePrice);
 }
 
+function EquipmentTableThumbnail({ product }: { product: Product }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(product.imageUrl && !imageFailed);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [product.imageUrl]);
+
+  return (
+    <span
+      className={`articles-product-thumbnail${showImage ? ' has-image' : ''}`}
+      role="img"
+      aria-label={showImage ? `Photo de ${product.name}` : `Aucune photo pour ${product.name}`}
+    >
+      {showImage ? (
+        <img
+          src={product.imageUrl ?? undefined}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <Package size={20} aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
 export type EquipmentFormPayload = {
   product: {
     name: string;
     sku?: string | null;
     description?: string | null;
+    imageUrl?: string | null;
     unitId: string;
     categoryId?: string | null;
     primarySupplierId?: string | null;
@@ -498,6 +529,7 @@ export function EquipmentPage({
             <table className="table-modern articles-table">
               <thead>
                 <tr>
+                  <th className="articles-photo-column">Photo</th>
                   <th>Matériel</th>
                   <th>Référence</th>
                   <th>Fournisseur</th>
@@ -537,6 +569,9 @@ export function EquipmentPage({
                         onClick={() => onEdit(article)}
                         className="clickable-row"
                       >
+                        <td className="articles-photo-column">
+                          <EquipmentTableThumbnail product={product} />
+                        </td>
                         <td>
                           <strong>{product.name}</strong>
                           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
@@ -573,7 +608,7 @@ export function EquipmentPage({
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state-modern-widget">
                         <div className="empty-state-icon-modern">🧰</div>
                         <span className="empty-state-title-modern">Aucun matériel trouvé</span>
@@ -632,6 +667,7 @@ export function EquipmentForm({
   const [name, setName] = useState(product?.name ?? '');
   const [sku, setSku] = useState(product?.sku ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
+  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [brand, setBrand] = useState(profile?.brand ?? '');
   const [model, setModel] = useState(profile?.model ?? '');
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
@@ -718,6 +754,7 @@ export function EquipmentForm({
           name: name.trim(),
           sku: nullable(sku),
           description: nullable(description),
+          imageUrl: nullable(imageUrl),
           unitId,
           categoryId: categoryId || null,
           primarySupplierId: supplierId || null,
@@ -828,6 +865,27 @@ export function EquipmentForm({
               <label>
                 Modèle
                 <input value={model} onChange={(e) => setModel(e.target.value)} />
+              </label>
+              <label className="product-sheet-wide">
+                URL de l’image du matériel
+                <span className="equipment-url-input">
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://…"
+                  />
+                  {imageUrl ? (
+                    <a
+                      href={imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Ouvrir l’image du matériel"
+                    >
+                      <ExternalLink size={15} />
+                    </a>
+                  ) : null}
+                </span>
               </label>
               <label>
                 Catégorie
