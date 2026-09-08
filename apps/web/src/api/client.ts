@@ -4234,6 +4234,13 @@ export const api = {
   stocksOcrStatus(token: string, documentId: string) {
     return request<StocksOcrStatus>(`/stocks/ocr/documents/${documentId}/status`, {}, token);
   },
+  dismissStocksOcrAnalysis(token: string, documentId: string) {
+    return request<{ removed: boolean }>(
+      `/stocks/ocr/documents/${documentId}`,
+      { method: 'DELETE' },
+      token,
+    );
+  },
   stocksOcrExtraction(token: string, extractionId: string) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
   },

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -196,6 +197,18 @@ export class StocksController {
     @Param('documentId') documentId: string,
   ) {
     return this.stocksOcrService.getStatus(this.org(user), this.actor(user), documentId);
+  }
+
+  @Delete('stocks/ocr/documents/:documentId')
+  dismissOcrDocumentAnalysis(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.stocksOcrService.dismissAnalysis(
+      this.org(user),
+      this.actor(user),
+      documentId,
+    );
   }
 
   @Get('stocks/ocr/extractions/:extractionId')

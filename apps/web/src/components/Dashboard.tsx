@@ -3259,6 +3259,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
   }
 
+  async function handleDismissStocksOcr(documentId: string) {
+    await api.dismissStocksOcrAnalysis(token, documentId);
+    setOcrStatuses((current) => current.filter((status) => status.document.id !== documentId));
+    setSuccess('Analyse OCR matériel retirée du suivi.');
+  }
+
   async function handleUploadStocksDocument(files: File[]) {
     if (ocrImportKind === 'EQUIPMENT') return handleUploadStocksOcr(files);
     const inventoryFiles = files.filter(isStructuredInventoryFile);
@@ -6538,6 +6544,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onOpenExtraction={handleOpenOcrExtraction}
           onDownload={(documentId, filename) =>
             api.downloadStocksDocument(token, documentId, filename)
+          }
+          onRemoveStatus={
+            ocrImportKind === 'EQUIPMENT' ? handleDismissStocksOcr : undefined
           }
         />
       </Modal>

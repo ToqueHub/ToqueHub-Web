@@ -1666,7 +1666,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
 
       {configModal ? (
         <div className="modal-overlay haccp-modal-overlay">
-          <form className="modal-content-wrapper modal-md" onSubmit={submitConfig}>
+          <form className="modal-content-wrapper modal-xl" onSubmit={submitConfig}>
             <div className="modal-header">
               <h2>{configModalTitle(configModal, Boolean(configEditingItem))}</h2>
               <button type="button" className="modal-close-btn" onClick={() => { setConfigModal(null); setConfigEditingItem(null); }}>
@@ -1693,7 +1693,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
 
       {modal ? (
         <div className="modal-overlay haccp-modal-overlay">
-          <form className="modal-content-wrapper modal-md" onSubmit={submit}>
+          <form className="modal-content-wrapper modal-xl" onSubmit={submit}>
             <div className="modal-header">
               <h2>Ajouter {labelFor(modal).toLowerCase()}</h2>
               <button type="button" className="modal-close-btn" onClick={() => setModal(null)}>

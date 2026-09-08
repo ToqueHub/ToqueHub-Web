@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -93,6 +94,25 @@ const EQUIPMENT_DOCUMENT_UPLOAD_ROOT = resolve(
 const EQUIPMENT_DOCUMENT_SOURCE_TYPE = 'equipment-contract';
 const MAX_EQUIPMENT_DOCUMENTS = 8;
 const MAX_EQUIPMENT_DOCUMENT_SIZE = 20 * 1024 * 1024;
+
+function productUniquenessConflict(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return null;
+  }
+  const rawTarget = error.meta?.target;
+  const target = Array.isArray(rawTarget) ? rawTarget.map(String) : [String(rawTarget ?? '')];
+  if (target.includes('sku')) {
+    return new ConflictException(
+      'Cette référence / ce SKU est déjà utilisé par un autre produit ou matériel.',
+    );
+  }
+  if (target.includes('name')) {
+    return new ConflictException(
+      'Un produit ou matériel portant ce nom existe déjà. Modifiez sa fiche existante ou utilisez un autre nom.',
+    );
+  }
+  return null;
+}
 
 type Actor = { id: string; role: string; permissions?: string[] };
 type Tx = Prisma.TransactionClient;
@@ -917,24 +937,30 @@ export class StocksService {
     if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId, kind);
     if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId);
     const { equipment, ...productData } = dto;
-    const item = await this.prisma.product.create({
-      data: {
-        ...productData,
-        kind,
-        organizationId,
-        equipmentProfile:
-          kind === ProductKind.EQUIPMENT && equipment
-            ? { create: { organizationId, ...this.equipmentProfileData(equipment) } }
-            : undefined,
-      },
-      include: {
-        category: true,
-        unit: true,
-        primarySupplier: true,
-        stocks: true,
-        equipmentProfile: true,
-      },
-    });
+    const item = await this.prisma.product
+      .create({
+        data: {
+          ...productData,
+          kind,
+          organizationId,
+          equipmentProfile:
+            kind === ProductKind.EQUIPMENT && equipment
+              ? { create: { organizationId, ...this.equipmentProfileData(equipment) } }
+              : undefined,
+        },
+        include: {
+          category: true,
+          unit: true,
+          primarySupplier: true,
+          stocks: true,
+          equipmentProfile: true,
+        },
+      })
+      .catch((error) => {
+        const conflict = productUniquenessConflict(error);
+        if (conflict) throw conflict;
+        throw error;
+      });
     await this.log(
       organizationId,
       actor.id,
