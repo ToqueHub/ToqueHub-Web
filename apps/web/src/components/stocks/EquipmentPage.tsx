@@ -711,6 +711,13 @@ export function EquipmentForm({
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const [imagePreviewFailed, setImagePreviewFailed] = useState(false);
+  const trimmedImageUrl = imageUrl.trim();
+  const showImagePreview = Boolean(trimmedImageUrl && !imagePreviewFailed);
+
+  useEffect(() => {
+    setImagePreviewFailed(false);
+  }, [trimmedImageUrl]);
 
   useEffect(() => {
     if (!product?.id) {
@@ -799,39 +806,57 @@ export function EquipmentForm({
         </div>
       ) : null}
       <div className="product-sheet-form-body">
-        <div className="product-sheet-tabs" role="tablist" aria-label="Sections matériel">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'details'}
-            className={tab === 'details' ? 'active' : ''}
-            onClick={() => setTab('details')}
-          >
-            <Wrench size={15} /> Fiche matériel
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'financing'}
-            className={tab === 'financing' ? 'active' : ''}
-            onClick={() => setTab('financing')}
-          >
-            <WalletCards size={15} /> Achat et financement
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'documents'}
-            className={tab === 'documents' ? 'active' : ''}
-            onClick={() => setTab('documents')}
-          >
-            <FileText size={15} /> Documents
-            {documents.length + documentFiles.length > 0 ? (
-              <span className="equipment-document-tab-count">
-                {documents.length + documentFiles.length}
-              </span>
-            ) : null}
-          </button>
+        <div className="equipment-form-sidebar">
+          <div className="product-sheet-tabs" role="tablist" aria-label="Sections matériel">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'details'}
+              className={tab === 'details' ? 'active' : ''}
+              onClick={() => setTab('details')}
+            >
+              <Wrench size={15} /> Fiche matériel
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'financing'}
+              className={tab === 'financing' ? 'active' : ''}
+              onClick={() => setTab('financing')}
+            >
+              <WalletCards size={15} /> Achat et financement
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'documents'}
+              className={tab === 'documents' ? 'active' : ''}
+              onClick={() => setTab('documents')}
+            >
+              <FileText size={15} /> Documents
+              {documents.length + documentFiles.length > 0 ? (
+                <span className="equipment-document-tab-count">
+                  {documents.length + documentFiles.length}
+                </span>
+              ) : null}
+            </button>
+          </div>
+          {showImagePreview ? (
+            <a
+              className="equipment-form-image-preview"
+              href={trimmedImageUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Ouvrir la photo de ${name.trim() || 'ce matériel'}`}
+            >
+              <img
+                src={trimmedImageUrl}
+                alt={`Photo de ${name.trim() || 'ce matériel'}`}
+                referrerPolicy="no-referrer"
+                onError={() => setImagePreviewFailed(true)}
+              />
+            </a>
+          ) : null}
         </div>
         <div className="product-sheet-form-panel">
           {tab === 'details' ? (
