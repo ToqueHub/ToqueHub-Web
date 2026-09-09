@@ -46,6 +46,10 @@ import {
   flatpayRuntimeDirectory,
   resolveFlatpayBrowserExecutable,
 } from '../src/finance/flatpay-browser';
+import {
+  flatpayOrdersQueryDates,
+  isRecoverableFlatpayBrowserError,
+} from '../src/finance/flatpay-portal';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 const run = promisify(execFile);
@@ -116,6 +120,10 @@ class FlatpayHistoryBoundaryError extends Error {
     super(`La date ${boundary} précède l’historique disponible dans FlatPay.`);
   }
 }
+
+let activeProfileDirectory = '';
+let activeCommand: Options['command'] = 'run';
+let profileRecoveryAttempted = false;
 
 function isHistoryReportType(type: ReportType): type is HistoryReportType {
   return type === 'orders' || type === 'sales-overview';
@@ -674,10 +682,11 @@ async function generateCurrentOrdersReport(page: Page, options: Options, range: 
   // par l'export. Cela permet de reprendre tout l'historique sans fabriquer
   // un appel privé ni contourner l'authentification du portail.
   const ordersUrl = new URL(portalUrl(options, '/pos/orders'));
+  const queryDates = flatpayOrdersQueryDates(range);
   ordersUrl.searchParams.set('pageIndex', '0');
   ordersUrl.searchParams.set('status', 'all');
-  ordersUrl.searchParams.set('fromDate', `${range.from}T00:00:00.000Z`);
-  ordersUrl.searchParams.set('toDate', `${range.to}T23:59:59.000Z`);
+  ordersUrl.searchParams.set('fromDate', queryDates.fromDate);
+  ordersUrl.searchParams.set('toDate', queryDates.toDate);
   ordersUrl.searchParams.set('sorting', 'orderId-desc');
   await page.goto(ordersUrl.toString(), { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Orders', exact: true, level: 1 }).waitFor();
@@ -819,22 +828,27 @@ async function downloadReadyReports(
 ) {
   await page.goto(portalUrl(options, '/profile/reporting'), { waitUntil: 'domcontentloaded' });
   await ensureAuthenticated(page, options, credentials);
-  const reportPage = await waitForVisible(
+  const headings = page.getByRole('heading', { level: 6 });
+  // The generic page title is rendered before the asynchronous report list.
+  // Waiting for it used to return an empty list and skip freshly generated
+  // reports. A real report row or an explicit empty state is the ready signal.
+  const reportList = await waitForVisible(
     [
-      page.getByRole('heading', { name: /downloads|download history|reports/i }),
-      page.getByRole('heading', { level: 6 }),
+      headings,
+      page.getByText(
+        /no (?:reports?|downloads?)|nothing (?:to show|here)|ei (?:raportteja|latauksia|ladattavaa)/i,
+      ),
     ],
     30_000,
   );
-  if (!reportPage) {
-    const headings = (await page.getByRole('heading').allTextContents())
+  if (!reportList) {
+    const visibleHeadings = (await page.getByRole('heading').allTextContents())
       .filter(Boolean)
       .slice(0, 10);
     throw new Error(
-      `Page des téléchargements Flatpay introuvable (${page.url()}) : ${headings.join(' · ') || 'aucun titre'}.`,
+      `Liste des téléchargements Flatpay indisponible (${page.url()}) : ${visibleHeadings.join(' · ') || 'aucun titre'}.`,
     );
   }
-  const headings = page.getByRole('heading', { level: 6 });
   const downloadedKeys = new Set(state.downloadedReportKeys);
   const forcedPrefixes = new Set<string>();
   const saved: string[] = [];
@@ -1043,6 +1057,8 @@ async function main() {
   }
   options.siteId = credentials.defaultSiteId;
   options.profileDirectory = resolve(options.profileDirectory, credentials.id);
+  activeProfileDirectory = options.profileDirectory;
+  activeCommand = options.command;
   options.statePath =
     extname(options.statePath).toLowerCase() === '.json'
       ? options.statePath
@@ -1051,18 +1067,19 @@ async function main() {
   if (credentials && !process.env.FLATPAY_PORTAL_URL) options.portalUrl = credentials.portalUrl;
   await mkdir(options.inbox, { recursive: true });
   await mkdir(options.profileDirectory, { recursive: true });
-  const context = await chromium.launchPersistentContext(options.profileDirectory, {
-    executablePath: options.chromePath,
-    headless: !options.headed,
-    acceptDownloads: true,
-    downloadsPath: options.inbox,
-    viewport: { width: 1440, height: 1000 },
-    args:
-      process.env.FLATPAY_CHROME_NO_SANDBOX === 'true'
-        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        : [],
-  });
+  let context: BrowserContext | undefined;
   try {
+    context = await chromium.launchPersistentContext(options.profileDirectory, {
+      executablePath: options.chromePath,
+      headless: !options.headed,
+      acceptDownloads: true,
+      downloadsPath: options.inbox,
+      viewport: { width: 1440, height: 1000 },
+      args:
+        process.env.FLATPAY_CHROME_NO_SANDBOX === 'true'
+          ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+          : [],
+    });
     const pages = context.pages();
     const page = pages[0] || (await context.newPage());
     if (options.command === 'setup') {
@@ -1401,12 +1418,46 @@ async function main() {
       .catch(() => undefined);
     throw error;
   } finally {
-    await context.close();
+    await context?.close().catch(() => undefined);
     await prisma.$disconnect();
   }
 }
 
-void main().catch((error) => {
+async function quarantineBrowserProfile(profileDirectory: string) {
+  const exists = await access(profileDirectory)
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) return null;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const quarantineDirectory = `${profileDirectory}-recovery-${timestamp}`;
+  await rename(profileDirectory, quarantineDirectory);
+  await mkdir(profileDirectory, { recursive: true });
+  return quarantineDirectory;
+}
+
+async function runWithProfileRecovery() {
+  try {
+    await main();
+  } catch (error) {
+    if (
+      profileRecoveryAttempted ||
+      activeCommand !== 'run' ||
+      !activeProfileDirectory ||
+      !isRecoverableFlatpayBrowserError(error)
+    ) {
+      throw error;
+    }
+    profileRecoveryAttempted = true;
+    const quarantineDirectory = await quarantineBrowserProfile(activeProfileDirectory);
+    if (!quarantineDirectory) throw error;
+    console.warn(
+      `Le profil navigateur FlatPay défaillant a été isolé dans ${quarantineDirectory}. Nouvelle tentative avec un profil propre.`,
+    );
+    await main();
+  }
+}
+
+void runWithProfileRecovery().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
