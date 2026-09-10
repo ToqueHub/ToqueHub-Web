@@ -35,6 +35,8 @@ RUN npm run build -w apps/web
 
 FROM nginx:1.27-alpine AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/ToqueHub/ToqueHub-Web"
+
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
