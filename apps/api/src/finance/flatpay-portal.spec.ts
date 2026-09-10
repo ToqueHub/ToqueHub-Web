@@ -1,4 +1,8 @@
-import { flatpayOrdersQueryDates, isRecoverableFlatpayBrowserError } from './flatpay-portal';
+import {
+  flatpayOrdersQueryDates,
+  isRecoverableFlatpayBrowserError,
+  shouldUseHeadedFlatpayBrowser,
+} from './flatpay-portal';
 
 describe('FlatPay portal automation', () => {
   it('converts Helsinki summer day boundaries to UTC instants', () => {
@@ -37,5 +41,39 @@ describe('FlatPay portal automation', () => {
     expect(isRecoverableFlatpayBrowserError(new Error('Le rapport Orders est indisponible.'))).toBe(
       false,
     );
+  });
+
+  it('keeps automatic reconnects and diagnostics headless in the API container', () => {
+    expect(
+      shouldUseHeadedFlatpayBrowser({
+        command: 'setup',
+        automaticSetup: true,
+        headedRequested: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseHeadedFlatpayBrowser({
+        command: 'diagnose',
+        automaticSetup: false,
+        headedRequested: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('keeps manual setup visible and honors an explicit headed request', () => {
+    expect(
+      shouldUseHeadedFlatpayBrowser({
+        command: 'setup',
+        automaticSetup: false,
+        headedRequested: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseHeadedFlatpayBrowser({
+        command: 'run',
+        automaticSetup: false,
+        headedRequested: true,
+      }),
+    ).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import { flatpayRuntimeDirectory, resolveFlatpayBrowserExecutable } from './flat
 import { FinancePolicy } from './finance.policy';
 
 const DEFAULT_SCHEDULE = ['07:00', '15:00', '19:00', '23:00'];
+const FAILED_SYNC_RETRY_MS = 15 * 60_000;
 
 export function resolveFlatpayAutomationCommand(
   projectDirectory: string,
@@ -212,14 +213,23 @@ export function shouldStartFlatpayScheduledSync({
   dueAt,
   lastSyncedAt,
   lastAttemptAt,
+  now = new Date(),
+  retryAfterMs = FAILED_SYNC_RETRY_MS,
 }: {
   dueAt: Date | null;
   lastSyncedAt?: Date | null;
   lastAttemptAt?: Date | null;
+  now?: Date;
+  retryAfterMs?: number;
 }) {
   if (!dueAt) return false;
   if (lastSyncedAt && lastSyncedAt >= dueAt) return false;
-  if (lastAttemptAt && lastAttemptAt >= dueAt) return false;
+  if (
+    lastAttemptAt &&
+    lastAttemptAt >= dueAt &&
+    now.getTime() - lastAttemptAt.getTime() < retryAfterMs
+  )
+    return false;
   return true;
 }
 
@@ -401,7 +411,7 @@ export class FlatpayAutomationService implements OnModuleInit, OnModuleDestroy {
       started: true,
       alreadyRunning: false,
       message:
-        'Une fenêtre Chrome FlatPay va s’ouvrir. Terminez la connexion : la session sera enregistrée et les rapports récents seront synchronisés automatiquement.',
+        'Reconnexion FlatPay lancée. La session sera renouvelée et les rapports récents seront synchronisés automatiquement.',
     };
   }
 
