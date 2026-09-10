@@ -1,32 +1,30 @@
 # ToqueHub Raspberry Pi image
 
-This directory contains the appliance image assets for Raspberry Pi 4 64-bit.
+This directory contains the appliance image assets for Raspberry Pi 4 and 5
+64-bit.
 
 The target image is Raspberry Pi OS Lite 64-bit with Docker installed, ToqueHub
 Compose files under `/opt/toquehub`, configuration under `/etc/toquehub`, and
 persistent data under `/var/lib/toquehub`.
 
-## Build strategy
+## Runtime image strategy
 
-ToqueHub is not compiled on the Raspberry Pi at first boot. Build four ARM64
-Docker archives first, then provide their directory and an SSH public key:
+The SD image stays lightweight: it does not contain the ToqueHub application
+containers. On first boot, Docker Compose downloads the ARM64 containers from
+GHCR using the release stored in `TOQUEHUB_IMAGE_TAG`. The corresponding GHCR
+packages and release tag must therefore be public before distributing an image.
+
+Provide the target board and an SSH public key when building:
 
 ```bash
-TOQUEHUB_RPI_RELEASE_TAG=1.1.45 \
-TOQUEHUB_RPI_SSH_PUBLIC_KEY_FILE=/secure/path/to/toquehub_pi_test_ed25519.pub \
-TOQUEHUB_RPI_CONTAINER_BUNDLE_DIR=/secure/path/to/arm64-images \
-npm run pi:image
+./scripts/build-rpi-image.sh \
+  --device rpi4 \
+  --release 1.1.99 \
+  --ssh-public-key /secure/path/to/toquehub_pi_test_ed25519.pub
 ```
 
-The required archive names are:
-
-- `toquehub-api-1.1.45-arm64.tar`
-- `toquehub-web-1.1.45-arm64.tar`
-- `toquehub-mdns-1.1.45-arm64.tar`
-- `toquehub-updater-1.1.45-arm64.tar`
-
-They are verified and loaded into Docker on first boot, then removed to reclaim
-space. Public third-party images are downloaded normally.
+Use `--device rpi5` for Raspberry Pi 5. If `--release` is omitted, the version
+is read from the root `package.json`.
 
 The image build uses `rpi-image-gen` v2.7.0 by default. The wrapper copies the
 ToqueHub appliance layer into the image project and leaves the exact image
@@ -39,7 +37,7 @@ sudo apt-get update
 sudo apt-get install -y git sudo binfmt-support qemu-user-static debian-archive-keyring
 git clone https://github.com/ToqueHub/ToqueHub-Web.git
 cd ToqueHub-Web
-npm run pi:image
+./scripts/build-rpi-image.sh --device rpi4 --ssh-public-key ~/.ssh/id_ed25519.pub
 ```
 
 To only prepare the generated `rpi-image-gen` project before launching the long
@@ -54,6 +52,7 @@ Useful overrides:
 ```bash
 TOQUEHUB_RPI_WORK_DIR=/mnt/build/toquehub-rpi npm run pi:image
 TOQUEHUB_RPI_IMAGE_NAME=toquehub-2026-07-04 npm run pi:image
+TOQUEHUB_RPI_DEVICE=rpi5 npm run pi:image
 RPI_IMAGE_GEN_REF=v2.7.0 npm run pi:image
 ```
 
@@ -76,7 +75,7 @@ When the machine joins a tailnet with MagicDNS enabled, ToqueHub automatically
 uses the assigned `*.ts.net` address for remote access and retains the
 Tailscale IP as a fallback. Run `toquehub address` after connecting Tailscale
 to display and verify both addresses.
-- Docker Compose pulls the published ToqueHub images
+- Docker Compose downloads the published ToqueHub images with network retries
 - ToqueHub starts automatically
 - Zigbee2MQTT is enabled only when a Zigbee USB adapter is detected. The Sonoff
   Dongle Lite MG21 and ZBDongle-E are configured automatically with the `ember`

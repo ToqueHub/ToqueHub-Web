@@ -6,7 +6,8 @@ DATA_DIR="/var/lib/toquehub"
 ENV_FILE="$CONFIG_DIR/toquehub.env"
 COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
 ZIGBEE_CONFIG="$DATA_DIR/zigbee2mqtt/configuration.yaml"
-IMAGE_BUNDLE_DIR="/opt/toquehub/images"
+IMAGE_PULL_ATTEMPTS="${TOQUEHUB_IMAGE_PULL_ATTEMPTS:-12}"
+IMAGE_PULL_DELAY="${TOQUEHUB_IMAGE_PULL_DELAY:-10}"
 
 secret() {
   openssl rand -hex 32
@@ -243,33 +244,22 @@ configure_web_url() {
   set_env CORS_ORIGIN "$origins"
 }
 
-load_embedded_images() {
-  local checksum_file="$IMAGE_BUNDLE_DIR/SHA256SUMS"
-  local archive
+pull_runtime_images() {
+  local attempt
 
-  if [[ ! -f "$checksum_file" ]]; then
-    echo "Embedded ToqueHub image checksum manifest is missing." >&2
-    exit 1
-  fi
+  for ((attempt = 1; attempt <= IMAGE_PULL_ATTEMPTS; attempt++)); do
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull; then
+      return 0
+    fi
 
-  (
-    cd "$IMAGE_BUNDLE_DIR"
-    sha256sum -c SHA256SUMS
-  )
-
-  shopt -s nullglob
-  local archives=("$IMAGE_BUNDLE_DIR"/*.tar)
-  shopt -u nullglob
-  if [[ ${#archives[@]} -ne 4 ]]; then
-    echo "Expected four embedded ToqueHub images, found ${#archives[@]}." >&2
-    exit 1
-  fi
-
-  for archive in "${archives[@]}"; do
-    docker load --input "$archive"
+    if ((attempt < IMAGE_PULL_ATTEMPTS)); then
+      echo "Image download failed (attempt $attempt/$IMAGE_PULL_ATTEMPTS); retrying in ${IMAGE_PULL_DELAY}s." >&2
+      sleep "$IMAGE_PULL_DELAY"
+    fi
   done
 
-  find "$IMAGE_BUNDLE_DIR" -maxdepth 1 -type f -name '*.tar' -delete
+  echo "Unable to download ToqueHub runtime images." >&2
+  return 1
 }
 
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
@@ -297,7 +287,7 @@ set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
 configure_local_hostname
 configure_tailscale
 configure_web_url
-load_embedded_images
+pull_runtime_images
 systemctl restart toquehub-remote-agent.service >/dev/null 2>&1 || true
 
 if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
