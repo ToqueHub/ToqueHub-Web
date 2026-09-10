@@ -108,13 +108,14 @@ describe('FlatPay automation runtime', () => {
     expect(dueAt?.toISOString()).toBe('2026-09-07T20:00:00.000Z');
   });
 
-  it('attempts each scheduled occurrence only once after a failure', () => {
+  it('does not retry a scheduled occurrence before the backoff', () => {
     const dueAt = new Date('2026-09-08T12:00:00.000Z');
     expect(
       shouldStartFlatpayScheduledSync({
         dueAt,
         lastSyncedAt: new Date('2026-09-08T04:00:00.000Z'),
         lastAttemptAt: new Date('2026-09-08T12:00:01.000Z'),
+        now: new Date('2026-09-08T12:10:00.000Z'),
       }),
     ).toBe(false);
     expect(
@@ -122,6 +123,18 @@ describe('FlatPay automation runtime', () => {
         dueAt: new Date('2026-09-08T16:00:00.000Z'),
         lastSyncedAt: new Date('2026-09-08T04:00:00.000Z'),
         lastAttemptAt: new Date('2026-09-08T12:00:01.000Z'),
+        now: new Date('2026-09-08T16:00:01.000Z'),
+      }),
+    ).toBe(true);
+  });
+
+  it('retries a failed scheduled synchronization after the backoff', () => {
+    expect(
+      shouldStartFlatpayScheduledSync({
+        dueAt: new Date('2026-09-10T04:00:00.000Z'),
+        lastSyncedAt: new Date('2026-09-09T16:00:00.000Z'),
+        lastAttemptAt: new Date('2026-09-10T04:00:10.000Z'),
+        now: new Date('2026-09-10T04:15:10.000Z'),
       }),
     ).toBe(true);
   });

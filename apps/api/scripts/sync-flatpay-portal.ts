@@ -49,6 +49,7 @@ import {
 import {
   flatpayOrdersQueryDates,
   isRecoverableFlatpayBrowserError,
+  shouldUseHeadedFlatpayBrowser,
 } from '../src/finance/flatpay-portal';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -245,7 +246,11 @@ function parseOptions(): Options {
     productChunkDays,
     transactionChunkDays,
     maxGenerationsPerRun,
-    headed: args.includes('--headed') || command !== 'run',
+    headed: shouldUseHeadedFlatpayBrowser({
+      command,
+      automaticSetup: args.includes('--setup-auto'),
+      headedRequested: args.includes('--headed'),
+    }),
     organizationId,
     siteId,
   };
@@ -993,42 +998,14 @@ async function setup(
   credentials?: FlatpayCredentials,
 ) {
   await page.goto(options.portalUrl, { waitUntil: 'domcontentloaded' });
-  console.log('Connectez-vous à Flatpay dans la fenêtre Chrome ouverte.');
   if (options.automaticSetup) {
-    await ensureAuthenticated(page, options, credentials).catch(() => undefined);
-    const deadline = Date.now() + 10 * 60_000;
-    let authenticated = false;
-    while (Date.now() < deadline) {
-      const loginInput = await firstVisible([
-        page.locator('input[type="password"]'),
-        page.locator('input[type="email"]'),
-        page.locator('input[name="email"]'),
-        page.locator('input[name="username"]'),
-        page.locator('input[autocomplete="email"]'),
-      ]);
-      if (!loginInput && !isFlatpayLoginFlow(page)) {
-        await page.goto(portalUrl(options, '/profile/reporting'), {
-          waitUntil: 'domcontentloaded',
-        });
-        const redirectedToLogin = isFlatpayLoginFlow(page);
-        const redirectedLoginInput = await firstVisible([
-          page.locator('input[type="password"]'),
-          page.locator('input[type="email"]'),
-          page.locator('input[name="email"]'),
-          page.locator('input[name="username"]'),
-          page.locator('input[autocomplete="email"]'),
-        ]);
-        if (!redirectedToLogin && !redirectedLoginInput) {
-          authenticated = true;
-          break;
-        }
-      }
-      await page.waitForTimeout(1_000);
-    }
-    if (!authenticated) {
-      throw new Error('La reconnexion FlatPay n’a pas été terminée dans les 10 minutes.');
-    }
+    await ensureAuthenticated(page, options, credentials);
+    await page.goto(portalUrl(options, '/profile/reporting'), {
+      waitUntil: 'domcontentloaded',
+    });
+    await ensureAuthenticated(page, options, credentials);
   } else {
+    console.log('Connectez-vous à Flatpay dans la fenêtre Chrome ouverte.');
     const prompt = createInterface({ input, output });
     await prompt.question('Quand le tableau de bord Flatpay est visible, appuyez sur Entrée… ');
     prompt.close();

@@ -1,4 +1,5 @@
 export type FlatpayPortalDateRange = { from: string; to: string };
+export type FlatpayPortalCommand = 'setup' | 'run' | 'diagnose';
 
 type ZonedDateTime = {
   year: number;
@@ -85,4 +86,21 @@ export function isRecoverableFlatpayBrowserError(error: unknown) {
   return /(?:target page|browser context|browser has been closed|context closed|page closed|crash|singletonlock|user data directory|profile.*(?:corrupt|locked|in use)|failed to launch)/i.test(
     message,
   );
+}
+
+/**
+ * Interactive setup needs a visible browser on a workstation. Automatic
+ * reconnects and diagnostics run inside the API container, where no X server
+ * is available, so they must stay headless unless explicitly overridden.
+ */
+export function shouldUseHeadedFlatpayBrowser({
+  command,
+  automaticSetup,
+  headedRequested,
+}: {
+  command: FlatpayPortalCommand;
+  automaticSetup: boolean;
+  headedRequested: boolean;
+}) {
+  return headedRequested || (command === 'setup' && !automaticSetup);
 }
